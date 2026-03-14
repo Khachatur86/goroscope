@@ -1,0 +1,215 @@
+{
+  "name": "demo-capture",
+  "target": "demo://ui",
+  "events": [
+    {
+      "session_id": "fixture_demo",
+      "seq": 1,
+      "timestamp": "2026-03-14T12:00:00Z",
+      "kind": "goroutine.create",
+      "goroutine_id": 1,
+      "labels": {
+        "function": "main.producer"
+      }
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 2,
+      "timestamp": "2026-03-14T12:00:00Z",
+      "kind": "goroutine.start",
+      "goroutine_id": 1
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 3,
+      "timestamp": "2026-03-14T12:00:00.8Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 1,
+      "state": "RUNNABLE"
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 4,
+      "timestamp": "2026-03-14T12:00:00.05Z",
+      "kind": "goroutine.create",
+      "goroutine_id": 42,
+      "labels": {
+        "function": "main.worker"
+      }
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 5,
+      "timestamp": "2026-03-14T12:00:00.1Z",
+      "kind": "goroutine.start",
+      "goroutine_id": 42
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 6,
+      "timestamp": "2026-03-14T12:00:00.9Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 42,
+      "state": "BLOCKED",
+      "reason": "chan_recv",
+      "resource_id": "chan:0xc000018230"
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 7,
+      "timestamp": "2026-03-14T12:00:01.6Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 42,
+      "state": "RUNNING"
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 8,
+      "timestamp": "2026-03-14T12:00:01.77Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 42,
+      "state": "BLOCKED",
+      "reason": "chan_recv",
+      "resource_id": "chan:0xc000018230"
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 9,
+      "timestamp": "2026-03-14T12:00:02Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 42,
+      "state": "BLOCKED",
+      "reason": "chan_recv",
+      "resource_id": "chan:0xc000018230"
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 10,
+      "timestamp": "2026-03-14T12:00:00.1Z",
+      "kind": "goroutine.create",
+      "goroutine_id": 77,
+      "labels": {
+        "function": "main.sink"
+      }
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 11,
+      "timestamp": "2026-03-14T12:00:00.1Z",
+      "kind": "goroutine.start",
+      "goroutine_id": 77
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 12,
+      "timestamp": "2026-03-14T12:00:00.2Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 77,
+      "state": "WAITING",
+      "reason": "mutex_lock",
+      "resource_id": "mutex:0xc000014180"
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 13,
+      "timestamp": "2026-03-14T12:00:01.3Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 77,
+      "state": "SYSCALL",
+      "reason": "syscall"
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 14,
+      "timestamp": "2026-03-14T12:00:01.89Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 77,
+      "state": "WAITING",
+      "reason": "mutex_lock",
+      "resource_id": "mutex:0xc000014180"
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 15,
+      "timestamp": "2026-03-14T12:00:02Z",
+      "kind": "goroutine.state",
+      "goroutine_id": 77,
+      "state": "WAITING",
+      "reason": "mutex_lock",
+      "resource_id": "mutex:0xc000014180"
+    }
+  ],
+  "stacks": [
+    {
+      "session_id": "fixture_demo",
+      "seq": 16,
+      "timestamp": "2026-03-14T12:00:00.9Z",
+      "stack_id": "stk_producer",
+      "goroutine_id": 1,
+      "frames": [
+        {
+          "func": "main.producer",
+          "file": "/workspace/app/main.go",
+          "line": 24
+        },
+        {
+          "func": "main.main",
+          "file": "/workspace/app/main.go",
+          "line": 88
+        }
+      ]
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 17,
+      "timestamp": "2026-03-14T12:00:02Z",
+      "stack_id": "stk_worker",
+      "goroutine_id": 42,
+      "frames": [
+        {
+          "func": "main.worker",
+          "file": "/workspace/app/main.go",
+          "line": 57
+        },
+        {
+          "func": "main.main",
+          "file": "/workspace/app/main.go",
+          "line": 92
+        }
+      ]
+    },
+    {
+      "session_id": "fixture_demo",
+      "seq": 18,
+      "timestamp": "2026-03-14T12:00:02Z",
+      "stack_id": "stk_sink",
+      "goroutine_id": 77,
+      "frames": [
+        {
+          "func": "main.sink",
+          "file": "/workspace/app/main.go",
+          "line": 73
+        },
+        {
+          "func": "main.main",
+          "file": "/workspace/app/main.go",
+          "line": 95
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "from_goroutine_id": 1,
+      "to_goroutine_id": 42,
+      "resource_id": "chan:0xc000018230",
+      "kind": "channel"
+    },
+    {
+      "from_goroutine_id": 42,
+      "to_goroutine_id": 77,
+      "resource_id": "mutex:0xc000014180",
+      "kind": "mutex"
+    }
+  ]
+}

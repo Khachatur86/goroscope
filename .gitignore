@@ -2,5 +2,6 @@
 bin/
 coverage.out
 captures/*.gtrace
+!captures/sample.gtrace
 web/dist/
 web/node_modules/

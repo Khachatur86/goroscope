@@ -25,12 +25,6 @@ type activeSegment struct {
 	ResourceID string
 }
 
-type demoSessionData struct {
-	events []model.Event
-	stacks []model.StackSnapshot
-	edges  []model.ResourceEdge
-}
-
 func NewEngine() *Engine {
 	return &Engine{
 		stateMachine:   NewStateMachine(),
@@ -46,18 +40,16 @@ func (e *Engine) Reset(session *model.Session) {
 	e.resetLocked(session)
 }
 
-func (e *Engine) SeedDemoSession(session *model.Session) {
+func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	e.resetLocked(session)
-
-	data := buildDemoSessionData(session)
-	e.applyEventsLocked(data.events)
-	for _, snapshot := range data.stacks {
+	e.applyEventsLocked(capture.Events)
+	for _, snapshot := range capture.Stacks {
 		e.applyStackSnapshotLocked(snapshot)
 	}
-	e.edges = append([]model.ResourceEdge(nil), data.edges...)
+	e.edges = append([]model.ResourceEdge(nil), capture.Resources...)
 }
 
 func (e *Engine) ApplyEvent(event model.Event) {
@@ -278,184 +270,6 @@ func buildTimelineSegment(goroutineID int64, segment activeSegment, end time.Tim
 		Reason:      segment.Reason,
 		ResourceID:  segment.ResourceID,
 	}, true
-}
-
-func buildDemoSessionData(session *model.Session) demoSessionData {
-	base := time.Now().UTC().Add(-2 * time.Second)
-
-	return demoSessionData{
-		events: []model.Event{
-			{
-				SessionID:   session.ID,
-				Seq:         1,
-				Timestamp:   base,
-				Kind:        model.EventKindGoroutineCreate,
-				GoroutineID: 1,
-				Labels:      model.Labels{"function": "main.producer"},
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         2,
-				Timestamp:   base,
-				Kind:        model.EventKindGoroutineStart,
-				GoroutineID: 1,
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         3,
-				Timestamp:   base.Add(800 * time.Millisecond),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 1,
-				State:       model.StateRunnable,
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         4,
-				Timestamp:   base.Add(50 * time.Millisecond),
-				Kind:        model.EventKindGoroutineCreate,
-				GoroutineID: 42,
-				Labels:      model.Labels{"function": "main.worker"},
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         5,
-				Timestamp:   base.Add(100 * time.Millisecond),
-				Kind:        model.EventKindGoroutineStart,
-				GoroutineID: 42,
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         6,
-				Timestamp:   base.Add(900 * time.Millisecond),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 42,
-				State:       model.StateBlocked,
-				Reason:      model.ReasonChanRecv,
-				ResourceID:  "chan:0xc000018230",
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         7,
-				Timestamp:   base.Add(1600 * time.Millisecond),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 42,
-				State:       model.StateRunning,
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         8,
-				Timestamp:   base.Add(1770 * time.Millisecond),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 42,
-				State:       model.StateBlocked,
-				Reason:      model.ReasonChanRecv,
-				ResourceID:  "chan:0xc000018230",
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         9,
-				Timestamp:   base.Add(2 * time.Second),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 42,
-				State:       model.StateBlocked,
-				Reason:      model.ReasonChanRecv,
-				ResourceID:  "chan:0xc000018230",
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         10,
-				Timestamp:   base.Add(100 * time.Millisecond),
-				Kind:        model.EventKindGoroutineCreate,
-				GoroutineID: 77,
-				Labels:      model.Labels{"function": "main.sink"},
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         11,
-				Timestamp:   base.Add(100 * time.Millisecond),
-				Kind:        model.EventKindGoroutineStart,
-				GoroutineID: 77,
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         12,
-				Timestamp:   base.Add(200 * time.Millisecond),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 77,
-				State:       model.StateWaiting,
-				Reason:      model.ReasonMutexLock,
-				ResourceID:  "mutex:0xc000014180",
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         13,
-				Timestamp:   base.Add(1300 * time.Millisecond),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 77,
-				State:       model.StateSyscall,
-				Reason:      model.ReasonSyscall,
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         14,
-				Timestamp:   base.Add(1890 * time.Millisecond),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 77,
-				State:       model.StateWaiting,
-				Reason:      model.ReasonMutexLock,
-				ResourceID:  "mutex:0xc000014180",
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         15,
-				Timestamp:   base.Add(2 * time.Second),
-				Kind:        model.EventKindGoroutineState,
-				GoroutineID: 77,
-				State:       model.StateWaiting,
-				Reason:      model.ReasonMutexLock,
-				ResourceID:  "mutex:0xc000014180",
-			},
-		},
-		stacks: []model.StackSnapshot{
-			{
-				SessionID:   session.ID,
-				Seq:         16,
-				Timestamp:   base.Add(900 * time.Millisecond),
-				StackID:     "stk_producer",
-				GoroutineID: 1,
-				Frames: []model.StackFrame{
-					{Func: "main.producer", File: "/workspace/app/main.go", Line: 24},
-					{Func: "main.main", File: "/workspace/app/main.go", Line: 88},
-				},
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         17,
-				Timestamp:   base.Add(2 * time.Second),
-				StackID:     "stk_worker",
-				GoroutineID: 42,
-				Frames: []model.StackFrame{
-					{Func: "main.worker", File: "/workspace/app/main.go", Line: 57},
-					{Func: "main.main", File: "/workspace/app/main.go", Line: 92},
-				},
-			},
-			{
-				SessionID:   session.ID,
-				Seq:         18,
-				Timestamp:   base.Add(2 * time.Second),
-				StackID:     "stk_sink",
-				GoroutineID: 77,
-				Frames: []model.StackFrame{
-					{Func: "main.sink", File: "/workspace/app/main.go", Line: 73},
-					{Func: "main.main", File: "/workspace/app/main.go", Line: 95},
-				},
-			},
-		},
-		edges: []model.ResourceEdge{
-			{FromGoroutineID: 1, ToGoroutineID: 42, ResourceID: "chan:0xc000018230", Kind: "channel"},
-			{FromGoroutineID: 42, ToGoroutineID: 77, ResourceID: "mutex:0xc000014180", Kind: "mutex"},
-		},
-	}
 }
 
 func cloneSession(session *model.Session) *model.Session {

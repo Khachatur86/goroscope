@@ -8,7 +8,9 @@ import (
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/api"
+	"github.com/Khachatur86/goroscope/internal/model"
 	"github.com/Khachatur86/goroscope/internal/session"
+	"github.com/Khachatur86/goroscope/internal/tracebridge"
 )
 
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -61,7 +63,12 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	_ = noBrowser
 
-	return serveDemoSession(ctx, *addr, *sessionName, target, stdout)
+	capture, err := tracebridge.LoadDemoCapture()
+	if err != nil {
+		return err
+	}
+
+	return serveCaptureSession(ctx, *addr, *sessionName, target, capture, stdout)
 }
 
 func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -73,7 +80,12 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 		return err
 	}
 
-	return serveDemoSession(ctx, *addr, "collector", "collector", stdout)
+	capture, err := tracebridge.LoadDemoCapture()
+	if err != nil {
+		return err
+	}
+
+	return serveCaptureSession(ctx, *addr, "collector", "collector", capture, stdout)
 }
 
 func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -85,7 +97,12 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return err
 	}
 
-	return serveDemoSession(ctx, *addr, "ui-demo", "demo://ui", stdout)
+	capture, err := tracebridge.LoadDemoCapture()
+	if err != nil {
+		return err
+	}
+
+	return serveCaptureSession(ctx, *addr, "ui-demo", "demo://ui", capture, stdout)
 }
 
 func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -102,14 +119,19 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		target = fs.Arg(0)
 	}
 
-	return serveDemoSession(ctx, *addr, "replay", target, stdout)
+	capture, err := tracebridge.LoadCaptureFile(target)
+	if err != nil {
+		return err
+	}
+
+	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout)
 }
 
-func serveDemoSession(ctx context.Context, addr, sessionName, target string, stdout io.Writer) error {
+func serveCaptureSession(ctx context.Context, addr, sessionName, target string, capture model.Capture, stdout io.Writer) error {
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
 	current := sessions.StartSession(sessionName, target)
-	engine.SeedDemoSession(current)
+	engine.LoadCapture(current, tracebridge.BindCaptureSession(capture, current.ID))
 
 	server := api.NewServer(addr, engine, sessions)
 	fmt.Fprintf(stdout, "goroscope scaffold serving %q at http://%s\n", target, addr)
