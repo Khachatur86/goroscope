@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -111,10 +112,45 @@ func (s *Server) handleGraph(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.engine.ResourceGraph())
 }
 
-func (s *Server) handleStream(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusNotImplemented, map[string]string{
-		"error": "stream endpoint is not implemented in the scaffold yet",
-	})
+// handleStream implements a Server-Sent Events (SSE) endpoint.
+// The client receives an "update" event whenever the engine processes a new
+// capture snapshot. Each event carries no payload — the client is expected to
+// re-fetch the REST endpoints it cares about. This keeps the stream
+// protocol-agnostic and the payload format versioning out of SSE.
+func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "streaming not supported by this HTTP handler",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	// Disable proxy buffering (nginx / Google Cloud Run, etc.)
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	ch := s.engine.Subscribe()
+	defer s.engine.Unsubscribe(ch)
+
+	// Immediately send a "connected" event so the client knows the stream is live.
+	fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
+	flusher.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case _, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "event: update\ndata: {}\n\n")
+			flusher.Flush()
+		}
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

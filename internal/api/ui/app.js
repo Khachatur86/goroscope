@@ -478,5 +478,29 @@ function roundRect(context, x, y, width, height, radius) {
   context.closePath();
 }
 
-loadData();
-window.setInterval(loadData, 1000);
+// connectStream opens an SSE connection to /api/v1/stream and calls loadData
+// whenever the server pushes an "update" event. On error it retries after a
+// short back-off so the UI recovers automatically if the server restarts.
+// A 30-second safety-net interval is kept as a last-resort fallback in case
+// the browser silently drops the SSE connection without firing an error event.
+function connectStream() {
+  const source = new EventSource("/api/v1/stream");
+  let fallbackTimer = window.setInterval(loadData, 30_000);
+
+  source.addEventListener("connected", () => {
+    loadData();
+  });
+
+  source.addEventListener("update", () => {
+    loadData();
+  });
+
+  source.onerror = () => {
+    source.close();
+    window.clearInterval(fallbackTimer);
+    loadData();
+    window.setTimeout(connectStream, 3_000);
+  };
+}
+
+connectStream();

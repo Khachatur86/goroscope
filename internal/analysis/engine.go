@@ -16,6 +16,9 @@ type Engine struct {
 	closedSegments []model.TimelineSegment
 	activeSegments map[int64]activeSegment
 	edges          []model.ResourceEdge
+
+	subsMu      sync.Mutex
+	subscribers map[chan struct{}]struct{}
 }
 
 type activeSegment struct {
@@ -30,6 +33,39 @@ func NewEngine() *Engine {
 		stateMachine:   NewStateMachine(),
 		goroutines:     make(map[int64]model.Goroutine),
 		activeSegments: make(map[int64]activeSegment),
+		subscribers:    make(map[chan struct{}]struct{}),
+	}
+}
+
+// Subscribe returns a channel that receives a signal whenever the engine state
+// is updated via LoadCapture. The caller must call Unsubscribe when done.
+// The channel is buffered (capacity 1); slow consumers will miss intermediate
+// updates but will never block the engine.
+func (e *Engine) Subscribe() chan struct{} {
+	ch := make(chan struct{}, 1)
+	e.subsMu.Lock()
+	e.subscribers[ch] = struct{}{}
+	e.subsMu.Unlock()
+	return ch
+}
+
+// Unsubscribe removes ch from the subscriber set and closes it.
+func (e *Engine) Unsubscribe(ch chan struct{}) {
+	e.subsMu.Lock()
+	delete(e.subscribers, ch)
+	e.subsMu.Unlock()
+	close(ch)
+}
+
+// notifySubscribers sends a non-blocking signal to every subscriber.
+func (e *Engine) notifySubscribers() {
+	e.subsMu.Lock()
+	defer e.subsMu.Unlock()
+	for ch := range e.subscribers {
+		select {
+		case ch <- struct{}{}:
+		default: // subscriber is busy; drop the extra tick, it will catch the next one
+		}
 	}
 }
 
@@ -41,15 +77,19 @@ func (e *Engine) Reset(session *model.Session) {
 }
 
 func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	func() {
+		e.mu.Lock()
+		defer e.mu.Unlock()
 
-	e.resetLocked(session)
-	e.applyEventsLocked(capture.Events)
-	for _, snapshot := range capture.Stacks {
-		e.applyStackSnapshotLocked(snapshot)
-	}
-	e.edges = append([]model.ResourceEdge(nil), capture.Resources...)
+		e.resetLocked(session)
+		e.applyEventsLocked(capture.Events)
+		for _, snapshot := range capture.Stacks {
+			e.applyStackSnapshotLocked(snapshot)
+		}
+		e.edges = append([]model.ResourceEdge(nil), capture.Resources...)
+	}()
+
+	e.notifySubscribers()
 }
 
 func (e *Engine) ApplyEvent(event model.Event) {
