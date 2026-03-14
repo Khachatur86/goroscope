@@ -8,8 +8,8 @@ This repository now contains a buildable starter scaffold for the MVP:
 
 - Go module and CLI entrypoint
 - internal packages for model, collector, analysis, API, session, and trace bridge
-- placeholder local HTTP API and demo session data
-- frontend scaffold under `web/`
+- local HTTP API, demo session data, and an interactive browser UI
+- future frontend workspace scaffold under `web/`
 - product specification under `docs/`
 
 ## Quick Start

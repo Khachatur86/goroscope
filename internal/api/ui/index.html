@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goroscope</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Local Go Concurrency Debugger</p>
+        <h1>Goroscope</h1>
+        <p class="subtitle">Inspect goroutines, blocking behavior, and stack snapshots on a live runtime timeline.</p>
+      </div>
+      <div class="hero-actions">
+        <button id="refresh-button" class="action-button" type="button">Refresh Data</button>
+      </div>
+    </header>
+
+    <section class="summary-bar" aria-label="Session summary">
+      <div class="summary-card">
+        <span class="summary-label">Session</span>
+        <strong id="session-name">Loading…</strong>
+        <span id="session-target" class="summary-meta"></span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Status</span>
+        <strong id="session-status">Loading…</strong>
+        <span id="session-started" class="summary-meta"></span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Goroutines</span>
+        <strong id="goroutine-count">0</strong>
+        <span id="blocked-count" class="summary-meta">0 blocked</span>
+      </div>
+    </section>
+
+    <section class="legend-panel" aria-label="Timeline legend">
+      <div class="legend-chip running">RUNNING</div>
+      <div class="legend-chip runnable">RUNNABLE</div>
+      <div class="legend-chip waiting">WAITING</div>
+      <div class="legend-chip blocked">BLOCKED</div>
+      <div class="legend-chip syscall">SYSCALL</div>
+      <div class="legend-chip done">DONE</div>
+    </section>
+
+    <main class="workspace">
+      <aside class="panel lane-panel">
+        <div class="panel-header">
+          <h2>Goroutines</h2>
+          <p>Filter and select a lane.</p>
+        </div>
+        <div class="filter-stack">
+          <label class="field">
+            <span>Search</span>
+            <input id="search-input" type="search" placeholder="id, function, reason">
+          </label>
+          <label class="field">
+            <span>State</span>
+            <select id="state-filter">
+              <option value="ALL">All states</option>
+              <option value="RUNNING">RUNNING</option>
+              <option value="RUNNABLE">RUNNABLE</option>
+              <option value="WAITING">WAITING</option>
+              <option value="BLOCKED">BLOCKED</option>
+              <option value="SYSCALL">SYSCALL</option>
+              <option value="DONE">DONE</option>
+            </select>
+          </label>
+        </div>
+        <div id="goroutine-list" class="lane-list" role="listbox" aria-label="Goroutines"></div>
+      </aside>
+
+      <section class="panel timeline-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Timeline</h2>
+            <p>Click a lane or use the list to inspect one goroutine.</p>
+          </div>
+          <div id="timeline-range" class="timeline-range"></div>
+        </div>
+        <div class="timeline-stage">
+          <canvas id="timeline-canvas"></canvas>
+        </div>
+      </section>
+
+      <aside class="panel inspector-panel">
+        <div class="panel-header">
+          <h2>Inspector</h2>
+          <p>Current selection details.</p>
+        </div>
+        <div id="inspector" class="inspector"></div>
+        <div class="resource-section">
+          <h3>Resource Edges</h3>
+          <div id="resource-list" class="resource-list"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>
