@@ -22,15 +22,24 @@ import (
 var (
 	syncLineRE        = regexp.MustCompile(`Sync Time=(\d+).*Wall=([0-9T:\-+:.Z]+)`)
 	// stateTransitionRE matches a goroutine state-transition line emitted by
-	// "go tool trace -d=parsed".  Groups:
-	//   [1] monotonic time nanoseconds
-	//   [2] goroutine ID (the goroutine whose state changes)
-	//   [3] reason string (may be empty)
-	//   [4] optional GoID — the goroutine that triggered the transition;
-	//       on NotExist→* lines this is the parent (creator) goroutine
+	// "go tool trace -d=parsed".
+	//
+	// Actual line format (from go tool trace output):
+	//   M=<m> P=<p> G=<g> StateTransition Time=<t> Resource=Goroutine(<id>) Reason="<r>" GoID=<id> <From>-><To>
+	//
+	// Key insight: GoID= is always equal to Resource=Goroutine(N) — it is the
+	// new/transitioning goroutine's own ID, not the parent's.  The parent
+	// (creator) goroutine is the G= field in the line prefix.  -1 means no
+	// goroutine is running (system context or initial bootstrap).
+	//
+	// Groups:
+	//   [1] G= running goroutine ID, may be -1 (parent on NotExist→* lines)
+	//   [2] monotonic time nanoseconds
+	//   [3] goroutine ID that is changing state
+	//   [4] reason string (may be empty)
 	//   [5] from-state label
 	//   [6] to-state label
-	stateTransitionRE = regexp.MustCompile(`Time=(\d+)\s+Resource=Goroutine\((\d+)\)\s+Reason="([^"]*)"(?:\s+GoID=(\d+))?\s+([A-Za-z]+)->([A-Za-z]+)$`)
+	stateTransitionRE = regexp.MustCompile(`\bG=(-?\d+)\s.*\bTime=(\d+)\s+Resource=Goroutine\((\d+)\)\s+Reason="([^"]*)"(?:\s+GoID=\d+)?\s+([A-Za-z]+)->([A-Za-z]+)$`)
 	workspaceRoot     = mustGetwd()
 )
 
@@ -224,29 +233,34 @@ func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 				return model.Capture{}, err
 			}
 
-			timeNS, err := strconv.ParseInt(match[1], 10, 64)
+			// New group layout after regex rewrite:
+			//   match[1] = G= running goroutine (parent on create events, "-1" = none)
+			//   match[2] = Time nanoseconds
+			//   match[3] = goroutine being transitioned
+			//   match[4] = Reason string
+			//   match[5] = from-state label
+			//   match[6] = to-state label
+			timeNS, err := strconv.ParseInt(match[2], 10, 64)
 			if err != nil {
 				return model.Capture{}, fmt.Errorf("parse transition time: %w", err)
 			}
-			goID, err := strconv.ParseInt(match[2], 10, 64)
+			goID, err := strconv.ParseInt(match[3], 10, 64)
 			if err != nil {
 				return model.Capture{}, fmt.Errorf("parse goroutine id: %w", err)
 			}
 
-			// match[4] is the optional GoID= value; match[5] and [6] are
-			// the from/to state labels (indices shifted by the new capture group).
 			current = &parsedTransition{
 				TimeNS: timeNS,
 				GoID:   goID,
-				Reason: match[3],
+				Reason: match[4],
 				From:   match[5],
 				To:     match[6],
 			}
-			// Only record the parent on goroutine-creation transitions so we
-			// don't accidentally overwrite it with the "currently running"
-			// goroutine ID from unrelated state changes.
-			if match[4] != "" && (match[5] == "NotExist" || match[5] == "Undetermined") {
-				parentID, err := strconv.ParseInt(match[4], 10, 64)
+			// On create transitions the G= prefix field is the running goroutine
+			// that executed the "go" statement — i.e. the parent.
+			// G=-1 means no goroutine (bootstrap/system context), not a real parent.
+			if (match[5] == "NotExist" || match[5] == "Undetermined") && match[1] != "-1" {
+				parentID, err := strconv.ParseInt(match[1], 10, 64)
 				if err == nil && parentID != goID {
 					current.ParentID = parentID
 				}
