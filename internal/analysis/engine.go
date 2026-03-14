@@ -216,6 +216,16 @@ func (e *Engine) applyEventLocked(event model.Event) {
 		return
 	}
 
+	// Normalize events that arrive with incomplete fields (e.g. via ApplyEvent
+	// from an external agent). Trace-sourced events already have these set, so
+	// this is a no-op for the happy path.
+	if event.Kind == model.EventKindGoroutineState && event.State == "" {
+		event.State = model.StateWaiting
+	}
+	if isWaitState(event.State) && event.Reason == "" {
+		event.Reason = model.ReasonUnknown
+	}
+
 	current := e.goroutines[event.GoroutineID]
 	next := e.stateMachine.Apply(current, event)
 	e.updateSegmentsLocked(event.GoroutineID, current, next, event)

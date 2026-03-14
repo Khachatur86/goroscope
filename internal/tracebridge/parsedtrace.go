@@ -348,22 +348,37 @@ func mapTraceState(toState, reason string) (model.GoroutineState, model.Blocking
 	}
 }
 
+// mapWaitingReason maps the Reason string from a "go tool trace -d=parsed"
+// Waiting transition to a domain state and blocking reason.
+//
+// Reason strings are defined as constants in the Go runtime (src/runtime/trace.go)
+// and are stable within a major version. The full set observed in practice:
+//
+//	"chan receive", "chan send", "select",
+//	"sync", "sync.(*Cond).Wait",
+//	"sleep", "network", "forever",
+//	"preempted", "wait for debug call", "wait until GC ends",
+//	"GC mark assist wait for work", "GC background sweeper wait",
+//	"GC weak to strong wait", "system goroutine wait", "synctest"
 func mapWaitingReason(reason string) (model.GoroutineState, model.BlockingReason) {
-	lower := strings.ToLower(reason)
-	switch {
-	case strings.Contains(lower, "chan receive"):
+	switch reason {
+	case "chan receive":
 		return model.StateBlocked, model.ReasonChanRecv
-	case strings.Contains(lower, "chan send"):
+	case "chan send":
 		return model.StateBlocked, model.ReasonChanSend
-	case strings.Contains(lower, "select"):
+	case "select":
 		return model.StateBlocked, model.ReasonSelect
-	case strings.Contains(lower, "sync"):
+	case "sync":
+		// Generic mutex / RWMutex lock — trace does not distinguish the two.
 		return model.StateBlocked, model.ReasonMutexLock
-	case strings.Contains(lower, "sleep"):
+	case "sync.(*Cond).Wait":
+		return model.StateWaiting, model.ReasonSyncCond
+	case "sleep":
 		return model.StateWaiting, model.ReasonSleep
-	case strings.Contains(lower, "syscall"):
-		return model.StateSyscall, model.ReasonSyscall
 	default:
+		if strings.HasPrefix(reason, "GC") {
+			return model.StateWaiting, model.ReasonGCAssist
+		}
 		return model.StateWaiting, model.ReasonUnknown
 	}
 }

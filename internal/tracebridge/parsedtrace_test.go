@@ -59,3 +59,38 @@ M=1 P=0 G=1 StateTransition Time=500 Resource=Goroutine(1) Reason="" GoID=1 Runn
 		t.Fatalf("expected first stack frame main.main, got %+v", capture.Stacks[0].Frames[0])
 	}
 }
+
+func TestMapWaitingReason(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		reason      string
+		wantState   model.GoroutineState
+		wantBlocked model.BlockingReason
+	}{
+		{"chan receive", model.StateBlocked, model.ReasonChanRecv},
+		{"chan send", model.StateBlocked, model.ReasonChanSend},
+		{"select", model.StateBlocked, model.ReasonSelect},
+		{"sync", model.StateBlocked, model.ReasonMutexLock},
+		{"sync.(*Cond).Wait", model.StateWaiting, model.ReasonSyncCond},
+		{"sleep", model.StateWaiting, model.ReasonSleep},
+		{"GC mark assist wait for work", model.StateWaiting, model.ReasonGCAssist},
+		{"GC background sweeper wait", model.StateWaiting, model.ReasonGCAssist},
+		{"GC weak to strong wait", model.StateWaiting, model.ReasonGCAssist},
+		{"network", model.StateWaiting, model.ReasonUnknown},
+		{"forever", model.StateWaiting, model.ReasonUnknown},
+		{"system goroutine wait", model.StateWaiting, model.ReasonUnknown},
+		{"", model.StateWaiting, model.ReasonUnknown},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.reason, func(t *testing.T) {
+			t.Parallel()
+			gotState, gotReason := mapWaitingReason(tc.reason)
+			if gotState != tc.wantState || gotReason != tc.wantBlocked {
+				t.Errorf("mapWaitingReason(%q) = (%q, %q), want (%q, %q)",
+					tc.reason, gotState, gotReason, tc.wantState, tc.wantBlocked)
+			}
+		})
+	}
+}
