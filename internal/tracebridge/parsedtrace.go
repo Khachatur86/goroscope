@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Khachatur86/goroscope/internal/model"
@@ -31,6 +32,16 @@ type parsedTransition struct {
 	From   string
 	To     string
 	Stack  []model.StackFrame
+}
+
+type LiveTraceRun struct {
+	tracePath string
+	tempDir   string
+
+	done      chan struct{}
+	waitErr   error
+	waitMu    sync.RWMutex
+	closeOnce sync.Once
 }
 
 type parsedTraceBuilder struct {
@@ -53,11 +64,24 @@ func BuildCaptureFromRawTrace(ctx context.Context, tracePath string) (model.Capt
 }
 
 func RunGoTargetWithTrace(ctx context.Context, target string, stdout, stderr io.Writer) (model.Capture, error) {
+	liveRun, err := StartGoTargetWithTrace(ctx, target, stdout, stderr)
+	if err != nil {
+		return model.Capture{}, err
+	}
+	defer liveRun.Close()
+
+	if err := liveRun.Wait(); err != nil {
+		return model.Capture{}, fmt.Errorf("run target %q: %w", target, err)
+	}
+
+	return liveRun.BuildCapture(ctx)
+}
+
+func StartGoTargetWithTrace(ctx context.Context, target string, stdout, stderr io.Writer) (*LiveTraceRun, error) {
 	tempDir, err := os.MkdirTemp("", "goroscope-trace-*")
 	if err != nil {
-		return model.Capture{}, fmt.Errorf("create temp trace dir: %w", err)
+		return nil, fmt.Errorf("create temp trace dir: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
 
 	tracePath := filepath.Join(tempDir, "trace.out")
 	cmd := exec.CommandContext(ctx, "go", "run", target)
@@ -65,16 +89,70 @@ func RunGoTargetWithTrace(ctx context.Context, target string, stdout, stderr io.
 	cmd.Stderr = stderr
 	cmd.Env = append(os.Environ(), "GOROSCOPE_TRACE_FILE="+tracePath)
 
-	if err := cmd.Run(); err != nil {
-		return model.Capture{}, fmt.Errorf("run target %q: %w", target, err)
+	if err := cmd.Start(); err != nil {
+		_ = os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("start target %q: %w", target, err)
 	}
 
-	info, err := os.Stat(tracePath)
-	if err != nil || info.Size() == 0 {
-		return model.Capture{}, fmt.Errorf("target %q did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main", target)
+	liveRun := &LiveTraceRun{
+		tracePath: tracePath,
+		tempDir:   tempDir,
+		done:      make(chan struct{}),
+	}
+	go func() {
+		err := cmd.Wait()
+		liveRun.waitMu.Lock()
+		liveRun.waitErr = err
+		liveRun.waitMu.Unlock()
+		close(liveRun.done)
+	}()
+
+	return liveRun, nil
+}
+
+func (r *LiveTraceRun) Done() <-chan struct{} {
+	return r.done
+}
+
+func (r *LiveTraceRun) Wait() error {
+	<-r.done
+
+	r.waitMu.RLock()
+	defer r.waitMu.RUnlock()
+	return r.waitErr
+}
+
+func (r *LiveTraceRun) TraceSize() (int64, error) {
+	info, err := os.Stat(r.tracePath)
+	if err != nil {
+		return 0, err
 	}
 
-	return BuildCaptureFromRawTrace(ctx, tracePath)
+	return info.Size(), nil
+}
+
+func (r *LiveTraceRun) BuildCapture(ctx context.Context) (model.Capture, error) {
+	size, err := r.TraceSize()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return model.Capture{}, fmt.Errorf("target did not emit a runtime trace yet; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
+		}
+		return model.Capture{}, err
+	}
+	if size == 0 {
+		return model.Capture{}, fmt.Errorf("target did not emit a runtime trace yet; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
+	}
+
+	return BuildCaptureFromRawTrace(ctx, r.tracePath)
+}
+
+func (r *LiveTraceRun) Close() error {
+	var err error
+	r.closeOnce.Do(func() {
+		err = os.RemoveAll(r.tempDir)
+	})
+
+	return err
 }
 
 func ParseParsedTrace(r io.Reader) (model.Capture, error) {

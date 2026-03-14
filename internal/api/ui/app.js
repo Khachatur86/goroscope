@@ -176,11 +176,19 @@ function renderSummary() {
 
   const goroutines = getFilteredGoroutines();
   const blockedCount = state.goroutines.filter((item) => item.state === "BLOCKED" || item.state === "WAITING").length;
+  const metaParts = [`Started ${formatTimestamp(state.session.started_at)}`];
+
+  if (state.session.ended_at) {
+    metaParts.push(`Ended ${formatTimestamp(state.session.ended_at)}`);
+  }
+  if (state.session.error) {
+    metaParts.push(state.session.error);
+  }
 
   elements.sessionName.textContent = state.session.name;
   elements.sessionTarget.textContent = state.session.target;
   elements.sessionStatus.textContent = state.session.status;
-  elements.sessionStarted.textContent = `Started ${formatTimestamp(state.session.started_at)}`;
+  elements.sessionStarted.textContent = metaParts.join(" • ");
   elements.goroutineCount.textContent = String(goroutines.length);
   elements.blockedCount.textContent = `${blockedCount} waiting or blocked`;
 }
@@ -471,4 +479,4 @@ function roundRect(context, x, y, width, height, radius) {
 }
 
 loadData();
-window.setInterval(loadData, 2000);
+window.setInterval(loadData, 1000);

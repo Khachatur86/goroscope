@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"time"
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/api"
@@ -63,12 +65,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	_ = noBrowser
 
-	capture, err := tracebridge.RunGoTargetWithTrace(ctx, target, stdout, stderr)
-	if err != nil {
-		return err
-	}
-
-	return serveCaptureSession(ctx, *addr, *sessionName, target, capture, stdout)
+	return serveLiveRunSession(ctx, *addr, *sessionName, target, stdout, stderr)
 }
 
 func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -137,4 +134,103 @@ func serveCaptureSession(ctx context.Context, addr, sessionName, target string, 
 	fmt.Fprintf(stdout, "goroscope scaffold serving %q at http://%s\n", target, addr)
 
 	return server.Serve(ctx)
+}
+
+func serveLiveRunSession(ctx context.Context, addr, sessionName, target string, stdout, stderr io.Writer) error {
+	engine := analysis.NewEngine()
+	sessions := session.NewManager()
+	current := sessions.StartSession(sessionName, target)
+	engine.Reset(current)
+
+	liveRun, err := tracebridge.StartGoTargetWithTrace(ctx, target, stdout, stderr)
+	if err != nil {
+		return err
+	}
+	defer liveRun.Close()
+
+	go watchLiveTrace(ctx, current.ID, liveRun, engine, sessions, stderr)
+
+	server := api.NewServer(addr, engine, sessions)
+	fmt.Fprintf(stdout, "goroscope live run serving %q at http://%s\n", target, addr)
+
+	return server.Serve(ctx)
+}
+
+func watchLiveTrace(
+	ctx context.Context,
+	sessionID string,
+	liveRun *tracebridge.LiveTraceRun,
+	engine *analysis.Engine,
+	sessions *session.Manager,
+	stderr io.Writer,
+) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	var lastSize int64 = -1
+
+	refreshCapture := func(final bool) error {
+		size, err := liveRun.TraceSize()
+		if err != nil {
+			if os.IsNotExist(err) && !final {
+				return nil
+			}
+			if os.IsNotExist(err) && final {
+				return fmt.Errorf("target did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
+			}
+			return err
+		}
+		if size == 0 {
+			if final {
+				return fmt.Errorf("target did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
+			}
+			return nil
+		}
+		if !final && size == lastSize {
+			return nil
+		}
+
+		capture, err := liveRun.BuildCapture(ctx)
+		if err != nil {
+			if final {
+				return err
+			}
+			return nil
+		}
+
+		sessionState := sessions.Current()
+		if sessionState == nil {
+			return nil
+		}
+
+		engine.LoadCapture(sessionState, tracebridge.BindCaptureSession(capture, sessionID))
+		lastSize = size
+		return nil
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := refreshCapture(false); err != nil {
+				fmt.Fprintf(stderr, "goroscope: refresh live trace: %v\n", err)
+			}
+		case <-liveRun.Done():
+			runErr := liveRun.Wait()
+			refreshErr := refreshCapture(true)
+
+			switch {
+			case runErr != nil:
+				sessions.FailCurrent(runErr.Error())
+				fmt.Fprintf(stderr, "goroscope: target exited with error: %v\n", runErr)
+			case refreshErr != nil:
+				sessions.FailCurrent(refreshErr.Error())
+				fmt.Fprintf(stderr, "goroscope: finalize trace capture: %v\n", refreshErr)
+			default:
+				sessions.CompleteCurrent()
+			}
+			return
+		}
+	}
 }

@@ -31,7 +31,7 @@ An example target is included:
 go run ./cmd/goroscope run ./examples/trace_demo
 ```
 
-This executes the demo app, captures a real `runtime/trace`, converts it into a Goroscope capture, and then serves the UI locally.
+This starts the local UI immediately, runs the target, and refreshes the timeline from the growing `runtime/trace` while the process is still running. The browser UI currently polls the backend once per second.
 
 ## Layout
 

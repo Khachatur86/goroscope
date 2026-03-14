@@ -7,6 +7,7 @@ type SessionStatus string
 const (
 	SessionStatusRunning   SessionStatus = "RUNNING"
 	SessionStatusCompleted SessionStatus = "COMPLETED"
+	SessionStatusFailed    SessionStatus = "FAILED"
 )
 
 type Session struct {
@@ -16,4 +17,5 @@ type Session struct {
 	Status    SessionStatus `json:"status"`
 	StartedAt time.Time     `json:"started_at"`
 	EndedAt   *time.Time    `json:"ended_at,omitempty"`
+	Error     string        `json:"error,omitempty"`
 }

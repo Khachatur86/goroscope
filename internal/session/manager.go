@@ -35,6 +35,14 @@ func (m *Manager) StartSession(name, target string) *model.Session {
 }
 
 func (m *Manager) CompleteCurrent() {
+	m.finishCurrent(model.SessionStatusCompleted, "")
+}
+
+func (m *Manager) FailCurrent(message string) {
+	m.finishCurrent(model.SessionStatusFailed, message)
+}
+
+func (m *Manager) finishCurrent(status model.SessionStatus, message string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -43,8 +51,9 @@ func (m *Manager) CompleteCurrent() {
 	}
 
 	now := time.Now().UTC()
-	m.current.Status = model.SessionStatusCompleted
+	m.current.Status = status
 	m.current.EndedAt = &now
+	m.current.Error = message
 }
 
 func (m *Manager) Current() *model.Session {
