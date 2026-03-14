@@ -60,6 +60,17 @@ const colors = {
   DONE: "#4b5563",
 };
 
+// Three-stop gradient per state: [top-highlight, mid-base, bottom-shadow].
+// Gives bars the appearance of depth without blur or heavy compositing.
+const colorStops = {
+  RUNNING:  ["#3dcebe", "#2a9d8f", "#1c7068"],
+  RUNNABLE: ["#8c939f", "#6b7280", "#4e545e"],
+  WAITING:  ["#f7c08a", "#f4a261", "#c97b3a"],
+  BLOCKED:  ["#e36070", "#d1495b", "#a02f3d"],
+  SYSCALL:  ["#5c95bb", "#457b9d", "#2f5c78"],
+  DONE:     ["#646e7b", "#4b5563", "#343d47"],
+};
+
 const timelineStates = ["RUNNING", "RUNNABLE", "WAITING", "BLOCKED", "SYSCALL", "DONE"];
 const stallStates = new Set(["WAITING", "BLOCKED", "SYSCALL"]);
 const offCPUStates = new Set(["RUNNABLE", "WAITING", "BLOCKED", "SYSCALL"]);
@@ -1316,7 +1327,11 @@ function renderTimeline() {
   canvasContext.setTransform(dpr, 0, 0, dpr, 0, 0);
   canvasContext.clearRect(0, 0, width, height);
 
-  canvasContext.fillStyle = "#0f172a";
+  // Subtle top-to-bottom gradient keeps the canvas from looking flat.
+  const bgGrad = canvasContext.createLinearGradient(0, 0, 0, height);
+  bgGrad.addColorStop(0, "#141e32");
+  bgGrad.addColorStop(1, "#0c1522");
+  canvasContext.fillStyle = bgGrad;
   canvasContext.fillRect(0, 0, width, height);
 
   if (goroutines.length === 0) {
@@ -1377,7 +1392,7 @@ function renderTimeline() {
   drawAxis(visibleStart, visibleEnd, fullMinStart, width, metrics);
   renderTimelineContext();
 
-  canvasContext.fillStyle = "rgba(2, 6, 23, 0.34)";
+  canvasContext.fillStyle = "rgba(2, 6, 23, 0.48)";
   canvasContext.fillRect(0, metrics.axisHeight, plotLeft - 8, height - metrics.axisHeight);
   canvasContext.strokeStyle = "rgba(219, 228, 238, 0.10)";
   canvasContext.beginPath();
@@ -1398,7 +1413,7 @@ function renderTimeline() {
     // Zebra stripe: even rows get a faint background so the eye can track
     // horizontally across wide traces without losing its row.
     if (index % 2 === 0) {
-      canvasContext.fillStyle = "rgba(255, 255, 255, 0.022)";
+      canvasContext.fillStyle = "rgba(255, 255, 255, 0.038)";
       canvasContext.fillRect(0, y, width, metrics.rowHeight);
     }
 
@@ -1473,15 +1488,24 @@ function renderTimeline() {
         }
         // Smaller radius (3 px) looks precise; 7 px looked like a UI button.
         roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 3);
-        canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
-        canvasContext.fill();
 
-        // Top-edge highlight — a 3 px lighter strip creates the illusion of
-        // depth without expensive gradients or blur.
-        if (!isDimmed && barWidth > 4) {
-          canvasContext.fillStyle = "rgba(255, 255, 255, 0.20)";
-          canvasContext.fillRect(clampedX + 1, barY + 1, barWidth - 2, 3);
+        // Gradient fill: lighter at top, base in the middle, darker at bottom.
+        // Falls back to flat colour when dimmed so the overlay alpha still works.
+        if (!isDimmed) {
+          const stops = colorStops[segment.state];
+          if (stops) {
+            const grad = canvasContext.createLinearGradient(0, barY, 0, barY + barHeight);
+            grad.addColorStop(0,    stops[0]);
+            grad.addColorStop(0.45, stops[1]);
+            grad.addColorStop(1,    stops[2]);
+            canvasContext.fillStyle = grad;
+          } else {
+            canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
+          }
+        } else {
+          canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
         }
+        canvasContext.fill();
 
         if (isSelected || isHoveredSegment) {
           canvasContext.lineWidth = isHoveredSegment ? 2 : 1.5;
