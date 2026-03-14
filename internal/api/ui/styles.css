@@ -473,6 +473,170 @@ select {
   margin-top: 14px;
 }
 
+.diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.diagnostic-card {
+  padding: 12px 12px 10px;
+  border-radius: 16px;
+  background: rgba(20, 33, 61, 0.05);
+  border: 1px solid rgba(20, 33, 61, 0.06);
+}
+
+.diagnostic-card-label,
+.diagnostic-state-head,
+.diagnostic-flag-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.diagnostic-card-value {
+  display: block;
+  margin-top: 6px;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.diagnostic-card-meta {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.diagnostic-meta {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.diagnostic-bar {
+  display: flex;
+  height: 12px;
+  margin-top: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(20, 33, 61, 0.08);
+}
+
+.diagnostic-bar-segment {
+  min-width: 1px;
+  height: 100%;
+}
+
+.diagnostic-bar-segment.RUNNING { background: var(--running); }
+.diagnostic-bar-segment.RUNNABLE { background: var(--runnable); }
+.diagnostic-bar-segment.WAITING { background: var(--waiting); }
+.diagnostic-bar-segment.BLOCKED { background: var(--blocked); }
+.diagnostic-bar-segment.SYSCALL { background: var(--syscall); }
+.diagnostic-bar-segment.DONE { background: var(--done); }
+
+.diagnostic-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.diagnostic-state-card {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(20, 33, 61, 0.08);
+}
+
+.diagnostic-state-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diagnostic-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.diagnostic-state-dot.RUNNING { background: var(--running); }
+.diagnostic-state-dot.RUNNABLE { background: var(--runnable); }
+.diagnostic-state-dot.WAITING { background: var(--waiting); }
+.diagnostic-state-dot.BLOCKED { background: var(--blocked); }
+.diagnostic-state-dot.SYSCALL { background: var(--syscall); }
+.diagnostic-state-dot.DONE { background: var(--done); }
+
+.diagnostic-state-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.diagnostic-state-values strong {
+  color: var(--ink);
+}
+
+.diagnostic-flags {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.diagnostic-flag,
+.diagnostic-clear {
+  padding: 11px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(20, 33, 61, 0.08);
+  background: rgba(20, 33, 61, 0.04);
+}
+
+.diagnostic-flag.tone-danger {
+  border-color: rgba(209, 73, 91, 0.28);
+  background: rgba(209, 73, 91, 0.10);
+}
+
+.diagnostic-flag.tone-warn {
+  border-color: rgba(244, 162, 97, 0.34);
+  background: rgba(244, 162, 97, 0.12);
+}
+
+.diagnostic-flag.tone-info {
+  border-color: rgba(69, 123, 157, 0.24);
+  background: rgba(69, 123, 157, 0.10);
+}
+
+.diagnostic-flag-label {
+  display: block;
+}
+
+.diagnostic-flag-detail {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.diagnostic-clear {
+  display: block;
+  margin-top: 14px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
 .inspector-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -798,5 +962,12 @@ select {
 
   #timeline-canvas {
     min-height: 420px;
+  }
+}
+
+@media (max-width: 460px) {
+  .diagnostic-grid,
+  .diagnostic-state-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -53,6 +53,10 @@ const colors = {
   DONE: "#4b5563",
 };
 
+const timelineStates = ["RUNNING", "RUNNABLE", "WAITING", "BLOCKED", "SYSCALL", "DONE"];
+const stallStates = new Set(["WAITING", "BLOCKED", "SYSCALL"]);
+const offCPUStates = new Set(["RUNNABLE", "WAITING", "BLOCKED", "SYSCALL"]);
+
 const elements = {
   refreshButton: document.getElementById("refresh-button"),
   sessionName: document.getElementById("session-name"),
@@ -403,6 +407,255 @@ function getTimelinePlotBounds(width, metrics) {
   };
 }
 
+function getTimelineSegmentsForGoroutine(goroutineID) {
+  return state.timeline
+    .filter((segment) => segment.goroutine_id === goroutineID)
+    .slice()
+    .sort((left, right) => left.start_ns - right.start_ns || left.end_ns - right.end_ns);
+}
+
+function buildGoroutineDiagnostics(goroutine) {
+  if (!goroutine) {
+    return null;
+  }
+
+  const segments = getTimelineSegmentsForGoroutine(goroutine.goroutine_id);
+  const totalsByState = Object.fromEntries(timelineStates.map((stateName) => [stateName, 0]));
+  const resourceEdges = state.resources.filter(
+    (edge) => edge.from_goroutine_id === goroutine.goroutine_id || edge.to_goroutine_id === goroutine.goroutine_id,
+  );
+  const stallResources = new Set();
+  let recordedNS = 0;
+  let stallNS = 0;
+  let longestStall = null;
+  let stallSegmentCount = 0;
+
+  for (const segment of segments) {
+    const durationNS = Math.max(segment.end_ns - segment.start_ns, 0);
+    totalsByState[segment.state] = (totalsByState[segment.state] ?? 0) + durationNS;
+    recordedNS += durationNS;
+
+    if (stallStates.has(segment.state)) {
+      stallNS += durationNS;
+      stallSegmentCount += 1;
+      if (segment.resource_id) {
+        stallResources.add(segment.resource_id);
+      }
+      if (!longestStall || durationNS > longestStall.durationNS) {
+        longestStall = {
+          state: segment.state,
+          durationNS,
+          reason: segment.reason || "",
+          resourceID: segment.resource_id || "",
+        };
+      }
+    }
+  }
+
+  const firstStartNS = segments.length > 0 ? segments[0].start_ns : 0;
+  const lastEndNS = segments.length > 0 ? segments[segments.length - 1].end_ns : 0;
+  const windowNS = segments.length > 0 ? Math.max(lastEndNS - firstStartNS, recordedNS) : 0;
+  const diagnostics = {
+    segments,
+    totalsByState,
+    recordedNS,
+    windowNS,
+    runningNS: totalsByState.RUNNING ?? 0,
+    offCPUNS: timelineStates.reduce(
+      (acc, stateName) => acc + (offCPUStates.has(stateName) ? (totalsByState[stateName] ?? 0) : 0),
+      0,
+    ),
+    stallNS,
+    longestStall,
+    stallSegmentCount,
+    transitionCount: Math.max(segments.length - 1, 0),
+    resourceEdgeCount: resourceEdges.length,
+    stallResourceCount: stallResources.size,
+    completed: goroutine.state === "DONE" || segments.some((segment) => segment.state === "DONE"),
+  };
+
+  diagnostics.flags = buildSuspicionFlags(diagnostics);
+  diagnostics.primaryFlag = diagnostics.flags[0] ?? null;
+  return diagnostics;
+}
+
+function buildSuspicionFlags(diagnostics) {
+  if (!diagnostics) {
+    return [];
+  }
+
+  const flags = [];
+  const sessionEnded = Boolean(state.session?.ended_at);
+
+  if (sessionEnded && !diagnostics.completed) {
+    flags.push({
+      tone: "danger",
+      label: "Unfinished",
+      detail: "Session ended before this lane reached DONE.",
+    });
+  }
+
+  if (
+    diagnostics.longestStall &&
+    diagnostics.longestStall.durationNS >= Math.max(100_000_000, diagnostics.windowNS * 0.25)
+  ) {
+    const stallParts = [
+      formatDuration(diagnostics.longestStall.durationNS),
+      diagnostics.longestStall.state.toLowerCase(),
+    ];
+    if (diagnostics.longestStall.reason) {
+      stallParts.push(diagnostics.longestStall.reason);
+    }
+    flags.push({
+      tone: "warn",
+      label: "Long stall",
+      detail: stallParts.join(" · "),
+    });
+  }
+
+  if (
+    diagnostics.stallSegmentCount >= 3 &&
+    diagnostics.stallNS >= Math.max(50_000_000, diagnostics.recordedNS * 0.3)
+  ) {
+    flags.push({
+      tone: "warn",
+      label: "Repeated stalls",
+      detail: `${diagnostics.stallSegmentCount} blocking segments across ${formatDuration(diagnostics.stallNS)}.`,
+    });
+  }
+
+  if (
+    diagnostics.stallNS > 0 &&
+    (diagnostics.resourceEdgeCount >= 3 || diagnostics.stallResourceCount >= 2)
+  ) {
+    const details = [];
+    if (diagnostics.resourceEdgeCount > 0) {
+      details.push(`${diagnostics.resourceEdgeCount} graph edges`);
+    }
+    if (diagnostics.stallResourceCount > 0) {
+      details.push(`${diagnostics.stallResourceCount} stall resources`);
+    }
+    flags.push({
+      tone: "info",
+      label: "Resource pressure",
+      detail: details.join(" · "),
+    });
+  }
+
+  if (diagnostics.transitionCount >= 8) {
+    flags.push({
+      tone: "info",
+      label: "High churn",
+      detail: `${diagnostics.transitionCount} state transitions in one lane.`,
+    });
+  }
+
+  return flags;
+}
+
+function renderInspectorDiagnostics(diagnostics) {
+  if (!diagnostics || diagnostics.segments.length === 0) {
+    return "";
+  }
+
+  const summaryCards = [
+    { label: "Active Window", value: formatDuration(diagnostics.windowNS), meta: "first seen to last segment" },
+    { label: "Running", value: formatDuration(diagnostics.runningNS), meta: "on-CPU time" },
+    { label: "Off CPU", value: formatDuration(diagnostics.offCPUNS), meta: "runnable + stalled" },
+    {
+      label: "Longest Stall",
+      value: diagnostics.longestStall ? formatDuration(diagnostics.longestStall.durationNS) : "none",
+      meta: diagnostics.longestStall ? diagnostics.longestStall.state : "no blocking segment",
+    },
+  ];
+
+  const statesWithCoverage = timelineStates.filter((stateName) => (diagnostics.totalsByState[stateName] ?? 0) > 0);
+  const stateBreakdown = statesWithCoverage.length > 0
+    ? `
+      <div class="diagnostic-bar" aria-hidden="true">
+        ${statesWithCoverage.map((stateName) => {
+          const value = diagnostics.totalsByState[stateName];
+          const width = diagnostics.recordedNS > 0 ? (value / diagnostics.recordedNS) * 100 : 0;
+          return `<span class="diagnostic-bar-segment ${stateName}" style="width:${width.toFixed(3)}%"></span>`;
+        }).join("")}
+      </div>
+      <div class="diagnostic-state-grid">
+        ${statesWithCoverage.map((stateName) => {
+          const value = diagnostics.totalsByState[stateName];
+          const share = diagnostics.recordedNS > 0 ? Math.round((value / diagnostics.recordedNS) * 100) : 0;
+          return `
+            <div class="diagnostic-state-card">
+              <div class="diagnostic-state-head">
+                <span class="diagnostic-state-dot ${stateName}"></span>
+                <span>${stateName}</span>
+              </div>
+              <div class="diagnostic-state-values">
+                <strong>${formatDuration(value)}</strong>
+                <span>${share}%</span>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `
+    : "";
+
+  const flagsMarkup = diagnostics.flags.length > 0
+    ? `
+      <div class="diagnostic-flags">
+        ${diagnostics.flags.map((flag) => `
+          <div class="diagnostic-flag tone-${flag.tone}">
+            <span class="diagnostic-flag-label">${escapeHTML(flag.label)}</span>
+            <span class="diagnostic-flag-detail">${escapeHTML(flag.detail)}</span>
+          </div>
+        `).join("")}
+      </div>
+    `
+    : `<div class="diagnostic-clear">No strong suspicion flags in the recorded trace for this lane.</div>`;
+
+  const metaParts = [
+    `${diagnostics.segments.length} segments`,
+    `${diagnostics.transitionCount} transition${diagnostics.transitionCount === 1 ? "" : "s"}`,
+  ];
+  if (diagnostics.resourceEdgeCount > 0) {
+    metaParts.push(`${diagnostics.resourceEdgeCount} resource edge${diagnostics.resourceEdgeCount === 1 ? "" : "s"}`);
+  }
+
+  return `
+    <div class="inspector-section">
+      <div class="inspector-label">Lane Diagnosis</div>
+      <div class="diagnostic-grid">
+        ${summaryCards.map((card) => `
+          <div class="diagnostic-card">
+            <span class="diagnostic-card-label">${escapeHTML(card.label)}</span>
+            <strong class="diagnostic-card-value">${escapeHTML(card.value)}</strong>
+            <span class="diagnostic-card-meta">${escapeHTML(card.meta)}</span>
+          </div>
+        `).join("")}
+      </div>
+      <div class="diagnostic-meta">${metaParts.join(" · ")}</div>
+      ${stateBreakdown}
+      ${flagsMarkup}
+    </div>
+  `;
+}
+
+function getDiagnosticContextHint(diagnostics) {
+  if (!diagnostics) {
+    return "";
+  }
+  if (diagnostics.primaryFlag) {
+    return `${diagnostics.primaryFlag.label}: ${diagnostics.primaryFlag.detail}`;
+  }
+  if (diagnostics.longestStall) {
+    return `Longest stall ${formatDuration(diagnostics.longestStall.durationNS)} ${diagnostics.longestStall.state.toLowerCase()}`;
+  }
+  if (diagnostics.transitionCount > 0) {
+    return `${diagnostics.transitionCount} state transitions`;
+  }
+  return "";
+}
+
 function getRelatedFocus() {
   const selectedID = state.selectedId;
   const rolesByID = new Map();
@@ -649,6 +902,7 @@ function renderInspector() {
     return;
   }
 
+  const diagnostics = buildGoroutineDiagnostics(goroutine);
   const frames = goroutine.last_stack?.frames ?? [];
   const stackMarkup = frames.length > 0
     ? frames.map((frame) => `
@@ -663,6 +917,7 @@ function renderInspector() {
     <div>
       <div class="state-pill ${goroutine.state}">${goroutine.state}</div>
     </div>
+    ${renderInspectorDiagnostics(diagnostics)}
     <div class="inspector-section inspector-grid">
       <div>
         <div class="inspector-label">Goroutine</div>
@@ -1180,6 +1435,7 @@ function renderTimelineContext(hover = {}) {
 
   if (state.selectedGoroutine) {
     const selected = state.selectedGoroutine;
+    const diagnostics = buildGoroutineDiagnostics(selected);
     const parts = [
       `<strong>Selected G${selected.goroutine_id}</strong>`,
       escapeHTML(selected.state),
@@ -1190,6 +1446,10 @@ function renderTimelineContext(hover = {}) {
     }
     if (selected.resource_id) {
       parts.push(escapeHTML(selected.resource_id));
+    }
+    const diagnosticHint = getDiagnosticContextHint(diagnostics);
+    if (diagnosticHint) {
+      parts.push(escapeHTML(diagnosticHint));
     }
     elements.timelineContext.innerHTML = parts.join(" · ");
     return;
