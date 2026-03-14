@@ -21,17 +21,29 @@ import (
 
 var (
 	syncLineRE        = regexp.MustCompile(`Sync Time=(\d+).*Wall=([0-9T:\-+:.Z]+)`)
-	stateTransitionRE = regexp.MustCompile(`Time=(\d+)\s+Resource=Goroutine\((\d+)\)\s+Reason="([^"]*)"(?:\s+GoID=\d+)?\s+([A-Za-z]+)->([A-Za-z]+)$`)
+	// stateTransitionRE matches a goroutine state-transition line emitted by
+	// "go tool trace -d=parsed".  Groups:
+	//   [1] monotonic time nanoseconds
+	//   [2] goroutine ID (the goroutine whose state changes)
+	//   [3] reason string (may be empty)
+	//   [4] optional GoID — the goroutine that triggered the transition;
+	//       on NotExist→* lines this is the parent (creator) goroutine
+	//   [5] from-state label
+	//   [6] to-state label
+	stateTransitionRE = regexp.MustCompile(`Time=(\d+)\s+Resource=Goroutine\((\d+)\)\s+Reason="([^"]*)"(?:\s+GoID=(\d+))?\s+([A-Za-z]+)->([A-Za-z]+)$`)
 	workspaceRoot     = mustGetwd()
 )
 
 type parsedTransition struct {
-	TimeNS int64
-	GoID   int64
-	Reason string
-	From   string
-	To     string
-	Stack  []model.StackFrame
+	TimeNS   int64
+	GoID     int64
+	// ParentID is the goroutine captured in the GoID= field on a
+	// NotExist→* transition. Zero means the field was absent or non-create.
+	ParentID int64
+	Reason   string
+	From     string
+	To       string
+	Stack    []model.StackFrame
 }
 
 type LiveTraceRun struct {
@@ -215,12 +227,23 @@ func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 				return model.Capture{}, fmt.Errorf("parse goroutine id: %w", err)
 			}
 
+			// match[4] is the optional GoID= value; match[5] and [6] are
+			// the from/to state labels (indices shifted by the new capture group).
 			current = &parsedTransition{
 				TimeNS: timeNS,
 				GoID:   goID,
 				Reason: match[3],
-				From:   match[4],
-				To:     match[5],
+				From:   match[5],
+				To:     match[6],
+			}
+			// Only record the parent on goroutine-creation transitions so we
+			// don't accidentally overwrite it with the "currently running"
+			// goroutine ID from unrelated state changes.
+			if match[4] != "" && (match[5] == "NotExist" || match[5] == "Undetermined") {
+				parentID, err := strconv.ParseInt(match[4], 10, 64)
+				if err == nil && parentID != goID {
+					current.ParentID = parentID
+				}
 			}
 			continue
 		}
@@ -314,6 +337,7 @@ func (b *parsedTraceBuilder) appendTransition(transition parsedTransition) error
 		Timestamp:   timestamp,
 		Kind:        kind,
 		GoroutineID: transition.GoID,
+		ParentID:    transition.ParentID, // non-zero only on create events
 		State:       state,
 		Reason:      reason,
 		Labels:      labels,

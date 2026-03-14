@@ -228,6 +228,12 @@ func (e *Engine) applyEventLocked(event model.Event) {
 
 	current := e.goroutines[event.GoroutineID]
 	next := e.stateMachine.Apply(current, event)
+	// Lock in the creator identity on the first create event. Subsequent
+	// state-change events keep ParentID via the next := current copy in
+	// StateMachine.Apply, so we only need to act when the field is still zero.
+	if event.Kind == model.EventKindGoroutineCreate && event.ParentID != 0 && next.ParentID == 0 {
+		next.ParentID = event.ParentID
+	}
 	e.updateSegmentsLocked(event.GoroutineID, current, next, event)
 	e.goroutines[next.ID] = next
 }

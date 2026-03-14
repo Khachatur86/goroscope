@@ -4,6 +4,9 @@ import "time"
 
 type Goroutine struct {
 	ID         int64             `json:"goroutine_id"`
+	// ParentID is the goroutine that spawned this one via a "go" statement.
+	// Zero means it was the root goroutine (G1) or the origin is unknown.
+	ParentID   int64             `json:"parent_id,omitempty"`
 	State      GoroutineState    `json:"state"`
 	Reason     BlockingReason    `json:"reason,omitempty"`
 	ResourceID string            `json:"resource_id,omitempty"`

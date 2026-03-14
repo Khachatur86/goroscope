@@ -48,6 +48,9 @@ type Event struct {
 	Timestamp   time.Time      `json:"timestamp"`
 	Kind        EventKind      `json:"kind"`
 	GoroutineID int64          `json:"goroutine_id,omitempty"`
+	// ParentID is the goroutine that executed the "go" statement when Kind is
+	// EventKindGoroutineCreate. Zero means unknown or not applicable.
+	ParentID    int64          `json:"parent_id,omitempty"`
 	State       GoroutineState `json:"state,omitempty"`
 	Reason      BlockingReason `json:"reason,omitempty"`
 	ResourceID  string         `json:"resource_id,omitempty"`

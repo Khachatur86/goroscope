@@ -409,6 +409,70 @@ select {
   vertical-align: middle;
 }
 
+/* ─── Spawn tree in inspector ────────────────────────────────────────────── */
+
+.spawn-tree {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.spawn-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.spawn-label {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  min-width: 72px;
+}
+
+.spawn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.goroutine-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(20, 33, 61, 0.14);
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  background: rgba(255, 255, 255, 0.72);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.goroutine-chip:hover {
+  background: rgba(20, 33, 61, 0.08);
+}
+
+.chip-state {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.state-chip-RUNNING .chip-state  { color: var(--running); }
+.state-chip-RUNNABLE .chip-state { color: var(--runnable); }
+.state-chip-WAITING .chip-state  { color: var(--waiting); }
+.state-chip-BLOCKED .chip-state  { color: var(--blocked); }
+.state-chip-SYSCALL .chip-state  { color: var(--syscall); }
+.state-chip-DONE .chip-state     { color: var(--done); }
+
 /* ─── Canvas hover tooltip ───────────────────────────────────────────────── */
 
 .timeline-tooltip {

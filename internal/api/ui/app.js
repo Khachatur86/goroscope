@@ -316,11 +316,67 @@ function renderInspector() {
       <div class="inspector-label">Function</div>
       <div class="inspector-value">${escapeHTML(goroutine.labels?.function || "unknown")}</div>
     </div>
+    ${renderSpawnTree(goroutine)}
     <div class="inspector-section">
       <div class="inspector-label">Latest Stack</div>
       ${stackMarkup}
     </div>
   `;
+
+  // Wire up spawn-tree click handlers after the HTML is injected.
+  elements.inspector.querySelectorAll("[data-select-goroutine]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectGoroutine(Number(button.dataset.selectGoroutine));
+    });
+  });
+}
+
+// renderSpawnTree returns the HTML for the "Spawn Tree" section of the
+// inspector.  It uses the already-loaded state.goroutines list so no extra
+// network request is needed.
+function renderSpawnTree(goroutine) {
+  const parent = goroutine.parent_id
+    ? state.goroutines.find((item) => item.goroutine_id === goroutine.parent_id)
+    : null;
+
+  const children = state.goroutines.filter(
+    (item) => item.parent_id === goroutine.goroutine_id,
+  );
+
+  if (!parent && children.length === 0) {
+    return "";
+  }
+
+  const parentLine = parent
+    ? `<div class="spawn-row">
+        <span class="spawn-label">Spawned by</span>
+        ${goroutineChip(parent)}
+       </div>`
+    : "";
+
+  const childLine = children.length > 0
+    ? `<div class="spawn-row">
+        <span class="spawn-label">Spawned</span>
+        <span class="spawn-chips">${children.map(goroutineChip).join("")}</span>
+       </div>`
+    : "";
+
+  return `
+    <div class="inspector-section">
+      <div class="inspector-label">Spawn Tree</div>
+      <div class="spawn-tree">
+        ${parentLine}
+        ${childLine}
+      </div>
+    </div>
+  `;
+}
+
+function goroutineChip(goroutine) {
+  return `<button type="button" class="goroutine-chip state-chip-${goroutine.state}" data-select-goroutine="${goroutine.goroutine_id}">
+    G${goroutine.goroutine_id}
+    <span class="chip-state">${goroutine.state}</span>
+  </button>`;
 }
 
 function renderResources() {
