@@ -63,6 +63,11 @@ type parsedTraceBuilder struct {
 	stackSeq      uint64
 	capture       model.Capture
 	keptGoroutine map[int64]bool
+	// parentIDs is populated unconditionally on NotExist→* transitions, even
+	// for goroutines that will be filtered out by the user-frame filter.
+	// This lets the engine set ParentID on goroutines whose create event had
+	// no stack yet (the common case).
+	parentIDs map[int64]int64
 }
 
 func BuildCaptureFromRawTrace(ctx context.Context, tracePath string) (model.Capture, error) {
@@ -173,6 +178,7 @@ func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 			Name: "runtime-trace",
 		},
 		keptGoroutine: make(map[int64]bool),
+		parentIDs:     make(map[int64]int64),
 	}
 
 	scanner := bufio.NewScanner(r)
@@ -292,12 +298,31 @@ func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 		return model.Capture{}, fmt.Errorf("parsed trace produced no goroutine events")
 	}
 
+	// Populate ParentIDs for kept goroutines only.  We cannot restrict this
+	// earlier because filterCaptureToRelevantGoroutines determines the keep
+	// set, which is unavailable while scanning.
+	if len(builder.parentIDs) > 0 {
+		builder.capture.ParentIDs = make(map[int64]int64, len(builder.parentIDs))
+		for goID, parentID := range builder.parentIDs {
+			if builder.keptGoroutine[goID] {
+				builder.capture.ParentIDs[goID] = parentID
+			}
+		}
+	}
+
 	return builder.capture, nil
 }
 
 func (b *parsedTraceBuilder) appendTransition(transition parsedTransition) error {
 	if b.baseWall.IsZero() {
 		return fmt.Errorf("parsed trace is missing sync line")
+	}
+
+	// Record the creator before the user-frame filter.  Create events often
+	// arrive before the goroutine has any stack, so they would be filtered
+	// out, losing the parent relationship permanently.
+	if (transition.From == "NotExist" || transition.From == "Undetermined") && transition.ParentID != 0 {
+		b.parentIDs[transition.GoID] = transition.ParentID
 	}
 
 	keep := b.keptGoroutine[transition.GoID] || hasUserFrame(transition.Stack)

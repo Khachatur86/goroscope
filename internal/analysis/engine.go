@@ -87,6 +87,18 @@ func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
 			e.applyStackSnapshotLocked(snapshot)
 		}
 		e.edges = append([]model.ResourceEdge(nil), capture.Resources...)
+
+		// Apply parent IDs after all events and stacks so every goroutine is
+		// already present in the map.  This handles the common case where the
+		// create event was filtered by the trace parser (no user frame at spawn
+		// time) and the engine never received an EventKindGoroutineCreate for
+		// the goroutine.
+		for goID, parentID := range capture.ParentIDs {
+			if g, ok := e.goroutines[goID]; ok && g.ParentID == 0 {
+				g.ParentID = parentID
+				e.goroutines[goID] = g
+			}
+		}
 	}()
 
 	e.notifySubscribers()
