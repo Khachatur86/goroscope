@@ -1395,6 +1395,13 @@ function renderTimeline() {
     const isFocusRelated = focus.enabled && !!focusRoles && !focusRoles.has("selected");
     const isDimmed = focus.enabled && !focusRoles;
 
+    // Zebra stripe: even rows get a faint background so the eye can track
+    // horizontally across wide traces without losing its row.
+    if (index % 2 === 0) {
+      canvasContext.fillStyle = "rgba(255, 255, 255, 0.022)";
+      canvasContext.fillRect(0, y, width, metrics.rowHeight);
+    }
+
     if (isSelected) {
       canvasContext.fillStyle = "rgba(96, 165, 250, 0.10)";
       canvasContext.fillRect(0, y, width, metrics.rowHeight);
@@ -1412,7 +1419,7 @@ function renderTimeline() {
       canvasContext.fillRect(0, y, width, metrics.rowHeight);
     }
 
-    canvasContext.strokeStyle = "rgba(219, 228, 238, 0.08)";
+    canvasContext.strokeStyle = "rgba(219, 228, 238, 0.13)";
     canvasContext.beginPath();
     canvasContext.moveTo(0, y + metrics.rowHeight - 0.5);
     canvasContext.lineTo(width - metrics.rightPadding, y + metrics.rowHeight - 0.5);
@@ -1453,8 +1460,10 @@ function renderTimeline() {
           return;
         }
 
-        const barHeight = 18;
-        const barY = y + 9;
+        // Thinner bars (12 px) give the tool a profiler feel rather than a
+        // dashboard feel.  Centred in the 36 px row: (36 - 12) / 2 = 12.
+        const barHeight = 12;
+        const barY = y + 12;
 
         canvasContext.save();
         if (isDimmed) {
@@ -1462,18 +1471,29 @@ function renderTimeline() {
         } else if (isFocusRelated) {
           canvasContext.globalAlpha = 0.92;
         }
-        roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 7);
+        // Smaller radius (3 px) looks precise; 7 px looked like a UI button.
+        roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 3);
         canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
         canvasContext.fill();
+
+        // Top-edge highlight — a 3 px lighter strip creates the illusion of
+        // depth without expensive gradients or blur.
+        if (!isDimmed && barWidth > 4) {
+          canvasContext.fillStyle = "rgba(255, 255, 255, 0.20)";
+          canvasContext.fillRect(clampedX + 1, barY + 1, barWidth - 2, 3);
+        }
+
         if (isSelected || isHoveredSegment) {
           canvasContext.lineWidth = isHoveredSegment ? 2 : 1.5;
           canvasContext.strokeStyle = isHoveredSegment
             ? "rgba(255, 255, 255, 0.95)"
             : "rgba(186, 230, 253, 0.72)";
+          roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 3);
           canvasContext.stroke();
         } else if (isFocusRelated && focusAccent) {
           canvasContext.lineWidth = 1;
           canvasContext.strokeStyle = focusAccent.replace(/0\.\d+\)$/, "0.42)");
+          roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 3);
           canvasContext.stroke();
         }
         canvasContext.restore();
@@ -1481,7 +1501,8 @@ function renderTimeline() {
         if (barWidth > 78) {
           canvasContext.fillStyle = isDimmed ? "rgba(255, 255, 255, 0.50)" : "rgba(255, 255, 255, 0.94)";
           canvasContext.font = '11px "IBM Plex Mono", monospace';
-          canvasContext.fillText(segment.state, clampedX + 8, barY + 12);
+          // Baseline centred in a 12 px bar: barY + 9 puts the cap roughly mid-bar.
+          canvasContext.fillText(segment.state, clampedX + 8, barY + 9);
         }
       });
   });
