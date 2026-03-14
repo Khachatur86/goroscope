@@ -1,0 +1,6 @@
+.DS_Store
+bin/
+coverage.out
+captures/*.gtrace
+web/dist/
+web/node_modules/

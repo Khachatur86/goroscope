@@ -1,0 +1,11 @@
+{
+  "name": "goroscope-web",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Frontend scaffold for the Goroscope timeline UI",
+  "scripts": {
+    "dev": "echo \"frontend scaffold only\"",
+    "build": "echo \"frontend scaffold only\"",
+    "test": "echo \"no frontend tests yet\""
+  }
+}
