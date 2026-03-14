@@ -12,6 +12,7 @@ type Manager struct {
 	mu      sync.RWMutex
 	nextID  uint64
 	current *model.Session
+	history []*model.Session
 }
 
 func NewManager() *Manager {
@@ -54,6 +55,8 @@ func (m *Manager) finishCurrent(status model.SessionStatus, message string) {
 	m.current.Status = status
 	m.current.EndedAt = &now
 	m.current.Error = message
+
+	m.history = append(m.history, m.current.Clone())
 }
 
 func (m *Manager) Current() *model.Session {
@@ -61,4 +64,17 @@ func (m *Manager) Current() *model.Session {
 	defer m.mu.RUnlock()
 
 	return m.current.Clone()
+}
+
+// History returns clones of all completed or failed sessions, oldest first.
+func (m *Manager) History() []*model.Session {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	out := make([]*model.Session, len(m.history))
+	for i, s := range m.history {
+		out[i] = s.Clone()
+	}
+
+	return out
 }

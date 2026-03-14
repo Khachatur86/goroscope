@@ -40,7 +40,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--session-name name] <package-or-binary>")
+	fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--session-name name] [--poll-interval 1s] <package-or-binary>")
 	fmt.Fprintln(w, "  goroscope collect [--addr 127.0.0.1:7070]")
 	fmt.Fprintln(w, "  goroscope ui [--addr 127.0.0.1:7070]")
 	fmt.Fprintln(w, "  goroscope replay [--addr 127.0.0.1:7070] <capture-file>")
@@ -52,6 +52,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	sessionName := fs.String("session-name", "local-run", "Session name")
+	pollInterval := fs.Duration("poll-interval", time.Second, "How often to re-read the live trace file")
 	noBrowser := fs.Bool("no-browser", true, "Reserved for future browser integration")
 
 	if err := fs.Parse(args); err != nil {
@@ -65,7 +66,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	_ = noBrowser
 
-	return serveLiveRunSession(ctx, *addr, *sessionName, target, stdout, stderr)
+	return serveLiveRunSession(ctx, *addr, *sessionName, target, *pollInterval, stdout, stderr)
 }
 
 func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -136,7 +137,7 @@ func serveCaptureSession(ctx context.Context, addr, sessionName, target string, 
 	return server.Serve(ctx)
 }
 
-func serveLiveRunSession(ctx context.Context, addr, sessionName, target string, stdout, stderr io.Writer) error {
+func serveLiveRunSession(ctx context.Context, addr, sessionName, target string, pollInterval time.Duration, stdout, stderr io.Writer) error {
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
 	current := sessions.StartSession(sessionName, target)
@@ -148,7 +149,14 @@ func serveLiveRunSession(ctx context.Context, addr, sessionName, target string, 
 	}
 	defer liveRun.Close()
 
-	go watchLiveTrace(ctx, current.ID, liveRun, engine, sessions, stderr)
+	go watchLiveTrace(ctx, watchLiveTraceInput{
+		SessionID:    current.ID,
+		LiveRun:      liveRun,
+		Engine:       engine,
+		Sessions:     sessions,
+		PollInterval: pollInterval,
+		Stderr:       stderr,
+	})
 
 	server := api.NewServer(addr, engine, sessions)
 	fmt.Fprintf(stdout, "goroscope live run serving %q at http://%s\n", target, addr)
@@ -156,21 +164,29 @@ func serveLiveRunSession(ctx context.Context, addr, sessionName, target string, 
 	return server.Serve(ctx)
 }
 
-func watchLiveTrace(
-	ctx context.Context,
-	sessionID string,
-	liveRun *tracebridge.LiveTraceRun,
-	engine *analysis.Engine,
-	sessions *session.Manager,
-	stderr io.Writer,
-) {
-	ticker := time.NewTicker(time.Second)
+// watchLiveTraceInput holds all non-context parameters for watchLiveTrace.
+type watchLiveTraceInput struct {
+	SessionID    string
+	LiveRun      *tracebridge.LiveTraceRun
+	Engine       *analysis.Engine
+	Sessions     *session.Manager
+	PollInterval time.Duration
+	Stderr       io.Writer
+}
+
+func watchLiveTrace(ctx context.Context, in watchLiveTraceInput) {
+	pollInterval := in.PollInterval
+	if pollInterval <= 0 {
+		pollInterval = time.Second
+	}
+
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	var lastSize int64 = -1
 
 	refreshCapture := func(final bool) error {
-		size, err := liveRun.TraceSize()
+		size, err := in.LiveRun.TraceSize()
 		if err != nil {
 			if os.IsNotExist(err) && !final {
 				return nil
@@ -190,7 +206,7 @@ func watchLiveTrace(
 			return nil
 		}
 
-		capture, err := liveRun.BuildCapture(ctx)
+		capture, err := in.LiveRun.BuildCapture(ctx)
 		if err != nil {
 			if final {
 				return err
@@ -198,12 +214,12 @@ func watchLiveTrace(
 			return nil
 		}
 
-		sessionState := sessions.Current()
+		sessionState := in.Sessions.Current()
 		if sessionState == nil {
 			return nil
 		}
 
-		engine.LoadCapture(sessionState, tracebridge.BindCaptureSession(capture, sessionID))
+		in.Engine.LoadCapture(sessionState, tracebridge.BindCaptureSession(capture, in.SessionID))
 		lastSize = size
 		return nil
 	}
@@ -214,21 +230,21 @@ func watchLiveTrace(
 			return
 		case <-ticker.C:
 			if err := refreshCapture(false); err != nil {
-				fmt.Fprintf(stderr, "goroscope: refresh live trace: %v\n", err)
+				fmt.Fprintf(in.Stderr, "goroscope: refresh live trace: %v\n", err)
 			}
-		case <-liveRun.Done():
-			runErr := liveRun.Wait()
+		case <-in.LiveRun.Done():
+			runErr := in.LiveRun.Wait()
 			refreshErr := refreshCapture(true)
 
 			switch {
 			case runErr != nil:
-				sessions.FailCurrent(runErr.Error())
-				fmt.Fprintf(stderr, "goroscope: target exited with error: %v\n", runErr)
+				in.Sessions.FailCurrent(runErr.Error())
+				fmt.Fprintf(in.Stderr, "goroscope: target exited with error: %v\n", runErr)
 			case refreshErr != nil:
-				sessions.FailCurrent(refreshErr.Error())
-				fmt.Fprintf(stderr, "goroscope: finalize trace capture: %v\n", refreshErr)
+				in.Sessions.FailCurrent(refreshErr.Error())
+				fmt.Fprintf(in.Stderr, "goroscope: finalize trace capture: %v\n", refreshErr)
 			default:
-				sessions.CompleteCurrent()
+				in.Sessions.CompleteCurrent()
 			}
 			return
 		}

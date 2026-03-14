@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/session"
@@ -30,6 +31,12 @@ func (s *Server) Serve(ctx context.Context) error {
 	httpServer := &http.Server{
 		Addr:    s.addr,
 		Handler: s.routes(),
+		// ReadHeaderTimeout guards against slowloris attacks.
+		// WriteTimeout and ReadTimeout are intentionally omitted: the /stream
+		// endpoint uses Server-Sent Events which requires long-lived connections,
+		// and those timeouts would forcibly close active SSE clients.
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {
@@ -51,6 +58,7 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(uiFileSystem()))))
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/api/v1/sessions", s.handleSessions)
 	mux.HandleFunc("/api/v1/session/current", s.handleSessionCurrent)
 	mux.HandleFunc("/api/v1/goroutines", s.handleGoroutines)
 	mux.HandleFunc("/api/v1/goroutines/{id}", s.handleGoroutineByID)
@@ -71,6 +79,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleSessions(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.sessions.History())
 }
 
 func (s *Server) handleSessionCurrent(w http.ResponseWriter, _ *http.Request) {
