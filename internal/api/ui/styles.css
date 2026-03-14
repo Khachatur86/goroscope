@@ -387,6 +387,181 @@ select {
   padding: 20px;
 }
 
+/* ─── Wait-time badge in goroutine list ─────────────────────────────────── */
+
+.lane-func {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.wait-badge {
+  display: inline-block;
+  margin-left: 6px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: rgba(209, 73, 91, 0.15);
+  color: var(--blocked);
+  font-size: 0.78rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ─── Canvas hover tooltip ───────────────────────────────────────────────── */
+
+.timeline-tooltip {
+  position: fixed;
+  z-index: 900;
+  min-width: 160px;
+  max-width: 280px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(219, 228, 238, 0.14);
+  border-radius: 14px;
+  padding: 10px 14px 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  transition: opacity 0.08s ease;
+}
+
+.timeline-tooltip.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tt-gid {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.tt-state {
+  font-size: 0.7rem;
+  padding: 3px 8px;
+}
+
+.tt-body {
+  display: grid;
+  gap: 5px;
+}
+
+.tt-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tt-label {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  min-width: 56px;
+}
+
+.tt-val {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.86rem;
+  color: #e2e8f0;
+  word-break: break-all;
+}
+
+/* ─── Session history panel ──────────────────────────────────────────────── */
+
+.session-history {
+  margin-top: 16px;
+  padding: 18px 20px;
+}
+
+.history-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.history-header h3 {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-size: 1.05rem;
+}
+
+.history-count {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.history-list {
+  display: grid;
+  gap: 6px;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) 110px 80px 80px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.history-row.history-heading {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-bottom: 4px;
+}
+
+.history-row:not(.history-heading) {
+  background: rgba(20, 33, 61, 0.04);
+}
+
+.history-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-target {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-status {
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+}
+
+.history-status.status-completed { color: var(--running); }
+.history-status.status-failed { color: var(--blocked); }
+.history-status.status-running { color: var(--waiting); }
+
+.history-time,
+.history-duration {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
 @media (max-width: 1220px) {
   .workspace {
     grid-template-columns: 260px minmax(0, 1fr);
