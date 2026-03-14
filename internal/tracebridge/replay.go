@@ -55,6 +55,13 @@ func BindCaptureSession(capture model.Capture, sessionID string) model.Capture {
 		copy(bound.Resources, capture.Resources)
 	}
 
+	if len(capture.ParentIDs) > 0 {
+		bound.ParentIDs = make(map[int64]int64, len(capture.ParentIDs))
+		for goID, parentID := range capture.ParentIDs {
+			bound.ParentIDs[goID] = parentID
+		}
+	}
+
 	return bound
 }
 

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Khachatur86/goroscope/internal/model"
 )
 
 func TestLoadDemoCapture(t *testing.T) {
@@ -20,6 +22,9 @@ func TestLoadDemoCapture(t *testing.T) {
 	}
 	if len(capture.Stacks) == 0 {
 		t.Fatal("expected demo capture to include stack snapshots")
+	}
+	if capture.ParentIDs[42] != 1 || capture.ParentIDs[77] != 42 {
+		t.Fatalf("expected demo capture parent_ids {42:1,77:42}, got %v", capture.ParentIDs)
 	}
 }
 
@@ -52,5 +57,31 @@ func TestLoadCaptureFile(t *testing.T) {
 	}
 	if len(capture.Events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(capture.Events))
+	}
+}
+
+func TestBindCaptureSessionPreservesParentIDs(t *testing.T) {
+	capture := model.Capture{
+		Events: []model.Event{
+			{Seq: 1, GoroutineID: 1},
+		},
+		ParentIDs: map[int64]int64{
+			42: 1,
+			77: 42,
+		},
+	}
+
+	bound := BindCaptureSession(capture, "sess_123")
+
+	if bound.Events[0].SessionID != "sess_123" {
+		t.Fatalf("expected bound event session_id %q, got %q", "sess_123", bound.Events[0].SessionID)
+	}
+	if bound.ParentIDs[42] != 1 || bound.ParentIDs[77] != 42 {
+		t.Fatalf("expected bound parent_ids {42:1,77:42}, got %v", bound.ParentIDs)
+	}
+
+	bound.ParentIDs[42] = 99
+	if capture.ParentIDs[42] != 1 {
+		t.Fatalf("expected source capture ParentIDs to remain unchanged, got %v", capture.ParentIDs)
 	}
 }

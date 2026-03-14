@@ -4,13 +4,15 @@ Goroscope is a local Go concurrency debugger that captures runtime trace events 
 
 ## Current Status
 
-This repository now contains a buildable starter scaffold for the MVP:
+This repository contains a working local MVP built around `runtime/trace`:
 
-- Go module and CLI entrypoint
-- internal packages for model, collector, analysis, API, session, and trace bridge
-- local HTTP API, demo session data, and an interactive browser UI
-- future frontend workspace scaffold under `web/`
-- product specification under `docs/`
+- Go CLI with `run`, `collect`, `ui`, and `replay` commands
+- cooperative trace capture via the `agent` package
+- trace parsing and normalization in `internal/tracebridge`
+- in-memory analysis engine and session manager
+- local REST + SSE API with an embedded browser UI under `internal/api/ui`
+- future React workspace scaffold under `web/`
+- product specification and architecture notes under `docs/`
 
 ## Quick Start
 
@@ -31,18 +33,29 @@ An example target is included:
 go run ./cmd/goroscope run ./examples/trace_demo
 ```
 
-This starts the local UI immediately, runs the target, and refreshes the timeline from the growing `runtime/trace` while the process is still running. The browser UI currently polls the backend once per second.
+This starts the local UI immediately, runs the target, and refreshes the timeline from the growing `runtime/trace` while the process is still running. Live updates are pushed to the browser over Server-Sent Events, with a periodic fallback refresh in the UI.
+
+## Other Entry Points
+
+```bash
+go run ./cmd/goroscope ui
+go run ./cmd/goroscope collect
+go run ./cmd/goroscope replay ./captures/sample.gtrace
+```
+
+`ui` and `collect` currently load bundled demo data. `replay` loads a capture file from disk. The current runnable UI is the embedded asset bundle in `internal/api/ui`; the `web/` directory is a future standalone frontend workspace.
 
 ## Layout
 
 ```text
+agent/               Opt-in trace bootstrap for target programs
 cmd/goroscope        CLI entrypoint
-internal/api         Local HTTP API
-internal/analysis    Timeline/state scaffolding
-internal/collector   Event buffering
+examples/trace_demo  Example target instrumented with the agent
+internal/api         Local REST API, SSE stream, and embedded UI assets
+internal/analysis    Goroutine state engine and timeline construction
 internal/model       Core domain types
 internal/session     Session lifecycle
-internal/tracebridge Trace ingestion stubs
-web/                 Frontend scaffold
+internal/tracebridge Runtime trace execution, parsing, and replay
+web/                 Future React frontend scaffold
 docs/                Product and architecture docs
 ```

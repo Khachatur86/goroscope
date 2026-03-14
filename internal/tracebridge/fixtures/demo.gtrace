@@ -33,6 +33,7 @@
       "timestamp": "2026-03-14T12:00:00.05Z",
       "kind": "goroutine.create",
       "goroutine_id": 42,
+      "parent_id": 1,
       "labels": {
         "function": "main.worker"
       }
@@ -88,6 +89,7 @@
       "timestamp": "2026-03-14T12:00:00.1Z",
       "kind": "goroutine.create",
       "goroutine_id": 77,
+      "parent_id": 42,
       "labels": {
         "function": "main.sink"
       }
@@ -198,6 +200,10 @@
       ]
     }
   ],
+  "parent_ids": {
+    "42": 1,
+    "77": 42
+  },
   "resources": [
     {
       "from_goroutine_id": 1,

@@ -37,6 +37,12 @@ const timelineView = {
   hasDragged: false,
 };
 
+// timelineHighlight keeps transient UI-only highlight state for the canvas.
+const timelineHighlight = {
+  hoveredGoroutineID: null,
+  hoveredSegmentKey: "",
+};
+
 const colors = {
   RUNNING: "#2a9d8f",
   RUNNABLE: "#6b7280",
@@ -138,6 +144,7 @@ elements.timelineCanvas.addEventListener("mousedown", (event) => {
     return;
   }
 
+  clearTimelineHighlight();
   timelineView.isDragging = true;
   timelineView.dragStartX = event.clientX;
   timelineView.dragStartPanNS = timelineView.panOffsetNS;
@@ -210,11 +217,16 @@ elements.timelineCanvas.addEventListener("mousemove", (event) => {
   const rect = elements.timelineCanvas.getBoundingClientRect();
   const canvasX = event.clientX - rect.left;
   const canvasY = event.clientY - rect.top;
+  const hoveredRow = getTimelineRowAt(canvasY);
   const hit = getSegmentAt(canvasX, canvasY);
+  setTimelineHighlight(hoveredRow ? hoveredRow.goroutine_id : null, hit ? buildSegmentKey(hit.segment) : "");
 
   if (hit) {
     elements.timelineCanvas.style.cursor = timelineView.zoomLevel > 1 ? "grab" : "pointer";
     showTooltip(hit, event.clientX, event.clientY);
+  } else if (hoveredRow) {
+    elements.timelineCanvas.style.cursor = "pointer";
+    hideTooltip();
   } else {
     elements.timelineCanvas.style.cursor = timelineView.zoomLevel > 1 ? "grab" : "";
     hideTooltip();
@@ -225,6 +237,7 @@ elements.timelineCanvas.addEventListener("mouseleave", () => {
   timelineView.isDragging = false;
   timelineView.hasDragged = false;
   elements.timelineCanvas.style.cursor = "";
+  clearTimelineHighlight();
   hideTooltip();
 });
 
@@ -349,6 +362,29 @@ function getTimelineMetrics() {
     rowHeight: 36,
     horizontalPadding: 18,
   };
+}
+
+function buildSegmentKey(segment) {
+  return `${segment.goroutine_id}:${segment.start_ns}:${segment.end_ns}:${segment.state}`;
+}
+
+function setTimelineHighlight(hoveredGoroutineID, hoveredSegmentKey) {
+  const nextGoroutineID = hoveredGoroutineID ?? null;
+  const nextSegmentKey = hoveredSegmentKey ?? "";
+  if (
+    timelineHighlight.hoveredGoroutineID === nextGoroutineID &&
+    timelineHighlight.hoveredSegmentKey === nextSegmentKey
+  ) {
+    return;
+  }
+
+  timelineHighlight.hoveredGoroutineID = nextGoroutineID;
+  timelineHighlight.hoveredSegmentKey = nextSegmentKey;
+  renderTimeline();
+}
+
+function clearTimelineHighlight() {
+  setTimelineHighlight(null, "");
 }
 
 // ─── Render ────────────────────────────────────────────────────────────────
@@ -678,9 +714,15 @@ function renderTimeline() {
   goroutines.forEach((goroutine, index) => {
     const y = metrics.axisHeight + index * metrics.rowHeight;
     const isSelected = goroutine.goroutine_id === state.selectedId;
+    const isHoveredRow = goroutine.goroutine_id === timelineHighlight.hoveredGoroutineID;
 
     if (isSelected) {
-      canvasContext.fillStyle = "rgba(219, 231, 240, 0.12)";
+      canvasContext.fillStyle = "rgba(96, 165, 250, 0.10)";
+      canvasContext.fillRect(0, y, width, metrics.rowHeight);
+      canvasContext.fillStyle = "rgba(125, 211, 252, 0.95)";
+      canvasContext.fillRect(0, y + 2, 4, metrics.rowHeight - 4);
+    } else if (isHoveredRow) {
+      canvasContext.fillStyle = "rgba(219, 228, 238, 0.06)";
       canvasContext.fillRect(0, y, width, metrics.rowHeight);
     }
 
@@ -690,13 +732,14 @@ function renderTimeline() {
     canvasContext.lineTo(width - metrics.horizontalPadding, y + metrics.rowHeight - 0.5);
     canvasContext.stroke();
 
-    canvasContext.fillStyle = "#9fb3c8";
+    canvasContext.fillStyle = isSelected ? "#f8fafc" : isHoveredRow ? "#dbe4ee" : "#9fb3c8";
     canvasContext.font = '12px "IBM Plex Mono", monospace';
     canvasContext.fillText(`G${goroutine.goroutine_id}`, metrics.horizontalPadding, y + 22);
 
     timeline
       .filter((segment) => segment.goroutine_id === goroutine.goroutine_id)
       .forEach((segment) => {
+        const isHoveredSegment = buildSegmentKey(segment) === timelineHighlight.hoveredSegmentKey;
         // Map segment to canvas X coordinates using the visible window.
         const rawX = metrics.horizontalPadding + ((segment.start_ns - visibleStart) / visibleSpan) * innerWidth;
         const rawX2 = metrics.horizontalPadding + ((segment.end_ns - visibleStart) / visibleSpan) * innerWidth;
@@ -713,12 +756,21 @@ function renderTimeline() {
         const barHeight = 18;
         const barY = y + 9;
 
+        canvasContext.save();
         roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 7);
         canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
         canvasContext.fill();
+        if (isSelected || isHoveredSegment) {
+          canvasContext.lineWidth = isHoveredSegment ? 2 : 1.5;
+          canvasContext.strokeStyle = isHoveredSegment
+            ? "rgba(255, 255, 255, 0.95)"
+            : "rgba(186, 230, 253, 0.72)";
+          canvasContext.stroke();
+        }
+        canvasContext.restore();
 
         if (barWidth > 78) {
-          canvasContext.fillStyle = "rgba(255, 255, 255, 0.92)";
+          canvasContext.fillStyle = "rgba(255, 255, 255, 0.94)";
           canvasContext.font = '11px "IBM Plex Mono", monospace';
           canvasContext.fillText(segment.state, clampedX + 8, barY + 12);
         }
@@ -809,6 +861,20 @@ function getSegmentAt(canvasX, canvasY) {
   }
 
   return null;
+}
+
+function getTimelineRowAt(canvasY) {
+  const { goroutines, metrics } = timelineCache;
+  if (!metrics || goroutines.length === 0 || canvasY <= metrics.axisHeight) {
+    return null;
+  }
+
+  const rowIndex = Math.floor((canvasY - metrics.axisHeight) / metrics.rowHeight);
+  if (rowIndex < 0 || rowIndex >= goroutines.length) {
+    return null;
+  }
+
+  return goroutines[rowIndex];
 }
 
 function showTooltip(hit, clientX, clientY) {

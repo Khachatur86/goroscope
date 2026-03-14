@@ -64,11 +64,16 @@ M=1 P=0 G=1 StateTransition Time=500 Resource=Goroutine(1) Reason="" GoID=1 Runn
 	if capture.Events[5].Kind != model.EventKindGoroutineEnd {
 		t.Fatalf("expected last event kind %q, got %q", model.EventKindGoroutineEnd, capture.Events[5].Kind)
 	}
-	if len(capture.Stacks) != 4 {
-		t.Fatalf("expected 4 stack snapshots, got %d", len(capture.Stacks))
+	// Once G5 reaches a transition with a user-frame stack, that snapshot is
+	// retained too, so the trace yields 5 stack snapshots in total.
+	if len(capture.Stacks) != 5 {
+		t.Fatalf("expected 5 stack snapshots, got %d", len(capture.Stacks))
 	}
 	if capture.Stacks[0].Frames[0].Func != "main.main" {
 		t.Fatalf("expected first stack frame main.main, got %+v", capture.Stacks[0].Frames[0])
+	}
+	if capture.Stacks[2].GoroutineID != 5 || capture.Stacks[2].Frames[0].Func != "main.worker" {
+		t.Fatalf("expected third stack snapshot to be G5 main.worker, got %+v", capture.Stacks[2])
 	}
 
 	// G5 was spawned by G1 — parent ID must survive the user-frame filter.
