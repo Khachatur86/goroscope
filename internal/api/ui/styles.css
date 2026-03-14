@@ -320,6 +320,38 @@ select {
   min-height: 520px;
   border-radius: 20px;
   background: linear-gradient(180deg, #0f172a, #111827);
+  /* Prevent browser scroll hijack on canvas — wheel events are handled in JS */
+  touch-action: none;
+}
+
+/* ─── Timeline header controls ─────────────────────────────────────────── */
+
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reset-zoom-button {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px solid var(--card-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+
+.reset-zoom-button:hover {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(20, 33, 61, 0.10);
+}
+
+.reset-zoom-button:active {
+  background: var(--bg-accent);
 }
 
 .inspector {

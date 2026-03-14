@@ -11,14 +11,30 @@ const state = {
 };
 
 // timelineCache stores the last-rendered timeline bounds so the mousemove
-// hit-test can reuse them without recomputing from scratch on every frame.
+// hit-test and wheel-zoom handler can reuse them without recomputing.
 const timelineCache = {
   goroutines: [],
   timeline: [],
+  // fullMinStart / fullSpan cover the entire trace (zoom-independent).
+  fullMinStart: 0,
+  fullSpan: 1,
+  // minStart / span reflect the current visible window after pan/zoom.
   minStart: 0,
   span: 1,
   width: 0,
   metrics: null,
+};
+
+// timelineView holds the zoom/pan state.  zoomLevel=1 means fully zoomed out.
+// panOffsetNS is the offset from fullMinStart to the left edge of the visible
+// window, in nanoseconds.
+const timelineView = {
+  zoomLevel: 1,
+  panOffsetNS: 0,
+  isDragging: false,
+  dragStartX: 0,
+  dragStartPanNS: 0,
+  hasDragged: false,
 };
 
 const colors = {
@@ -43,6 +59,7 @@ const elements = {
   goroutineList: document.getElementById("goroutine-list"),
   timelineCanvas: document.getElementById("timeline-canvas"),
   timelineRange: document.getElementById("timeline-range"),
+  resetZoomButton: document.getElementById("reset-zoom-button"),
   inspector: document.getElementById("inspector"),
   resourceList: document.getElementById("resource-list"),
   tooltip: document.getElementById("timeline-tooltip"),
@@ -50,6 +67,8 @@ const elements = {
 };
 
 const canvasContext = elements.timelineCanvas.getContext("2d");
+
+// ─── Control event listeners ───────────────────────────────────────────────
 
 elements.refreshButton.addEventListener("click", () => {
   loadData();
@@ -66,7 +85,87 @@ elements.stateFilter.addEventListener("change", (event) => {
   render();
 });
 
-elements.timelineCanvas.addEventListener("click", (event) => {
+if (elements.resetZoomButton) {
+  elements.resetZoomButton.addEventListener("click", () => {
+    timelineView.zoomLevel = 1;
+    timelineView.panOffsetNS = 0;
+    renderTimeline();
+  });
+}
+
+// ─── Timeline canvas event listeners ──────────────────────────────────────
+
+// Wheel zoom: zoom in/out centered on the cursor position so the nanosecond
+// value under the cursor stays fixed.
+elements.timelineCanvas.addEventListener("wheel", (event) => {
+  event.preventDefault();
+
+  const { metrics, fullMinStart, fullSpan, width } = timelineCache;
+  if (!metrics || fullSpan <= 1) {
+    return;
+  }
+
+  const rect = elements.timelineCanvas.getBoundingClientRect();
+  const canvasX = event.clientX - rect.left;
+  const innerWidth = width - metrics.horizontalPadding * 2;
+
+  // Fraction [0, 1] of the inner drawing area where the cursor sits.
+  const fx = Math.max(0, Math.min(1, (canvasX - metrics.horizontalPadding) / innerWidth));
+
+  // NS value under the cursor in the current visible window.
+  const currentVisibleSpan = fullSpan / timelineView.zoomLevel;
+  const cursorNS = timelineView.panOffsetNS + fx * currentVisibleSpan;
+
+  const zoomFactor = event.deltaY < 0 ? 1.3 : 1 / 1.3;
+  const newZoomLevel = Math.max(1, Math.min(500, timelineView.zoomLevel * zoomFactor));
+  const newVisibleSpan = fullSpan / newZoomLevel;
+
+  // Keep the NS under the cursor anchored to the same screen position.
+  let newPanNS = cursorNS - fx * newVisibleSpan;
+  newPanNS = Math.max(0, Math.min(fullSpan - newVisibleSpan, newPanNS));
+
+  timelineView.zoomLevel = newZoomLevel;
+  timelineView.panOffsetNS = newPanNS;
+
+  renderTimeline();
+}, { passive: false });
+
+// Mousedown starts a potential drag.
+elements.timelineCanvas.addEventListener("mousedown", (event) => {
+  if (event.button !== 0) {
+    return;
+  }
+
+  timelineView.isDragging = true;
+  timelineView.dragStartX = event.clientX;
+  timelineView.dragStartPanNS = timelineView.panOffsetNS;
+  timelineView.hasDragged = false;
+
+  if (timelineView.zoomLevel > 1) {
+    elements.timelineCanvas.style.cursor = "grabbing";
+  }
+
+  event.preventDefault();
+});
+
+// Mouseup: if a drag happened, suppress the click; otherwise do row selection.
+elements.timelineCanvas.addEventListener("mouseup", (event) => {
+  if (event.button !== 0) {
+    return;
+  }
+
+  const wasDragged = timelineView.hasDragged;
+  timelineView.isDragging = false;
+  timelineView.hasDragged = false;
+
+  // Restore cursor after drag.
+  elements.timelineCanvas.style.cursor = timelineView.zoomLevel > 1 ? "grab" : "";
+
+  if (wasDragged) {
+    return;
+  }
+
+  // Treat this as a goroutine-row click.
   const metrics = getTimelineMetrics();
   const rect = elements.timelineCanvas.getBoundingClientRect();
   const y = event.clientY - rect.top;
@@ -76,29 +175,53 @@ elements.timelineCanvas.addEventListener("click", (event) => {
 
   const rowIndex = Math.floor((y - metrics.axisHeight) / metrics.rowHeight);
   const rows = getFilteredGoroutines();
-  if (rowIndex < 0 || rowIndex >= rows.length) {
+  if (rowIndex >= 0 && rowIndex < rows.length) {
+    selectGoroutine(rows[rowIndex].goroutine_id);
+  }
+});
+
+// Mousemove: handle drag panning and tooltip.
+elements.timelineCanvas.addEventListener("mousemove", (event) => {
+  if (timelineView.isDragging && timelineView.zoomLevel > 1) {
+    const dx = event.clientX - timelineView.dragStartX;
+
+    if (Math.abs(dx) > 3) {
+      timelineView.hasDragged = true;
+    }
+
+    const { fullSpan, width, metrics } = timelineCache;
+    if (metrics && width > 0) {
+      const innerWidth = width - metrics.horizontalPadding * 2;
+      const visibleSpan = fullSpan / timelineView.zoomLevel;
+      const dNS = -(dx / innerWidth) * visibleSpan;
+      let newPan = timelineView.dragStartPanNS + dNS;
+      newPan = Math.max(0, Math.min(fullSpan - visibleSpan, newPan));
+      timelineView.panOffsetNS = newPan;
+      renderTimeline();
+    }
+
+    elements.timelineCanvas.style.cursor = "grabbing";
+    hideTooltip();
     return;
   }
 
-  selectGoroutine(rows[rowIndex].goroutine_id);
-});
-
-elements.timelineCanvas.addEventListener("mousemove", (event) => {
   const rect = elements.timelineCanvas.getBoundingClientRect();
   const canvasX = event.clientX - rect.left;
   const canvasY = event.clientY - rect.top;
   const hit = getSegmentAt(canvasX, canvasY);
 
   if (hit) {
-    elements.timelineCanvas.style.cursor = "pointer";
+    elements.timelineCanvas.style.cursor = timelineView.zoomLevel > 1 ? "grab" : "pointer";
     showTooltip(hit, event.clientX, event.clientY);
   } else {
-    elements.timelineCanvas.style.cursor = "";
+    elements.timelineCanvas.style.cursor = timelineView.zoomLevel > 1 ? "grab" : "";
     hideTooltip();
   }
 });
 
 elements.timelineCanvas.addEventListener("mouseleave", () => {
+  timelineView.isDragging = false;
+  timelineView.hasDragged = false;
   elements.timelineCanvas.style.cursor = "";
   hideTooltip();
 });
@@ -106,6 +229,8 @@ elements.timelineCanvas.addEventListener("mouseleave", () => {
 window.addEventListener("resize", () => {
   renderTimeline();
 });
+
+// ─── Data loading ──────────────────────────────────────────────────────────
 
 async function loadData() {
   try {
@@ -196,6 +321,8 @@ function getTimelineMetrics() {
     horizontalPadding: 18,
   };
 }
+
+// ─── Render ────────────────────────────────────────────────────────────────
 
 function render() {
   renderSummary();
@@ -446,6 +573,8 @@ function renderSessionHistory() {
   `;
 }
 
+// ─── Timeline canvas rendering ─────────────────────────────────────────────
+
 function renderTimeline() {
   const goroutines = getFilteredGoroutines();
   const metrics = getTimelineMetrics();
@@ -470,6 +599,7 @@ function renderTimeline() {
     canvasContext.fillText("No timeline data for the current filters.", 24, 52);
     elements.timelineRange.textContent = "No visible range";
     timelineCache.metrics = null;
+    updateZoomControls();
     return;
   }
 
@@ -480,25 +610,41 @@ function renderTimeline() {
     canvasContext.fillText("Timeline is empty for the current selection.", 24, 52);
     elements.timelineRange.textContent = "No visible range";
     timelineCache.metrics = null;
+    updateZoomControls();
     return;
   }
 
-  const minStart = Math.min(...timeline.map((segment) => segment.start_ns));
-  const maxEnd = Math.max(...timeline.map((segment) => segment.end_ns));
-  const span = Math.max(maxEnd - minStart, 1);
-  const innerWidth = width - metrics.horizontalPadding * 2;
+  // Full trace bounds (never affected by zoom/pan).
+  const fullMinStart = Math.min(...timeline.map((segment) => segment.start_ns));
+  const fullMaxEnd = Math.max(...timeline.map((segment) => segment.end_ns));
+  const fullSpan = Math.max(fullMaxEnd - fullMinStart, 1);
 
-  // Populate cache so the tooltip hit-test can reuse these without recomputing.
+  // Compute visible window from timelineView.  Clamp pan to keep it in range.
+  const visibleSpan = fullSpan / timelineView.zoomLevel;
+  timelineView.panOffsetNS = Math.max(0, Math.min(fullSpan - visibleSpan, timelineView.panOffsetNS));
+  const visibleStart = fullMinStart + timelineView.panOffsetNS;
+  const visibleEnd = visibleStart + visibleSpan;
+
+  // Populate cache so tooltip hit-test and wheel handler can reuse these.
   timelineCache.goroutines = goroutines;
   timelineCache.timeline = timeline;
-  timelineCache.minStart = minStart;
-  timelineCache.span = span;
+  timelineCache.fullMinStart = fullMinStart;
+  timelineCache.fullSpan = fullSpan;
+  timelineCache.minStart = visibleStart;
+  timelineCache.span = visibleSpan;
   timelineCache.width = width;
   timelineCache.metrics = metrics;
 
-  elements.timelineRange.textContent = `${formatDuration(span)} visible window`;
+  const zoomText = timelineView.zoomLevel > 1.05
+    ? ` · ${timelineView.zoomLevel.toFixed(1)}× zoom`
+    : "";
+  elements.timelineRange.textContent = `${formatDuration(visibleSpan)} visible window${zoomText}`;
 
-  drawAxis(minStart, maxEnd, width, metrics);
+  updateZoomControls();
+
+  const innerWidth = width - metrics.horizontalPadding * 2;
+
+  drawAxis(visibleStart, visibleEnd, fullMinStart, width, metrics);
 
   goroutines.forEach((goroutine, index) => {
     const y = metrics.axisHeight + index * metrics.rowHeight;
@@ -522,28 +668,41 @@ function renderTimeline() {
     timeline
       .filter((segment) => segment.goroutine_id === goroutine.goroutine_id)
       .forEach((segment) => {
-        const x = metrics.horizontalPadding + ((segment.start_ns - minStart) / span) * innerWidth;
-        const x2 = metrics.horizontalPadding + ((segment.end_ns - minStart) / span) * innerWidth;
-        const barWidth = Math.max(x2 - x, 2);
+        // Map segment to canvas X coordinates using the visible window.
+        const rawX = metrics.horizontalPadding + ((segment.start_ns - visibleStart) / visibleSpan) * innerWidth;
+        const rawX2 = metrics.horizontalPadding + ((segment.end_ns - visibleStart) / visibleSpan) * innerWidth;
+
+        // Clip to the drawable area — segments may extend outside the visible window.
+        const clampedX = Math.max(metrics.horizontalPadding, Math.min(rawX, metrics.horizontalPadding + innerWidth));
+        const clampedX2 = Math.max(metrics.horizontalPadding, Math.min(rawX2, metrics.horizontalPadding + innerWidth));
+
+        const barWidth = Math.max(clampedX2 - clampedX, clampedX2 > clampedX ? 2 : 0);
+        if (barWidth === 0) {
+          return;
+        }
+
         const barHeight = 18;
         const barY = y + 9;
 
-        roundRect(canvasContext, x, barY, barWidth, barHeight, 7);
+        roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 7);
         canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
         canvasContext.fill();
 
         if (barWidth > 78) {
           canvasContext.fillStyle = "rgba(255, 255, 255, 0.92)";
           canvasContext.font = '11px "IBM Plex Mono", monospace';
-          canvasContext.fillText(segment.state, x + 8, barY + 12);
+          canvasContext.fillText(segment.state, clampedX + 8, barY + 12);
         }
       });
   });
 }
 
-function drawAxis(minStart, maxEnd, width, metrics) {
+// drawAxis draws the time axis tick marks and labels.  Tick labels show
+// elapsed time from the beginning of the full trace (fullMinStart) so the
+// values remain meaningful when zoomed and panned.
+function drawAxis(visibleStart, visibleEnd, fullMinStart, width, metrics) {
   const ticks = 5;
-  const span = Math.max(maxEnd - minStart, 1);
+  const visibleSpan = Math.max(visibleEnd - visibleStart, 1);
   const innerWidth = width - metrics.horizontalPadding * 2;
 
   canvasContext.strokeStyle = "rgba(219, 228, 238, 0.14)";
@@ -555,7 +714,7 @@ function drawAxis(minStart, maxEnd, width, metrics) {
   for (let index = 0; index < ticks; index += 1) {
     const ratio = ticks === 1 ? 0 : index / (ticks - 1);
     const x = metrics.horizontalPadding + ratio * innerWidth;
-    const value = minStart + ratio * span;
+    const value = visibleStart + ratio * visibleSpan;
 
     canvasContext.strokeStyle = "rgba(219, 228, 238, 0.12)";
     canvasContext.beginPath();
@@ -565,14 +724,23 @@ function drawAxis(minStart, maxEnd, width, metrics) {
 
     canvasContext.fillStyle = "#dbe4ee";
     canvasContext.font = '11px "IBM Plex Mono", monospace';
-    canvasContext.fillText(formatDuration(value - minStart), x + 6, 20);
+    // Label shows elapsed time from the very start of the trace.
+    canvasContext.fillText(formatDuration(value - fullMinStart), x + 6, 20);
   }
 }
 
-// ─── Tooltip ─────────────────────────────────────────────────────────────────
+// updateZoomControls shows or hides the reset zoom button.
+function updateZoomControls() {
+  if (elements.resetZoomButton) {
+    elements.resetZoomButton.hidden = timelineView.zoomLevel <= 1.05;
+  }
+}
 
-// getSegmentAt returns the timeline segment and its goroutine at canvas-local
+// ─── Tooltip ──────────────────────────────────────────────────────────────
+
+// getSegmentAt returns the timeline segment and goroutine at canvas-local
 // coordinates (canvasX, canvasY), or null if the cursor is not over any bar.
+// Uses the current visible window stored in timelineCache.minStart/span.
 function getSegmentAt(canvasX, canvasY) {
   const { goroutines, timeline, minStart, span, width, metrics } = timelineCache;
   if (!metrics || goroutines.length === 0) {
@@ -596,11 +764,14 @@ function getSegmentAt(canvasX, canvasY) {
       continue;
     }
 
-    const segX = metrics.horizontalPadding + ((seg.start_ns - minStart) / span) * innerWidth;
-    const segX2 = metrics.horizontalPadding + ((seg.end_ns - minStart) / span) * innerWidth;
-    const barWidth = Math.max(segX2 - segX, 2);
+    // Map segment to canvas X using the visible window (same as renderTimeline).
+    const rawX = metrics.horizontalPadding + ((seg.start_ns - minStart) / span) * innerWidth;
+    const rawX2 = metrics.horizontalPadding + ((seg.end_ns - minStart) / span) * innerWidth;
+    const segX = Math.max(metrics.horizontalPadding, Math.min(rawX, metrics.horizontalPadding + innerWidth));
+    const segX2 = Math.max(metrics.horizontalPadding, Math.min(rawX2, metrics.horizontalPadding + innerWidth));
+    const barWidth = Math.max(segX2 - segX, segX2 > segX ? 2 : 0);
 
-    if (canvasX >= segX && canvasX <= segX + barWidth) {
+    if (barWidth > 0 && canvasX >= segX && canvasX <= segX + barWidth) {
       return { segment: seg, goroutine };
     }
   }
@@ -666,7 +837,7 @@ function positionTooltip(clientX, clientY) {
   tip.style.top = `${Math.max(8, top)}px`;
 }
 
-// ─── Misc rendering ───────────────────────────────────────────────────────────
+// ─── Misc rendering ───────────────────────────────────────────────────────
 
 function renderError(message) {
   elements.goroutineList.innerHTML = `<div class="empty-message">${escapeHTML(message)}</div>`;
@@ -675,7 +846,7 @@ function renderError(message) {
   canvasContext.clearRect(0, 0, elements.timelineCanvas.width, elements.timelineCanvas.height);
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// ─── Utilities ────────────────────────────────────────────────────────────
 
 async function fetchJSON(url) {
   const response = await fetch(url);
@@ -736,7 +907,7 @@ function roundRect(context, x, y, width, height, radius) {
   context.closePath();
 }
 
-// ─── SSE live stream ──────────────────────────────────────────────────────────
+// ─── SSE live stream ───────────────────────────────────────────────────────
 
 // connectStream opens an SSE connection to /api/v1/stream and calls loadData
 // whenever the server pushes an "update" event. On error it retries after a

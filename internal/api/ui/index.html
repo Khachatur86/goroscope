@@ -77,9 +77,12 @@
         <div class="panel-header">
           <div>
             <h2>Timeline</h2>
-            <p>Click a lane or use the list to inspect one goroutine.</p>
+            <p>Scroll to zoom · Drag to pan · Click to inspect.</p>
           </div>
-          <div id="timeline-range" class="timeline-range"></div>
+          <div class="timeline-controls">
+            <button id="reset-zoom-button" class="reset-zoom-button" type="button" hidden>Reset zoom</button>
+            <div id="timeline-range" class="timeline-range"></div>
+          </div>
         </div>
         <div class="timeline-stage">
           <canvas id="timeline-canvas"></canvas>
