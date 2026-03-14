@@ -64,9 +64,11 @@ const elements = {
   resourceList: document.getElementById("resource-list"),
   tooltip: document.getElementById("timeline-tooltip"),
   sessionHistory: document.getElementById("session-history"),
+  minimapCanvas: document.getElementById("minimap-canvas"),
 };
 
 const canvasContext = elements.timelineCanvas.getContext("2d");
+const minimapContext = elements.minimapCanvas ? elements.minimapCanvas.getContext("2d") : null;
 
 // ─── Control event listeners ───────────────────────────────────────────────
 
@@ -228,6 +230,33 @@ elements.timelineCanvas.addEventListener("mouseleave", () => {
 
 window.addEventListener("resize", () => {
   renderTimeline();
+});
+
+// ─── Minimap interaction ───────────────────────────────────────────────────
+
+// minimapDragging tracks whether the user is currently dragging on the minimap.
+let minimapDragging = false;
+
+if (elements.minimapCanvas) {
+  elements.minimapCanvas.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    minimapDragging = true;
+    seekMinimapToEvent(event);
+    event.preventDefault();
+  });
+
+  elements.minimapCanvas.addEventListener("mousemove", (event) => {
+    if (minimapDragging) {
+      seekMinimapToEvent(event);
+    }
+  });
+}
+
+// Global mouseup so drag is released even when cursor leaves the minimap.
+window.addEventListener("mouseup", () => {
+  minimapDragging = false;
 });
 
 // ─── Data loading ──────────────────────────────────────────────────────────
@@ -695,6 +724,9 @@ function renderTimeline() {
         }
       });
   });
+
+  // Render the minimap overview strip after the main canvas is done.
+  renderMinimap();
 }
 
 // drawAxis draws the time axis tick marks and labels.  Tick labels show
@@ -905,6 +937,117 @@ function roundRect(context, x, y, width, height, radius) {
   context.arcTo(x, y + height, x, y, radius);
   context.arcTo(x, y, x + width, y, radius);
   context.closePath();
+}
+
+// ─── Minimap ───────────────────────────────────────────────────────────────
+
+// seekMinimapToEvent pans the main timeline so the clicked NS position in the
+// minimap is centered in the visible viewport.
+function seekMinimapToEvent(event) {
+  const canvas = elements.minimapCanvas;
+  if (!canvas) {
+    return;
+  }
+
+  const { fullSpan, span: visibleSpan } = timelineCache;
+  if (fullSpan <= 1) {
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const mmPad = 4;
+  const innerWidth = rect.width - mmPad * 2;
+  const fx = Math.max(0, Math.min(1, (event.clientX - rect.left - mmPad) / innerWidth));
+
+  // Center the visible window on the clicked position.
+  let newPan = fx * fullSpan - visibleSpan / 2;
+  newPan = Math.max(0, Math.min(fullSpan - visibleSpan, newPan));
+  timelineView.panOffsetNS = newPan;
+
+  renderTimeline();
+}
+
+// renderMinimap draws a compact overview of the full trace and highlights the
+// current visible viewport.  Called at the end of every renderTimeline() call.
+function renderMinimap() {
+  const canvas = elements.minimapCanvas;
+  if (!canvas || !minimapContext) {
+    return;
+  }
+
+  const { goroutines, timeline, fullMinStart, fullSpan, span: visibleSpan } = timelineCache;
+
+  // Only show the minimap when zoomed in — at zoomLevel=1 it is redundant.
+  if (!timelineCache.metrics || fullSpan <= 1 || timelineView.zoomLevel <= 1.05) {
+    canvas.hidden = true;
+    return;
+  }
+
+  canvas.hidden = false;
+
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(320, canvas.parentElement.clientWidth);
+  const rowHeight = 6;
+  const topPad = 6;
+  const botPad = 6;
+  const height = topPad + goroutines.length * rowHeight + botPad;
+
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  minimapContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+  minimapContext.clearRect(0, 0, width, height);
+
+  minimapContext.fillStyle = "#0d1526";
+  minimapContext.fillRect(0, 0, width, height);
+
+  const mmPad = 4;
+  const innerWidth = width - mmPad * 2;
+
+  // Draw all goroutine segments at full-trace scale.
+  for (let rowIdx = 0; rowIdx < goroutines.length; rowIdx += 1) {
+    const goroutine = goroutines[rowIdx];
+    const y = topPad + rowIdx * rowHeight;
+    const barH = rowHeight - 1;
+
+    for (const seg of timeline) {
+      if (seg.goroutine_id !== goroutine.goroutine_id) {
+        continue;
+      }
+
+      const x = mmPad + ((seg.start_ns - fullMinStart) / fullSpan) * innerWidth;
+      const x2 = mmPad + ((seg.end_ns - fullMinStart) / fullSpan) * innerWidth;
+      const barWidth = Math.max(x2 - x, 1);
+
+      minimapContext.fillStyle = colors[seg.state] ?? "#94a3b8";
+      minimapContext.fillRect(x, y, barWidth, barH);
+    }
+  }
+
+  // Darken the areas outside the current viewport.
+  const vpX = mmPad + (timelineView.panOffsetNS / fullSpan) * innerWidth;
+  const vpW = Math.max((visibleSpan / fullSpan) * innerWidth, 4);
+
+  minimapContext.fillStyle = "rgba(0, 0, 0, 0.52)";
+  // Left shade
+  if (vpX > mmPad) {
+    minimapContext.fillRect(mmPad, 0, vpX - mmPad, height);
+  }
+  // Right shade
+  const vpRight = vpX + vpW;
+  const drawableRight = mmPad + innerWidth;
+  if (vpRight < drawableRight) {
+    minimapContext.fillRect(vpRight, 0, drawableRight - vpRight, height);
+  }
+
+  // Viewport border — a bright rect with semi-transparent fill.
+  minimapContext.fillStyle = "rgba(255, 255, 255, 0.07)";
+  minimapContext.fillRect(vpX, 0, vpW, height);
+  minimapContext.strokeStyle = "rgba(255, 255, 255, 0.60)";
+  minimapContext.lineWidth = 1.5;
+  minimapContext.strokeRect(vpX + 0.75, 0.75, vpW - 1.5, height - 1.5);
 }
 
 // ─── SSE live stream ───────────────────────────────────────────────────────

@@ -314,6 +314,21 @@ select {
   padding: 0 16px 16px;
 }
 
+/* ─── Minimap ──────────────────────────────────────────────────────────── */
+
+.minimap-canvas {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  outline: 1.5px solid rgba(219, 228, 238, 0.12);
+}
+
+.minimap-canvas:hover {
+  outline-color: rgba(219, 228, 238, 0.28);
+}
+
 #timeline-canvas {
   display: block;
   width: 100%;
