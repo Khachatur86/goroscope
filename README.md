@@ -21,6 +21,18 @@ go run ./cmd/goroscope ui
 
 Then open `http://127.0.0.1:7070`.
 
+## Runtime Trace Demo
+
+The first real `run` pipeline is cooperative: the target app must import the Goroscope agent and call `agent.StartFromEnv()` in `main`.
+
+An example target is included:
+
+```bash
+go run ./cmd/goroscope run ./examples/trace_demo
+```
+
+This executes the demo app, captures a real `runtime/trace`, converts it into a Goroscope capture, and then serves the UI locally.
+
 ## Layout
 
 ```text

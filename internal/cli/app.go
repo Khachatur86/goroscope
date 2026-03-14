@@ -63,7 +63,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	_ = noBrowser
 
-	capture, err := tracebridge.LoadDemoCapture()
+	capture, err := tracebridge.RunGoTargetWithTrace(ctx, target, stdout, stderr)
 	if err != nil {
 		return err
 	}
