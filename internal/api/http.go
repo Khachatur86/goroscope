@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/session"
@@ -54,7 +53,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/api/v1/session/current", s.handleSessionCurrent)
 	mux.HandleFunc("/api/v1/goroutines", s.handleGoroutines)
-	mux.HandleFunc("/api/v1/goroutines/", s.handleGoroutineByID)
+	mux.HandleFunc("/api/v1/goroutines/{id}", s.handleGoroutineByID)
 	mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
@@ -89,7 +88,7 @@ func (s *Server) handleGoroutines(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleGoroutineByID(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/api/v1/goroutines/"), 10, 64)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid goroutine id"})
 		return

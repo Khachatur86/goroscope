@@ -124,7 +124,7 @@ func (e *Engine) CurrentSession() *model.Session {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	return cloneSession(e.session)
+	return e.session.Clone()
 }
 
 func (e *Engine) ListGoroutines() []model.Goroutine {
@@ -198,7 +198,7 @@ func (e *Engine) ResourceGraph() []model.ResourceEdge {
 }
 
 func (e *Engine) resetLocked(session *model.Session) {
-	e.session = cloneSession(session)
+	e.session = session.Clone()
 	e.goroutines = make(map[int64]model.Goroutine)
 	e.closedSegments = nil
 	e.activeSegments = make(map[int64]activeSegment)
@@ -320,20 +320,6 @@ func buildTimelineSegment(goroutineID int64, segment activeSegment, end time.Tim
 		Reason:      segment.Reason,
 		ResourceID:  segment.ResourceID,
 	}, true
-}
-
-func cloneSession(session *model.Session) *model.Session {
-	if session == nil {
-		return nil
-	}
-
-	copy := *session
-	if session.EndedAt != nil {
-		endedAt := *session.EndedAt
-		copy.EndedAt = &endedAt
-	}
-
-	return &copy
 }
 
 func cloneGoroutine(in model.Goroutine) model.Goroutine {

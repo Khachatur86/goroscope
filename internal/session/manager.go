@@ -31,7 +31,7 @@ func (m *Manager) StartSession(name, target string) *model.Session {
 		StartedAt: time.Now().UTC(),
 	}
 
-	return cloneSession(m.current)
+	return m.current.Clone()
 }
 
 func (m *Manager) CompleteCurrent() {
@@ -60,19 +60,5 @@ func (m *Manager) Current() *model.Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return cloneSession(m.current)
-}
-
-func cloneSession(session *model.Session) *model.Session {
-	if session == nil {
-		return nil
-	}
-
-	copy := *session
-	if session.EndedAt != nil {
-		endedAt := *session.EndedAt
-		copy.EndedAt = &endedAt
-	}
-
-	return &copy
+	return m.current.Clone()
 }
