@@ -9,6 +9,7 @@ const state = {
   relatedFocus: false,
   search: "",
   stateFilter: "ALL",
+  sortMode: "SUSPICIOUS",
 };
 
 // timelineCache stores the last-rendered timeline bounds so the mousemove
@@ -44,6 +45,12 @@ const timelineHighlight = {
   hoveredSegmentKey: "",
 };
 
+const derivedCache = {
+  diagnosticsByID: new Map(),
+  resourceEdgesByID: null,
+  timelineSegmentsByID: null,
+};
+
 const colors = {
   RUNNING: "#2a9d8f",
   RUNNABLE: "#6b7280",
@@ -67,6 +74,8 @@ const elements = {
   blockedCount: document.getElementById("blocked-count"),
   searchInput: document.getElementById("search-input"),
   stateFilter: document.getElementById("state-filter"),
+  sortMode: document.getElementById("sort-mode"),
+  lanePriority: document.getElementById("lane-priority"),
   goroutineList: document.getElementById("goroutine-list"),
   timelineCanvas: document.getElementById("timeline-canvas"),
   timelineContext: document.getElementById("timeline-context"),
@@ -100,6 +109,14 @@ elements.stateFilter.addEventListener("change", (event) => {
   ensureSelection();
   render();
 });
+
+if (elements.sortMode) {
+  elements.sortMode.addEventListener("change", (event) => {
+    state.sortMode = event.target.value;
+    ensureSelection();
+    render();
+  });
+}
 
 if (elements.resetZoomButton) {
   elements.resetZoomButton.addEventListener("click", () => {
@@ -316,6 +333,7 @@ async function loadData() {
     state.timeline = timeline;
     state.resources = resources;
     state.sessions = Array.isArray(sessions) ? sessions : [];
+    resetDerivedCaches();
 
     ensureSelection();
     await hydrateSelectedGoroutine();
@@ -351,7 +369,9 @@ function ensureSelection() {
     return;
   }
 
-  const preferred = filtered.find((item) => item.state === "BLOCKED" || item.state === "WAITING") ?? filtered[0];
+  const preferred = state.sortMode === "ID"
+    ? filtered.find((item) => item.state === "BLOCKED" || item.state === "WAITING") ?? filtered[0]
+    : filtered[0];
   state.selectedId = preferred.goroutine_id;
   state.selectedGoroutine = preferred;
 }
@@ -360,6 +380,30 @@ async function selectGoroutine(id) {
   state.selectedId = id;
   await hydrateSelectedGoroutine();
   render();
+}
+
+function resetDerivedCaches() {
+  derivedCache.diagnosticsByID = new Map();
+  derivedCache.resourceEdgesByID = null;
+  derivedCache.timelineSegmentsByID = null;
+}
+
+function getStateUrgencyRank(stateName) {
+  switch (stateName) {
+    case "BLOCKED":
+      return 5;
+    case "WAITING":
+      return 4;
+    case "SYSCALL":
+      return 3;
+    case "RUNNABLE":
+      return 2;
+    case "RUNNING":
+      return 1;
+    case "DONE":
+    default:
+      return 0;
+  }
 }
 
 function getFilteredGoroutines() {
@@ -380,7 +424,45 @@ function getFilteredGoroutines() {
 
       return haystack.includes(state.search);
     })
-    .sort((left, right) => left.goroutine_id - right.goroutine_id);
+    .sort(compareGoroutinesForSort);
+}
+
+function compareGoroutinesForSort(left, right) {
+  switch (state.sortMode) {
+    case "BLOCKED":
+      return compareGoroutinesByBlocked(left, right);
+    case "SUSPICIOUS":
+      return compareGoroutinesBySuspicion(left, right);
+    case "ID":
+    default:
+      return left.goroutine_id - right.goroutine_id;
+  }
+}
+
+function compareGoroutinesBySuspicion(left, right) {
+  const leftDiagnostics = buildGoroutineDiagnostics(left);
+  const rightDiagnostics = buildGoroutineDiagnostics(right);
+
+  return (
+    (rightDiagnostics?.suspicionScore ?? 0) - (leftDiagnostics?.suspicionScore ?? 0) ||
+    (rightDiagnostics?.stallNS ?? 0) - (leftDiagnostics?.stallNS ?? 0) ||
+    (right.wait_ns ?? 0) - (left.wait_ns ?? 0) ||
+    getStateUrgencyRank(right.state) - getStateUrgencyRank(left.state) ||
+    left.goroutine_id - right.goroutine_id
+  );
+}
+
+function compareGoroutinesByBlocked(left, right) {
+  const leftDiagnostics = buildGoroutineDiagnostics(left);
+  const rightDiagnostics = buildGoroutineDiagnostics(right);
+
+  return (
+    getStateUrgencyRank(right.state) - getStateUrgencyRank(left.state) ||
+    (right.wait_ns ?? 0) - (left.wait_ns ?? 0) ||
+    (rightDiagnostics?.stallNS ?? 0) - (leftDiagnostics?.stallNS ?? 0) ||
+    (rightDiagnostics?.suspicionScore ?? 0) - (leftDiagnostics?.suspicionScore ?? 0) ||
+    left.goroutine_id - right.goroutine_id
+  );
 }
 
 function getTimelineMetrics() {
@@ -408,10 +490,38 @@ function getTimelinePlotBounds(width, metrics) {
 }
 
 function getTimelineSegmentsForGoroutine(goroutineID) {
-  return state.timeline
-    .filter((segment) => segment.goroutine_id === goroutineID)
-    .slice()
-    .sort((left, right) => left.start_ns - right.start_ns || left.end_ns - right.end_ns);
+  if (!derivedCache.timelineSegmentsByID) {
+    derivedCache.timelineSegmentsByID = new Map();
+    for (const segment of state.timeline) {
+      const segments = derivedCache.timelineSegmentsByID.get(segment.goroutine_id) ?? [];
+      segments.push(segment);
+      derivedCache.timelineSegmentsByID.set(segment.goroutine_id, segments);
+    }
+    for (const segments of derivedCache.timelineSegmentsByID.values()) {
+      segments.sort((left, right) => left.start_ns - right.start_ns || left.end_ns - right.end_ns);
+    }
+  }
+
+  return derivedCache.timelineSegmentsByID.get(goroutineID) ?? [];
+}
+
+function getResourceEdgesForGoroutine(goroutineID) {
+  if (!derivedCache.resourceEdgesByID) {
+    derivedCache.resourceEdgesByID = new Map();
+    for (const edge of state.resources) {
+      const fromEdges = derivedCache.resourceEdgesByID.get(edge.from_goroutine_id) ?? [];
+      fromEdges.push(edge);
+      derivedCache.resourceEdgesByID.set(edge.from_goroutine_id, fromEdges);
+
+      if (edge.to_goroutine_id !== edge.from_goroutine_id) {
+        const toEdges = derivedCache.resourceEdgesByID.get(edge.to_goroutine_id) ?? [];
+        toEdges.push(edge);
+        derivedCache.resourceEdgesByID.set(edge.to_goroutine_id, toEdges);
+      }
+    }
+  }
+
+  return derivedCache.resourceEdgesByID.get(goroutineID) ?? [];
 }
 
 function buildGoroutineDiagnostics(goroutine) {
@@ -419,11 +529,14 @@ function buildGoroutineDiagnostics(goroutine) {
     return null;
   }
 
+  const cached = derivedCache.diagnosticsByID.get(goroutine.goroutine_id);
+  if (cached) {
+    return cached;
+  }
+
   const segments = getTimelineSegmentsForGoroutine(goroutine.goroutine_id);
   const totalsByState = Object.fromEntries(timelineStates.map((stateName) => [stateName, 0]));
-  const resourceEdges = state.resources.filter(
-    (edge) => edge.from_goroutine_id === goroutine.goroutine_id || edge.to_goroutine_id === goroutine.goroutine_id,
-  );
+  const resourceEdges = getResourceEdgesForGoroutine(goroutine.goroutine_id);
   const stallResources = new Set();
   let recordedNS = 0;
   let stallNS = 0;
@@ -475,8 +588,45 @@ function buildGoroutineDiagnostics(goroutine) {
   };
 
   diagnostics.flags = buildSuspicionFlags(diagnostics);
+  diagnostics.suspicionScore = scoreGoroutineDiagnostics(goroutine, diagnostics);
   diagnostics.primaryFlag = diagnostics.flags[0] ?? null;
+  derivedCache.diagnosticsByID.set(goroutine.goroutine_id, diagnostics);
   return diagnostics;
+}
+
+function scoreGoroutineDiagnostics(goroutine, diagnostics) {
+  if (!goroutine || !diagnostics) {
+    return 0;
+  }
+
+  let score = 0;
+  if (state.session?.ended_at && !diagnostics.completed) {
+    score += 120;
+  }
+  if (diagnostics.longestStall) {
+    score += 36 + Math.min(72, Math.round(diagnostics.longestStall.durationNS / 25_000_000));
+  }
+  if (diagnostics.stallSegmentCount >= 3) {
+    score += 24 + Math.min(24, diagnostics.stallSegmentCount * 3);
+  }
+  if (diagnostics.resourceEdgeCount >= 3 || diagnostics.stallResourceCount >= 2) {
+    score += 18;
+  }
+  if (diagnostics.transitionCount >= 8) {
+    score += 12 + Math.min(18, diagnostics.transitionCount - 8);
+  }
+  if (goroutine.state === "BLOCKED" || goroutine.state === "WAITING") {
+    score += 14;
+  } else if (goroutine.state === "SYSCALL") {
+    score += 9;
+  }
+  if ((goroutine.wait_ns ?? 0) > 0) {
+    score += Math.min(28, Math.round(goroutine.wait_ns / 25_000_000));
+  }
+  if (diagnostics.offCPUNS > diagnostics.runningNS * 2 && diagnostics.windowNS >= 50_000_000) {
+    score += 10;
+  }
+  return score;
 }
 
 function buildSuspicionFlags(diagnostics) {
@@ -656,6 +806,18 @@ function getDiagnosticContextHint(diagnostics) {
   return "";
 }
 
+function renderSuspicionTags(diagnostics, limit = 2) {
+  if (!diagnostics || diagnostics.flags.length === 0) {
+    return "";
+  }
+
+  return `<div class="suspicion-tags">
+    ${diagnostics.flags.slice(0, limit).map((flag) => `
+      <span class="suspicion-tag tone-${flag.tone}">${escapeHTML(flag.label)}</span>
+    `).join("")}
+  </div>`;
+}
+
 function getRelatedFocus() {
   const selectedID = state.selectedId;
   const rolesByID = new Map();
@@ -801,6 +963,7 @@ function clearTimelineHighlight() {
 function render() {
   renderSummary();
   renderFocusControls();
+  renderLanePriority();
   renderGoroutineList();
   renderInspector();
   renderResources();
@@ -865,6 +1028,7 @@ function renderGoroutineList() {
   for (const goroutine of goroutines) {
     const button = document.createElement("button");
     button.type = "button";
+    const diagnostics = buildGoroutineDiagnostics(goroutine);
     const focusRoles = getFocusRoles(focus, goroutine.goroutine_id);
     const primaryFocusRole = getPrimaryFocusRole(focusRoles);
     const focusClass = focus.enabled
@@ -876,6 +1040,10 @@ function renderGoroutineList() {
       ? `<span class="wait-badge">${formatDuration(goroutine.wait_ns)}</span>`
       : "";
     const focusTags = focus.enabled ? renderFocusTags(focus, goroutine.goroutine_id) : "";
+    const suspicionTags = renderSuspicionTags(diagnostics);
+    const primaryFlag = diagnostics?.primaryFlag
+      ? `<div class="lane-priority-line">${escapeHTML(diagnostics.primaryFlag.detail)}</div>`
+      : "";
 
     button.innerHTML = `
       <div class="lane-item-header">
@@ -886,6 +1054,8 @@ function renderGoroutineList() {
         <div class="lane-func">${escapeHTML(goroutine.labels?.function || "unknown function")}</div>
         <div class="lane-reason">${escapeHTML(goroutine.reason || "no active wait reason")} ${waitBadge}</div>
       </div>
+      ${suspicionTags}
+      ${primaryFlag}
       ${focusTags}
     `;
     button.addEventListener("click", () => {
@@ -893,6 +1063,56 @@ function renderGoroutineList() {
     });
     elements.goroutineList.appendChild(button);
   }
+}
+
+function renderLanePriority() {
+  if (!elements.lanePriority) {
+    return;
+  }
+
+  const flagged = getFilteredGoroutines()
+    .map((goroutine) => ({ goroutine, diagnostics: buildGoroutineDiagnostics(goroutine) }))
+    .filter(({ diagnostics }) => diagnostics && diagnostics.flags.length > 0);
+
+  if (flagged.length === 0) {
+    elements.lanePriority.hidden = true;
+    elements.lanePriority.innerHTML = "";
+    return;
+  }
+
+  const topFlagged = flagged
+    .slice()
+    .sort((left, right) => compareGoroutinesBySuspicion(left.goroutine, right.goroutine))
+    .slice(0, 4);
+
+  elements.lanePriority.hidden = false;
+  elements.lanePriority.innerHTML = `
+    <div class="lane-priority-header">
+      <div>
+        <span class="lane-priority-kicker">Top Offenders</span>
+        <strong>${flagged.length} flagged lane${flagged.length === 1 ? "" : "s"} in view</strong>
+      </div>
+      <span class="lane-priority-hint">${state.sortMode === "SUSPICIOUS" ? "sorted by suspicion" : "quick jump"}</span>
+    </div>
+    <div class="lane-priority-list">
+      ${topFlagged.map(({ goroutine, diagnostics }) => `
+        <button
+          type="button"
+          class="lane-priority-chip${goroutine.goroutine_id === state.selectedId ? " active" : ""}"
+          data-priority-goroutine="${goroutine.goroutine_id}"
+        >
+          <span class="lane-priority-chip-id">G${goroutine.goroutine_id}</span>
+          <span class="lane-priority-chip-label">${escapeHTML(diagnostics.primaryFlag?.label || "Needs attention")}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+
+  elements.lanePriority.querySelectorAll("[data-priority-goroutine]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectGoroutine(Number(button.dataset.priorityGoroutine));
+    });
+  });
 }
 
 function renderInspector() {
@@ -1520,6 +1740,10 @@ function positionTooltip(clientX, clientY) {
 
 function renderError(message) {
   elements.goroutineList.innerHTML = `<div class="empty-message">${escapeHTML(message)}</div>`;
+  if (elements.lanePriority) {
+    elements.lanePriority.hidden = true;
+    elements.lanePriority.innerHTML = "";
+  }
   elements.inspector.innerHTML = `<div class="empty-message">${escapeHTML(message)}</div>`;
   elements.resourceList.innerHTML = "";
   if (elements.timelineContext) {

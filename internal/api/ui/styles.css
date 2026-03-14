@@ -223,6 +223,84 @@ select {
   padding: 0 20px 18px;
 }
 
+.lane-priority {
+  margin: 0 14px 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(20, 33, 61, 0.08), rgba(69, 123, 157, 0.12));
+  border: 1px solid rgba(20, 33, 61, 0.08);
+}
+
+.lane-priority-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.lane-priority-header strong,
+.lane-priority-chip-id {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+}
+
+.lane-priority-kicker,
+.lane-priority-hint,
+.suspicion-tag {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lane-priority-header strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.lane-priority-list,
+.suspicion-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lane-priority-list {
+  margin-top: 12px;
+}
+
+.lane-priority-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 33, 61, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.14s ease, transform 0.14s ease, border-color 0.14s ease;
+}
+
+.lane-priority-chip:hover {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(20, 33, 61, 0.18);
+  transform: translateY(-1px);
+}
+
+.lane-priority-chip.active {
+  background: rgba(20, 33, 61, 0.9);
+  border-color: rgba(20, 33, 61, 0.92);
+  color: #fff;
+}
+
+.lane-priority-chip-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .field span {
   display: block;
   margin-bottom: 6px;
@@ -306,6 +384,40 @@ select {
 
 .lane-item-meta {
   margin-top: 8px;
+  line-height: 1.35;
+}
+
+.suspicion-tags {
+  margin-top: 10px;
+}
+
+.suspicion-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(20, 33, 61, 0.06);
+}
+
+.suspicion-tag.tone-danger {
+  color: var(--blocked);
+  background: rgba(209, 73, 91, 0.14);
+}
+
+.suspicion-tag.tone-warn {
+  color: #9a5f16;
+  background: rgba(244, 162, 97, 0.18);
+}
+
+.suspicion-tag.tone-info {
+  color: var(--syscall);
+  background: rgba(69, 123, 157, 0.14);
+}
+
+.lane-priority-line {
+  margin-top: 8px;
+  color: var(--ink);
+  font-size: 0.82rem;
   line-height: 1.35;
 }
 
@@ -962,6 +1074,11 @@ select {
 
   #timeline-canvas {
     min-height: 420px;
+  }
+
+  .lane-priority-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

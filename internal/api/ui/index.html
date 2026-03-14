@@ -50,7 +50,7 @@
       <aside class="panel lane-panel">
         <div class="panel-header">
           <h2>Goroutines</h2>
-          <p>Filter and select a lane.</p>
+          <p>Filter, sort, and jump to the noisy lanes first.</p>
         </div>
         <div class="filter-stack">
           <label class="field">
@@ -69,7 +69,16 @@
               <option value="DONE">DONE</option>
             </select>
           </label>
+          <label class="field">
+            <span>Sort</span>
+            <select id="sort-mode">
+              <option value="SUSPICIOUS">Most suspicious</option>
+              <option value="BLOCKED">Most blocked</option>
+              <option value="ID">Goroutine ID</option>
+            </select>
+          </label>
         </div>
+        <div id="lane-priority" class="lane-priority" hidden></div>
         <div id="goroutine-list" class="lane-list" role="listbox" aria-label="Goroutines"></div>
       </aside>
 
