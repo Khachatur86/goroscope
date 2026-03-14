@@ -6,6 +6,7 @@ const state = {
   resources: [],
   selectedId: null,
   selectedGoroutine: null,
+  relatedFocus: false,
   search: "",
   stateFilter: "ALL",
 };
@@ -64,7 +65,10 @@ const elements = {
   stateFilter: document.getElementById("state-filter"),
   goroutineList: document.getElementById("goroutine-list"),
   timelineCanvas: document.getElementById("timeline-canvas"),
+  timelineContext: document.getElementById("timeline-context"),
+  timelineCursor: document.getElementById("timeline-cursor"),
   timelineRange: document.getElementById("timeline-range"),
+  focusRelatedButton: document.getElementById("focus-related-button"),
   resetZoomButton: document.getElementById("reset-zoom-button"),
   inspector: document.getElementById("inspector"),
   resourceList: document.getElementById("resource-list"),
@@ -101,6 +105,16 @@ if (elements.resetZoomButton) {
   });
 }
 
+if (elements.focusRelatedButton) {
+  elements.focusRelatedButton.addEventListener("click", () => {
+    if (!state.selectedId) {
+      return;
+    }
+    state.relatedFocus = !state.relatedFocus;
+    render();
+  });
+}
+
 // ─── Timeline canvas event listeners ──────────────────────────────────────
 
 // Wheel zoom: zoom in/out centered on the cursor position so the nanosecond
@@ -115,10 +129,10 @@ elements.timelineCanvas.addEventListener("wheel", (event) => {
 
   const rect = elements.timelineCanvas.getBoundingClientRect();
   const canvasX = event.clientX - rect.left;
-  const innerWidth = width - metrics.horizontalPadding * 2;
+  const { left: plotLeft, innerWidth } = getTimelinePlotBounds(width, metrics);
 
   // Fraction [0, 1] of the inner drawing area where the cursor sits.
-  const fx = Math.max(0, Math.min(1, (canvasX - metrics.horizontalPadding) / innerWidth));
+  const fx = Math.max(0, Math.min(1, (canvasX - plotLeft) / innerWidth));
 
   // NS value under the cursor in the current visible window.
   const currentVisibleSpan = fullSpan / timelineView.zoomLevel;
@@ -145,6 +159,8 @@ elements.timelineCanvas.addEventListener("mousedown", (event) => {
   }
 
   clearTimelineHighlight();
+  hideTimelineCursor();
+  renderTimelineContext();
   timelineView.isDragging = true;
   timelineView.dragStartX = event.clientX;
   timelineView.dragStartPanNS = timelineView.panOffsetNS;
@@ -200,7 +216,7 @@ elements.timelineCanvas.addEventListener("mousemove", (event) => {
 
     const { fullSpan, width, metrics } = timelineCache;
     if (metrics && width > 0) {
-      const innerWidth = width - metrics.horizontalPadding * 2;
+      const { innerWidth } = getTimelinePlotBounds(width, metrics);
       const visibleSpan = fullSpan / timelineView.zoomLevel;
       const dNS = -(dx / innerWidth) * visibleSpan;
       let newPan = timelineView.dragStartPanNS + dNS;
@@ -211,6 +227,8 @@ elements.timelineCanvas.addEventListener("mousemove", (event) => {
 
     elements.timelineCanvas.style.cursor = "grabbing";
     hideTooltip();
+    hideTimelineCursor();
+    renderTimelineContext();
     return;
   }
 
@@ -219,7 +237,10 @@ elements.timelineCanvas.addEventListener("mousemove", (event) => {
   const canvasY = event.clientY - rect.top;
   const hoveredRow = getTimelineRowAt(canvasY);
   const hit = getSegmentAt(canvasX, canvasY);
+  const hoveredNS = getHoveredTimelineNS(canvasX);
   setTimelineHighlight(hoveredRow ? hoveredRow.goroutine_id : null, hit ? buildSegmentKey(hit.segment) : "");
+  updateTimelineCursor(canvasX);
+  renderTimelineContext({ hit, hoveredRow, hoveredNS });
 
   if (hit) {
     elements.timelineCanvas.style.cursor = timelineView.zoomLevel > 1 ? "grab" : "pointer";
@@ -238,6 +259,8 @@ elements.timelineCanvas.addEventListener("mouseleave", () => {
   timelineView.hasDragged = false;
   elements.timelineCanvas.style.cursor = "";
   clearTimelineHighlight();
+  hideTimelineCursor();
+  renderTimelineContext();
   hideTooltip();
 });
 
@@ -360,12 +383,145 @@ function getTimelineMetrics() {
   return {
     axisHeight: 38,
     rowHeight: 36,
-    horizontalPadding: 18,
+    labelGutterWidth: 182,
+    leftPadding: 14,
+    rightPadding: 18,
   };
 }
 
 function buildSegmentKey(segment) {
   return `${segment.goroutine_id}:${segment.start_ns}:${segment.end_ns}:${segment.state}`;
+}
+
+function getTimelinePlotBounds(width, metrics) {
+  const left = metrics.labelGutterWidth + metrics.leftPadding;
+  const right = width - metrics.rightPadding;
+  return {
+    left,
+    right,
+    innerWidth: Math.max(right - left, 1),
+  };
+}
+
+function getRelatedFocus() {
+  const selectedID = state.selectedId;
+  const rolesByID = new Map();
+
+  if (!state.relatedFocus || selectedID === null) {
+    return { enabled: false, selectedID, rolesByID, relatedCount: 0 };
+  }
+
+  const addRole = (goroutineID, role) => {
+    if (!goroutineID) {
+      return;
+    }
+    let roles = rolesByID.get(goroutineID);
+    if (!roles) {
+      roles = new Set();
+      rolesByID.set(goroutineID, roles);
+    }
+    roles.add(role);
+  };
+
+  addRole(selectedID, "selected");
+
+  const selected = state.goroutines.find((item) => item.goroutine_id === selectedID);
+  if (!selected) {
+    return { enabled: true, selectedID, rolesByID, relatedCount: 0 };
+  }
+
+  if (selected.parent_id) {
+    addRole(selected.parent_id, "parent");
+  }
+
+  for (const goroutine of state.goroutines) {
+    if (goroutine.parent_id === selectedID && goroutine.goroutine_id !== selectedID) {
+      addRole(goroutine.goroutine_id, "child");
+    }
+  }
+
+  for (const edge of state.resources) {
+    if (edge.from_goroutine_id === selectedID && edge.to_goroutine_id !== selectedID) {
+      addRole(edge.to_goroutine_id, "resource");
+    } else if (edge.to_goroutine_id === selectedID && edge.from_goroutine_id !== selectedID) {
+      addRole(edge.from_goroutine_id, "resource");
+    }
+  }
+
+  return {
+    enabled: true,
+    selectedID,
+    rolesByID,
+    relatedCount: Math.max(0, rolesByID.size - 1),
+  };
+}
+
+function getFocusRoles(focus, goroutineID) {
+  if (!focus.enabled) {
+    return null;
+  }
+  return focus.rolesByID.get(goroutineID) ?? null;
+}
+
+function getPrimaryFocusRole(focusRoles) {
+  if (!focusRoles) {
+    return "";
+  }
+  if (focusRoles.has("selected")) {
+    return "selected";
+  }
+  if (focusRoles.has("child")) {
+    return "child";
+  }
+  if (focusRoles.has("parent")) {
+    return "parent";
+  }
+  if (focusRoles.has("resource")) {
+    return "resource";
+  }
+  return "";
+}
+
+function getFocusAccentColor(primaryRole) {
+  switch (primaryRole) {
+    case "selected":
+      return "rgba(125, 211, 252, 0.95)";
+    case "parent":
+      return "rgba(251, 191, 36, 0.92)";
+    case "child":
+      return "rgba(45, 212, 191, 0.92)";
+    case "resource":
+      return "rgba(244, 114, 182, 0.90)";
+    default:
+      return "";
+  }
+}
+
+function focusRoleLabel(role) {
+  switch (role) {
+    case "selected":
+      return "SELECTED";
+    case "parent":
+      return "PARENT";
+    case "child":
+      return "CHILD";
+    case "resource":
+      return "EDGE";
+    default:
+      return role.toUpperCase();
+  }
+}
+
+function renderFocusTags(focus, goroutineID) {
+  const focusRoles = getFocusRoles(focus, goroutineID);
+  if (!focusRoles) {
+    return "";
+  }
+
+  const orderedRoles = ["selected", "parent", "child", "resource"].filter((role) => focusRoles.has(role));
+  return `<div class="focus-tags">${orderedRoles.map((role) => `
+    <span class="focus-tag ${role}">${focusRoleLabel(role)}</span>
+  `).join("")}</div>`;
 }
 
 function setTimelineHighlight(hoveredGoroutineID, hoveredSegmentKey) {
@@ -391,11 +547,32 @@ function clearTimelineHighlight() {
 
 function render() {
   renderSummary();
+  renderFocusControls();
   renderGoroutineList();
   renderInspector();
   renderResources();
   renderTimeline();
   renderSessionHistory();
+}
+
+function renderFocusControls() {
+  if (!elements.focusRelatedButton) {
+    return;
+  }
+
+  const focus = getRelatedFocus();
+  const visibleRelatedCount = focus.enabled
+    ? getFilteredGoroutines().filter(
+      (item) => focus.rolesByID.has(item.goroutine_id) && item.goroutine_id !== focus.selectedID,
+    ).length
+    : 0;
+
+  elements.focusRelatedButton.disabled = state.selectedId === null;
+  elements.focusRelatedButton.classList.toggle("active", focus.enabled);
+  elements.focusRelatedButton.setAttribute("aria-pressed", focus.enabled ? "true" : "false");
+  elements.focusRelatedButton.textContent = focus.enabled
+    ? `Related focus · ${visibleRelatedCount}`
+    : "Related focus";
 }
 
 function renderSummary() {
@@ -424,6 +601,7 @@ function renderSummary() {
 
 function renderGoroutineList() {
   const goroutines = getFilteredGoroutines();
+  const focus = getRelatedFocus();
 
   if (goroutines.length === 0) {
     elements.goroutineList.innerHTML = `<div class="empty-message">No goroutines match the current filters.</div>`;
@@ -434,11 +612,17 @@ function renderGoroutineList() {
   for (const goroutine of goroutines) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `lane-item${goroutine.goroutine_id === state.selectedId ? " active" : ""}`;
+    const focusRoles = getFocusRoles(focus, goroutine.goroutine_id);
+    const primaryFocusRole = getPrimaryFocusRole(focusRoles);
+    const focusClass = focus.enabled
+      ? focusRoles ? ` focus-related focus-${primaryFocusRole}` : " focus-dimmed"
+      : "";
+    button.className = `lane-item${goroutine.goroutine_id === state.selectedId ? " active" : ""}${focusClass}`;
 
     const waitBadge = goroutine.wait_ns > 0
       ? `<span class="wait-badge">${formatDuration(goroutine.wait_ns)}</span>`
       : "";
+    const focusTags = focus.enabled ? renderFocusTags(focus, goroutine.goroutine_id) : "";
 
     button.innerHTML = `
       <div class="lane-item-header">
@@ -449,6 +633,7 @@ function renderGoroutineList() {
         <div class="lane-func">${escapeHTML(goroutine.labels?.function || "unknown function")}</div>
         <div class="lane-reason">${escapeHTML(goroutine.reason || "no active wait reason")} ${waitBadge}</div>
       </div>
+      ${focusTags}
     `;
     button.addEventListener("click", () => {
       selectGoroutine(goroutine.goroutine_id);
@@ -642,6 +827,7 @@ function renderSessionHistory() {
 
 function renderTimeline() {
   const goroutines = getFilteredGoroutines();
+  const focus = getRelatedFocus();
   const metrics = getTimelineMetrics();
   const width = Math.max(320, elements.timelineCanvas.parentElement.clientWidth);
   const height = Math.max(220, metrics.axisHeight + goroutines.length * metrics.rowHeight + 16);
@@ -703,50 +889,89 @@ function renderTimeline() {
   const zoomText = timelineView.zoomLevel > 1.05
     ? ` · ${timelineView.zoomLevel.toFixed(1)}× zoom`
     : "";
-  elements.timelineRange.textContent = `${formatDuration(visibleSpan)} visible window${zoomText}`;
+  const visibleFocusCount = focus.enabled
+    ? goroutines.filter((item) => focus.rolesByID.has(item.goroutine_id)).length
+    : 0;
+  const focusText = focus.enabled ? ` · focus ${visibleFocusCount} lane${visibleFocusCount === 1 ? "" : "s"}` : "";
+  elements.timelineRange.textContent = `${formatDuration(visibleSpan)} visible window${zoomText}${focusText}`;
 
   updateZoomControls();
 
-  const innerWidth = width - metrics.horizontalPadding * 2;
+  const { left: plotLeft, innerWidth } = getTimelinePlotBounds(width, metrics);
 
   drawAxis(visibleStart, visibleEnd, fullMinStart, width, metrics);
+  renderTimelineContext();
+
+  canvasContext.fillStyle = "rgba(2, 6, 23, 0.34)";
+  canvasContext.fillRect(0, metrics.axisHeight, plotLeft - 8, height - metrics.axisHeight);
+  canvasContext.strokeStyle = "rgba(219, 228, 238, 0.10)";
+  canvasContext.beginPath();
+  canvasContext.moveTo(plotLeft - 0.5, metrics.axisHeight - 18);
+  canvasContext.lineTo(plotLeft - 0.5, height - 16);
+  canvasContext.stroke();
 
   goroutines.forEach((goroutine, index) => {
     const y = metrics.axisHeight + index * metrics.rowHeight;
     const isSelected = goroutine.goroutine_id === state.selectedId;
     const isHoveredRow = goroutine.goroutine_id === timelineHighlight.hoveredGoroutineID;
+    const focusRoles = getFocusRoles(focus, goroutine.goroutine_id);
+    const primaryFocusRole = getPrimaryFocusRole(focusRoles);
+    const focusAccent = getFocusAccentColor(primaryFocusRole);
+    const isFocusRelated = focus.enabled && !!focusRoles && !focusRoles.has("selected");
+    const isDimmed = focus.enabled && !focusRoles;
 
     if (isSelected) {
       canvasContext.fillStyle = "rgba(96, 165, 250, 0.10)";
       canvasContext.fillRect(0, y, width, metrics.rowHeight);
       canvasContext.fillStyle = "rgba(125, 211, 252, 0.95)";
       canvasContext.fillRect(0, y + 2, 4, metrics.rowHeight - 4);
+    } else if (isFocusRelated) {
+      canvasContext.fillStyle = "rgba(255, 255, 255, 0.035)";
+      canvasContext.fillRect(0, y, width, metrics.rowHeight);
+      if (focusAccent) {
+        canvasContext.fillStyle = focusAccent;
+        canvasContext.fillRect(0, y + 6, 3, metrics.rowHeight - 12);
+      }
     } else if (isHoveredRow) {
-      canvasContext.fillStyle = "rgba(219, 228, 238, 0.06)";
+      canvasContext.fillStyle = isDimmed ? "rgba(219, 228, 238, 0.04)" : "rgba(219, 228, 238, 0.06)";
       canvasContext.fillRect(0, y, width, metrics.rowHeight);
     }
 
     canvasContext.strokeStyle = "rgba(219, 228, 238, 0.08)";
     canvasContext.beginPath();
-    canvasContext.moveTo(metrics.horizontalPadding, y + metrics.rowHeight - 0.5);
-    canvasContext.lineTo(width - metrics.horizontalPadding, y + metrics.rowHeight - 0.5);
+    canvasContext.moveTo(0, y + metrics.rowHeight - 0.5);
+    canvasContext.lineTo(width - metrics.rightPadding, y + metrics.rowHeight - 0.5);
     canvasContext.stroke();
 
-    canvasContext.fillStyle = isSelected ? "#f8fafc" : isHoveredRow ? "#dbe4ee" : "#9fb3c8";
+    canvasContext.fillStyle = isSelected
+      ? "#f8fafc"
+      : isFocusRelated || isHoveredRow
+        ? "#dbe4ee"
+        : isDimmed
+          ? "rgba(159, 179, 200, 0.46)"
+          : "#9fb3c8";
     canvasContext.font = '12px "IBM Plex Mono", monospace';
-    canvasContext.fillText(`G${goroutine.goroutine_id}`, metrics.horizontalPadding, y + 22);
+    canvasContext.fillText(`G${goroutine.goroutine_id}`, 14, y + 18);
+    canvasContext.fillStyle = isDimmed ? "rgba(159, 179, 200, 0.40)" : "rgba(219, 228, 238, 0.74)";
+    canvasContext.font = '11px "IBM Plex Mono", monospace';
+    const laneFunction = truncateCanvasText(
+      canvasContext,
+      goroutine.labels?.function || "unknown",
+      metrics.labelGutterWidth - 22,
+    );
+    canvasContext.fillText(laneFunction, 14, y + 31);
 
     timeline
       .filter((segment) => segment.goroutine_id === goroutine.goroutine_id)
       .forEach((segment) => {
         const isHoveredSegment = buildSegmentKey(segment) === timelineHighlight.hoveredSegmentKey;
         // Map segment to canvas X coordinates using the visible window.
-        const rawX = metrics.horizontalPadding + ((segment.start_ns - visibleStart) / visibleSpan) * innerWidth;
-        const rawX2 = metrics.horizontalPadding + ((segment.end_ns - visibleStart) / visibleSpan) * innerWidth;
+        const rawX = plotLeft + ((segment.start_ns - visibleStart) / visibleSpan) * innerWidth;
+        const rawX2 = plotLeft + ((segment.end_ns - visibleStart) / visibleSpan) * innerWidth;
 
         // Clip to the drawable area — segments may extend outside the visible window.
-        const clampedX = Math.max(metrics.horizontalPadding, Math.min(rawX, metrics.horizontalPadding + innerWidth));
-        const clampedX2 = Math.max(metrics.horizontalPadding, Math.min(rawX2, metrics.horizontalPadding + innerWidth));
+        const clampedX = Math.max(plotLeft, Math.min(rawX, plotLeft + innerWidth));
+        const clampedX2 = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
 
         const barWidth = Math.max(clampedX2 - clampedX, clampedX2 > clampedX ? 2 : 0);
         if (barWidth === 0) {
@@ -757,6 +982,11 @@ function renderTimeline() {
         const barY = y + 9;
 
         canvasContext.save();
+        if (isDimmed) {
+          canvasContext.globalAlpha = 0.18;
+        } else if (isFocusRelated) {
+          canvasContext.globalAlpha = 0.92;
+        }
         roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 7);
         canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
         canvasContext.fill();
@@ -766,11 +996,15 @@ function renderTimeline() {
             ? "rgba(255, 255, 255, 0.95)"
             : "rgba(186, 230, 253, 0.72)";
           canvasContext.stroke();
+        } else if (isFocusRelated && focusAccent) {
+          canvasContext.lineWidth = 1;
+          canvasContext.strokeStyle = focusAccent.replace(/0\.\d+\)$/, "0.42)");
+          canvasContext.stroke();
         }
         canvasContext.restore();
 
         if (barWidth > 78) {
-          canvasContext.fillStyle = "rgba(255, 255, 255, 0.94)";
+          canvasContext.fillStyle = isDimmed ? "rgba(255, 255, 255, 0.50)" : "rgba(255, 255, 255, 0.94)";
           canvasContext.font = '11px "IBM Plex Mono", monospace';
           canvasContext.fillText(segment.state, clampedX + 8, barY + 12);
         }
@@ -787,17 +1021,17 @@ function renderTimeline() {
 function drawAxis(visibleStart, visibleEnd, fullMinStart, width, metrics) {
   const ticks = 5;
   const visibleSpan = Math.max(visibleEnd - visibleStart, 1);
-  const innerWidth = width - metrics.horizontalPadding * 2;
+  const { left: plotLeft, right: plotRight, innerWidth } = getTimelinePlotBounds(width, metrics);
 
   canvasContext.strokeStyle = "rgba(219, 228, 238, 0.14)";
   canvasContext.beginPath();
-  canvasContext.moveTo(metrics.horizontalPadding, metrics.axisHeight - 10);
-  canvasContext.lineTo(width - metrics.horizontalPadding, metrics.axisHeight - 10);
+  canvasContext.moveTo(plotLeft, metrics.axisHeight - 10);
+  canvasContext.lineTo(plotRight, metrics.axisHeight - 10);
   canvasContext.stroke();
 
   for (let index = 0; index < ticks; index += 1) {
     const ratio = ticks === 1 ? 0 : index / (ticks - 1);
-    const x = metrics.horizontalPadding + ratio * innerWidth;
+    const x = plotLeft + ratio * innerWidth;
     const value = visibleStart + ratio * visibleSpan;
 
     canvasContext.strokeStyle = "rgba(219, 228, 238, 0.12)";
@@ -841,7 +1075,7 @@ function getSegmentAt(canvasX, canvasY) {
   }
 
   const goroutine = goroutines[rowIndex];
-  const innerWidth = width - metrics.horizontalPadding * 2;
+  const { left: plotLeft, innerWidth } = getTimelinePlotBounds(width, metrics);
 
   for (const seg of timeline) {
     if (seg.goroutine_id !== goroutine.goroutine_id) {
@@ -849,10 +1083,10 @@ function getSegmentAt(canvasX, canvasY) {
     }
 
     // Map segment to canvas X using the visible window (same as renderTimeline).
-    const rawX = metrics.horizontalPadding + ((seg.start_ns - minStart) / span) * innerWidth;
-    const rawX2 = metrics.horizontalPadding + ((seg.end_ns - minStart) / span) * innerWidth;
-    const segX = Math.max(metrics.horizontalPadding, Math.min(rawX, metrics.horizontalPadding + innerWidth));
-    const segX2 = Math.max(metrics.horizontalPadding, Math.min(rawX2, metrics.horizontalPadding + innerWidth));
+    const rawX = plotLeft + ((seg.start_ns - minStart) / span) * innerWidth;
+    const rawX2 = plotLeft + ((seg.end_ns - minStart) / span) * innerWidth;
+    const segX = Math.max(plotLeft, Math.min(rawX, plotLeft + innerWidth));
+    const segX2 = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
     const barWidth = Math.max(segX2 - segX, segX2 > segX ? 2 : 0);
 
     if (barWidth > 0 && canvasX >= segX && canvasX <= segX + barWidth) {
@@ -875,6 +1109,93 @@ function getTimelineRowAt(canvasY) {
   }
 
   return goroutines[rowIndex];
+}
+
+function getHoveredTimelineNS(canvasX) {
+  const { minStart, span, width, metrics } = timelineCache;
+  if (!metrics || width <= 0) {
+    return null;
+  }
+
+  const { left: plotLeft, right: plotRight, innerWidth } = getTimelinePlotBounds(width, metrics);
+  if (canvasX < plotLeft || canvasX > plotRight) {
+    return null;
+  }
+
+  const ratio = (canvasX - plotLeft) / innerWidth;
+  return minStart + ratio * span;
+}
+
+function updateTimelineCursor(canvasX) {
+  const cursor = elements.timelineCursor;
+  if (!cursor) {
+    return;
+  }
+
+  const hoveredNS = getHoveredTimelineNS(canvasX);
+  if (hoveredNS === null) {
+    cursor.hidden = true;
+    return;
+  }
+
+  cursor.hidden = false;
+  cursor.style.left = `${canvasX}px`;
+  cursor.style.height = `${elements.timelineCanvas.clientHeight}px`;
+}
+
+function hideTimelineCursor() {
+  if (elements.timelineCursor) {
+    elements.timelineCursor.hidden = true;
+  }
+}
+
+function renderTimelineContext(hover = {}) {
+  if (!elements.timelineContext) {
+    return;
+  }
+
+  const { hit = null, hoveredRow = null, hoveredNS = null } = hover;
+  if (hit && hoveredNS !== null) {
+    const { segment, goroutine } = hit;
+    const parts = [
+      `<strong>Hover G${goroutine.goroutine_id}</strong>`,
+      escapeHTML(segment.state),
+      formatDuration(segment.end_ns - segment.start_ns),
+      `T+${formatDuration(hoveredNS - timelineCache.fullMinStart)}`,
+    ];
+    if (segment.reason) {
+      parts.push(escapeHTML(segment.reason));
+    }
+    if (segment.resource_id) {
+      parts.push(escapeHTML(segment.resource_id));
+    }
+    elements.timelineContext.innerHTML = parts.join(" · ");
+    return;
+  }
+
+  if (hoveredRow && hoveredNS !== null) {
+    elements.timelineContext.innerHTML = `<strong>Hover G${hoveredRow.goroutine_id}</strong> · ${escapeHTML(hoveredRow.labels?.function || "unknown")} · T+${formatDuration(hoveredNS - timelineCache.fullMinStart)}`;
+    return;
+  }
+
+  if (state.selectedGoroutine) {
+    const selected = state.selectedGoroutine;
+    const parts = [
+      `<strong>Selected G${selected.goroutine_id}</strong>`,
+      escapeHTML(selected.state),
+      escapeHTML(selected.labels?.function || "unknown"),
+    ];
+    if (selected.reason) {
+      parts.push(escapeHTML(selected.reason));
+    }
+    if (selected.resource_id) {
+      parts.push(escapeHTML(selected.resource_id));
+    }
+    elements.timelineContext.innerHTML = parts.join(" · ");
+    return;
+  }
+
+  elements.timelineContext.textContent = "Select a goroutine to inspect related lanes and timeline segments.";
 }
 
 function showTooltip(hit, clientX, clientY) {
@@ -941,6 +1262,10 @@ function renderError(message) {
   elements.goroutineList.innerHTML = `<div class="empty-message">${escapeHTML(message)}</div>`;
   elements.inspector.innerHTML = `<div class="empty-message">${escapeHTML(message)}</div>`;
   elements.resourceList.innerHTML = "";
+  if (elements.timelineContext) {
+    elements.timelineContext.textContent = message;
+  }
+  hideTimelineCursor();
   canvasContext.clearRect(0, 0, elements.timelineCanvas.width, elements.timelineCanvas.height);
 }
 
@@ -995,6 +1320,22 @@ function escapeHTML(value) {
     .replaceAll("'", "&#39;");
 }
 
+function truncateCanvasText(context, value, maxWidth) {
+  const text = String(value ?? "");
+  if (!text || context.measureText(text).width <= maxWidth) {
+    return text;
+  }
+
+  for (let end = text.length - 1; end > 0; end -= 1) {
+    const candidate = `${text.slice(0, end)}…`;
+    if (context.measureText(candidate).width <= maxWidth) {
+      return candidate;
+    }
+  }
+
+  return "…";
+}
+
 function roundRect(context, x, y, width, height, radius) {
   context.beginPath();
   context.moveTo(x + radius, y);
@@ -1042,6 +1383,7 @@ function renderMinimap() {
   }
 
   const { goroutines, timeline, fullMinStart, fullSpan, span: visibleSpan } = timelineCache;
+  const focus = getRelatedFocus();
 
   // Only show the minimap when zoomed in — at zoomLevel=1 it is redundant.
   if (!timelineCache.metrics || fullSpan <= 1 || timelineView.zoomLevel <= 1.05) {
@@ -1075,9 +1417,12 @@ function renderMinimap() {
   // Draw all goroutine segments at full-trace scale.
   for (let rowIdx = 0; rowIdx < goroutines.length; rowIdx += 1) {
     const goroutine = goroutines[rowIdx];
+    const isDimmed = focus.enabled && !focus.rolesByID.has(goroutine.goroutine_id);
     const y = topPad + rowIdx * rowHeight;
     const barH = rowHeight - 1;
 
+    minimapContext.save();
+    minimapContext.globalAlpha = isDimmed ? 0.14 : 1;
     for (const seg of timeline) {
       if (seg.goroutine_id !== goroutine.goroutine_id) {
         continue;
@@ -1090,6 +1435,7 @@ function renderMinimap() {
       minimapContext.fillStyle = colors[seg.state] ?? "#94a3b8";
       minimapContext.fillRect(x, y, barWidth, barH);
     }
+    minimapContext.restore();
   }
 
   // Darken the areas outside the current viewport.

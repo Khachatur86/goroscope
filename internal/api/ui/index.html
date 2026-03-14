@@ -77,14 +77,17 @@
         <div class="panel-header">
           <div>
             <h2>Timeline</h2>
-            <p>Hover to highlight · Scroll to zoom · Drag to pan · Click to inspect.</p>
+            <p>Related focus · Hover to highlight · Scroll to zoom · Drag to pan · Click to inspect.</p>
           </div>
           <div class="timeline-controls">
-            <button id="reset-zoom-button" class="reset-zoom-button" type="button" hidden>Reset zoom</button>
+            <button id="focus-related-button" class="timeline-control-button focus-related-button" type="button" aria-pressed="false">Related focus</button>
+            <button id="reset-zoom-button" class="timeline-control-button reset-zoom-button" type="button" hidden>Reset zoom</button>
             <div id="timeline-range" class="timeline-range"></div>
           </div>
         </div>
+        <div id="timeline-context" class="timeline-context">Select a goroutine to inspect related lanes and timeline segments.</div>
         <div class="timeline-stage">
+          <div id="timeline-cursor" class="timeline-cursor" hidden></div>
           <canvas id="timeline-canvas"></canvas>
           <!-- Minimap: compact full-trace overview, shown only when zoomed in -->
           <canvas id="minimap-canvas" class="minimap-canvas" hidden aria-label="Timeline minimap"></canvas>
