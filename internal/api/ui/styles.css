@@ -6,11 +6,11 @@
   --ink: #14213d;
   --muted: #5c6b7a;
   --shadow: 0 20px 50px rgba(20, 33, 61, 0.12);
-  --running: #2a9d8f;
-  --runnable: #6b7280;
-  --waiting: #f4a261;
-  --blocked: #d1495b;
-  --syscall: #457b9d;
+  --running: #10cfb8;
+  --runnable: #8394a8;
+  --waiting: #f59e0b;
+  --blocked: #f43f5e;
+  --syscall: #4da6ff;
   --done: #4b5563;
   --timeline-bg: #111827;
   --timeline-grid: rgba(226, 232, 240, 0.12);
@@ -401,17 +401,17 @@ select {
 
 .suspicion-tag.tone-danger {
   color: var(--blocked);
-  background: rgba(209, 73, 91, 0.14);
+  background: rgba(244, 63, 94, 0.12);
 }
 
 .suspicion-tag.tone-warn {
-  color: #9a5f16;
-  background: rgba(244, 162, 97, 0.18);
+  color: #b97a10;
+  background: rgba(245, 158, 11, 0.14);
 }
 
 .suspicion-tag.tone-info {
   color: var(--syscall);
-  background: rgba(69, 123, 157, 0.14);
+  background: rgba(77, 166, 255, 0.12);
 }
 
 .lane-priority-line {

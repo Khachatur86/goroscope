@@ -52,23 +52,12 @@ const derivedCache = {
 };
 
 const colors = {
-  RUNNING: "#2a9d8f",
-  RUNNABLE: "#6b7280",
-  WAITING: "#f4a261",
-  BLOCKED: "#d1495b",
-  SYSCALL: "#457b9d",
-  DONE: "#4b5563",
-};
-
-// Three-stop gradient per state: [top-highlight, mid-base, bottom-shadow].
-// Gives bars the appearance of depth without blur or heavy compositing.
-const colorStops = {
-  RUNNING:  ["#3dcebe", "#2a9d8f", "#1c7068"],
-  RUNNABLE: ["#8c939f", "#6b7280", "#4e545e"],
-  WAITING:  ["#f7c08a", "#f4a261", "#c97b3a"],
-  BLOCKED:  ["#e36070", "#d1495b", "#a02f3d"],
-  SYSCALL:  ["#5c95bb", "#457b9d", "#2f5c78"],
-  DONE:     ["#646e7b", "#4b5563", "#343d47"],
+  RUNNING:  "#10cfb8",
+  RUNNABLE: "#8394a8",
+  WAITING:  "#f59e0b",
+  BLOCKED:  "#f43f5e",
+  SYSCALL:  "#4da6ff",
+  DONE:     "#4b5563",
 };
 
 const timelineStates = ["RUNNING", "RUNNABLE", "WAITING", "BLOCKED", "SYSCALL", "DONE"];
@@ -479,7 +468,7 @@ function compareGoroutinesByBlocked(left, right) {
 function getTimelineMetrics() {
   return {
     axisHeight: 38,
-    rowHeight: 36,
+    rowHeight: 28,
     labelGutterWidth: 182,
     leftPadding: 14,
     rightPadding: 18,
@@ -1327,11 +1316,7 @@ function renderTimeline() {
   canvasContext.setTransform(dpr, 0, 0, dpr, 0, 0);
   canvasContext.clearRect(0, 0, width, height);
 
-  // Subtle top-to-bottom gradient keeps the canvas from looking flat.
-  const bgGrad = canvasContext.createLinearGradient(0, 0, 0, height);
-  bgGrad.addColorStop(0, "#141e32");
-  bgGrad.addColorStop(1, "#0c1522");
-  canvasContext.fillStyle = bgGrad;
+  canvasContext.fillStyle = "#0d1117";
   canvasContext.fillRect(0, 0, width, height);
 
   if (goroutines.length === 0) {
@@ -1413,7 +1398,7 @@ function renderTimeline() {
     // Zebra stripe: even rows get a faint background so the eye can track
     // horizontally across wide traces without losing its row.
     if (index % 2 === 0) {
-      canvasContext.fillStyle = "rgba(255, 255, 255, 0.038)";
+      canvasContext.fillStyle = "rgba(255, 255, 255, 0.028)";
       canvasContext.fillRect(0, y, width, metrics.rowHeight);
     }
 
@@ -1427,7 +1412,7 @@ function renderTimeline() {
       canvasContext.fillRect(0, y, width, metrics.rowHeight);
       if (focusAccent) {
         canvasContext.fillStyle = focusAccent;
-        canvasContext.fillRect(0, y + 6, 3, metrics.rowHeight - 12);
+        canvasContext.fillRect(0, y + 4, 3, metrics.rowHeight - 8);
       }
     } else if (isHoveredRow) {
       canvasContext.fillStyle = isDimmed ? "rgba(219, 228, 238, 0.04)" : "rgba(219, 228, 238, 0.06)";
@@ -1448,7 +1433,7 @@ function renderTimeline() {
           ? "rgba(159, 179, 200, 0.46)"
           : "#9fb3c8";
     canvasContext.font = '12px "IBM Plex Mono", monospace';
-    canvasContext.fillText(`G${goroutine.goroutine_id}`, 14, y + 18);
+    canvasContext.fillText(`G${goroutine.goroutine_id}`, 14, y + 12);
     canvasContext.fillStyle = isDimmed ? "rgba(159, 179, 200, 0.40)" : "rgba(219, 228, 238, 0.74)";
     canvasContext.font = '11px "IBM Plex Mono", monospace';
     const laneFunction = truncateCanvasText(
@@ -1456,7 +1441,7 @@ function renderTimeline() {
       goroutine.labels?.function || "unknown",
       metrics.labelGutterWidth - 22,
     );
-    canvasContext.fillText(laneFunction, 14, y + 31);
+    canvasContext.fillText(laneFunction, 14, y + 23);
 
     timeline
       .filter((segment) => segment.goroutine_id === goroutine.goroutine_id)
@@ -1475,10 +1460,10 @@ function renderTimeline() {
           return;
         }
 
-        // Thinner bars (12 px) give the tool a profiler feel rather than a
-        // dashboard feel.  Centred in the 36 px row: (36 - 12) / 2 = 12.
-        const barHeight = 12;
-        const barY = y + 12;
+        // Tall bars (20 px) fill most of the 28 px row — profiler-style density.
+        // 4 px top padding, 4 px bottom: (28 - 20) / 2 = 4.
+        const barHeight = 20;
+        const barY = y + 4;
 
         canvasContext.save();
         if (isDimmed) {
@@ -1486,38 +1471,30 @@ function renderTimeline() {
         } else if (isFocusRelated) {
           canvasContext.globalAlpha = 0.92;
         }
-        // Smaller radius (3 px) looks precise; 7 px looked like a UI button.
-        roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 3);
 
-        // Gradient fill: lighter at top, base in the middle, darker at bottom.
-        // Falls back to flat colour when dimmed so the overlay alpha still works.
-        if (!isDimmed) {
-          const stops = colorStops[segment.state];
-          if (stops) {
-            const grad = canvasContext.createLinearGradient(0, barY, 0, barY + barHeight);
-            grad.addColorStop(0,    stops[0]);
-            grad.addColorStop(0.45, stops[1]);
-            grad.addColorStop(1,    stops[2]);
-            canvasContext.fillStyle = grad;
-          } else {
-            canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
-          }
-        } else {
-          canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
-        }
+        // Flat fill — vivid colours read clearly without gradient overhead.
+        canvasContext.fillStyle = colors[segment.state] ?? "#94a3b8";
+        roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 2);
         canvasContext.fill();
+
+        // 1 px bright top edge gives the bar a crisp "lit from above" feel
+        // without a full gradient pass.
+        if (!isDimmed && barWidth > 2) {
+          canvasContext.fillStyle = "rgba(255, 255, 255, 0.22)";
+          canvasContext.fillRect(clampedX + 1, barY, barWidth - 2, 1);
+        }
 
         if (isSelected || isHoveredSegment) {
           canvasContext.lineWidth = isHoveredSegment ? 2 : 1.5;
           canvasContext.strokeStyle = isHoveredSegment
             ? "rgba(255, 255, 255, 0.95)"
             : "rgba(186, 230, 253, 0.72)";
-          roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 3);
+          roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 2);
           canvasContext.stroke();
         } else if (isFocusRelated && focusAccent) {
           canvasContext.lineWidth = 1;
           canvasContext.strokeStyle = focusAccent.replace(/0\.\d+\)$/, "0.42)");
-          roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 3);
+          roundRect(canvasContext, clampedX, barY, barWidth, barHeight, 2);
           canvasContext.stroke();
         }
         canvasContext.restore();
@@ -1525,8 +1502,8 @@ function renderTimeline() {
         if (barWidth > 78) {
           canvasContext.fillStyle = isDimmed ? "rgba(255, 255, 255, 0.50)" : "rgba(255, 255, 255, 0.94)";
           canvasContext.font = '11px "IBM Plex Mono", monospace';
-          // Baseline centred in a 12 px bar: barY + 9 puts the cap roughly mid-bar.
-          canvasContext.fillText(segment.state, clampedX + 8, barY + 9);
+          // Baseline centred in a 20 px bar: barY + 14 puts cap height mid-bar.
+          canvasContext.fillText(segment.state, clampedX + 8, barY + 14);
         }
       });
   });
