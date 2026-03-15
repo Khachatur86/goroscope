@@ -615,3 +615,57 @@ body {
   color: #fff;
   background: linear-gradient(135deg, #1e3a5f, #0f5f4e);
 }
+
+.gmp-strip {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.gmp-strip-label {
+  min-width: 36px;
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.gmp-strip-rows {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.gmp-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gmp-strip-row-label {
+  min-width: 24px;
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
+.gmp-strip-row-segments {
+  flex: 1;
+  height: 14px;
+  background: #0f172a;
+  border-radius: 2px;
+  position: relative;
+}
+
+.gmp-strip-segment {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 2px;
+  min-width: 2px;
+  cursor: pointer;
+}
+
+.gmp-strip-segment:hover {
+  filter: brightness(1.2);
+}

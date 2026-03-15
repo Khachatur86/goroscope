@@ -85,7 +85,7 @@
 - [x] Кнопка "⊞ Heatmap"
 - [x] Режим: lanes (по умолчанию) vs heatmap
 - [x] Heatmap: компактные строки горутин
-- [ ] GMP strip (требует processor-timeline API)
+- [x] GMP strip (processor-timeline API, показывается при наличии данных)
 
 ---
 

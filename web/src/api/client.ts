@@ -105,6 +105,18 @@ export async function fetchResourceGraph(): Promise<ResourceEdge[]> {
   return fetchJson<ResourceEdge[]>("/api/v1/resources/graph");
 }
 
+export type ProcessorSegment = {
+  processor_id: number;
+  goroutine_id: number;
+  start_ns: number;
+  end_ns: number;
+};
+
+export async function fetchProcessorTimeline(): Promise<ProcessorSegment[]> {
+  const data = await fetchJson<ProcessorSegment[] | null>("/api/v1/processor-timeline").catch(() => null);
+  return Array.isArray(data) ? data : [];
+}
+
 export type Insights = { long_blocked_count: number };
 export type DeadlockHint = { goroutine_ids: number[]; resource_ids: string[] };
 
