@@ -74,6 +74,26 @@ func newTestServer(t *testing.T, goroutines []model.Goroutine) *Server {
 	return NewServer("127.0.0.1:0", eng, mgr)
 }
 
+// newTestServerWithResources is like newTestServer but also sets resource edges.
+func newTestServerWithResources(t *testing.T, goroutines []model.Goroutine, edges []model.ResourceEdge) *Server {
+	t.Helper()
+	eng := analysis.NewEngine()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	sess := &model.Session{ID: "sess_test", Name: "test", Target: "demo://test", Status: model.SessionStatusRunning, StartedAt: base}
+	eng.Reset(sess)
+	events := make([]model.Event, 0, len(goroutines)*2)
+	for _, g := range goroutines {
+		events = append(events,
+			model.Event{Kind: model.EventKindGoroutineCreate, GoroutineID: g.ID, Timestamp: base},
+			model.Event{Kind: model.EventKindGoroutineState, GoroutineID: g.ID, Timestamp: base.Add(time.Millisecond), State: g.State, Reason: g.Reason, ResourceID: g.ResourceID},
+		)
+	}
+	eng.ApplyEvents(events)
+	eng.SetResourceGraph(edges)
+	mgr := session.NewManager()
+	return NewServer("127.0.0.1:0", eng, mgr)
+}
+
 // decodeJSON decodes the response body into dst and fails the test on error.
 func decodeJSON(t *testing.T, rec *httptest.ResponseRecorder, dst any) {
 	t.Helper()
@@ -465,6 +485,41 @@ func TestHandleGoroutineChildren(t *testing.T) {
 			t.Fatalf("status = %d, want 400", rec.Code)
 		}
 	})
+}
+
+// ─── GET /api/v1/deadlock-hints ──────────────────────────────────────────────
+
+func TestHandleDeadlockHints(t *testing.T) {
+	t.Parallel()
+
+	goroutines := []model.Goroutine{
+		{ID: 1, State: model.StateBlocked, ResourceID: "chan:0x1"},
+		{ID: 2, State: model.StateBlocked, ResourceID: "chan:0x1"},
+		{ID: 3, State: model.StateBlocked, ResourceID: "mutex:0x2"},
+	}
+	edges := []model.ResourceEdge{
+		{FromGoroutineID: 1, ToGoroutineID: 2, ResourceID: "chan:0x1"},
+		{FromGoroutineID: 2, ToGoroutineID: 3, ResourceID: "mutex:0x2"},
+		{FromGoroutineID: 3, ToGoroutineID: 1, ResourceID: "chan:0x3"},
+	}
+
+	s := newTestServerWithResources(t, goroutines, edges)
+	handler := s.routes()
+
+	rec := get(t, handler, "/api/v1/deadlock-hints")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Hints []struct {
+			GoroutineIDs []int64  `json:"goroutine_ids"`
+			ResourceIDs  []string `json:"resource_ids"`
+		} `json:"hints"`
+	}
+	decodeJSON(t, rec, &body)
+	if len(body.Hints) == 0 {
+		t.Error("expected at least one deadlock hint for cycle 1-2-3")
+	}
 }
 
 // ─── GET /api/v1/insights ─────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ const state = {
   resources: [],
   processorTimeline: [],
   insights: null,
+  deadlockHints: [],
   selectedId: null,
   selectedGoroutine: null,
   initialGoroutineFromURL: null,
@@ -89,6 +90,8 @@ const elements = {
   blockedCount: document.getElementById("blocked-count"),
   longBlockedCount: document.getElementById("long-blocked-count"),
   longBlockedCard: document.getElementById("long-blocked-card"),
+  deadlockHintsCount: document.getElementById("deadlock-hints-count"),
+  deadlockHintsCard: document.getElementById("deadlock-hints-card"),
   jumpToInput: document.getElementById("jump-to-input"),
   searchInput: document.getElementById("search-input"),
   stateFilter: document.getElementById("state-filter"),
@@ -449,7 +452,7 @@ function buildGoroutinesURL() {
 async function loadData() {
   try {
     const goroutinesURL = buildGoroutinesURL();
-    const [session, goroutinesResp, timeline, resources, sessions, processorTimeline, insights] = await Promise.all([
+    const [session, goroutinesResp, timeline, resources, sessions, processorTimeline, insights, deadlockResp] = await Promise.all([
       fetchJSON("/api/v1/session/current"),
       fetchJSON(goroutinesURL),
       fetchJSON("/api/v1/timeline"),
@@ -457,6 +460,7 @@ async function loadData() {
       fetchJSON("/api/v1/sessions"),
       fetchJSON("/api/v1/processor-timeline").catch(() => []),
       fetchJSON("/api/v1/insights").catch(() => ({ long_blocked_count: 0 })),
+      fetchJSON("/api/v1/deadlock-hints").catch(() => ({ hints: [] })),
     ]);
 
     const goroutines = Array.isArray(goroutinesResp)
@@ -470,6 +474,7 @@ async function loadData() {
     state.sessions = Array.isArray(sessions) ? sessions : [];
     state.processorTimeline = Array.isArray(processorTimeline) ? processorTimeline : [];
     state.insights = insights;
+    state.deadlockHints = deadlockResp?.hints ?? [];
     resetDerivedCaches();
 
     parseGoroutineFromURL();
@@ -1238,6 +1243,9 @@ function renderSummary() {
   if (elements.longBlockedCard) {
     elements.longBlockedCard.classList.toggle("active", Boolean(state.minWaitNs));
     elements.longBlockedCard.setAttribute("aria-pressed", state.minWaitNs ? "true" : "false");
+  }
+  if (elements.deadlockHintsCount) {
+    elements.deadlockHintsCount.textContent = String(state.deadlockHints?.length ?? 0);
   }
 }
 

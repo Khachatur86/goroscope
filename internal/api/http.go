@@ -77,6 +77,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
 	mux.HandleFunc("/api/v1/processor-timeline", s.handleProcessorTimeline)
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
+	mux.HandleFunc("/api/v1/deadlock-hints", s.handleDeadlockHints)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 
 	if isLocalhostAddr(s.addr) {
@@ -407,6 +408,20 @@ func (s *Server) handleProcessorTimeline(w http.ResponseWriter, _ *http.Request)
 
 func (s *Server) handleGraph(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.engine.ResourceGraph())
+}
+
+func (s *Server) handleDeadlockHints(w http.ResponseWriter, _ *http.Request) {
+	edges := s.engine.ResourceGraph()
+	if len(edges) == 0 {
+		timeline := s.engine.Timeline()
+		goroutines := s.engine.ListGoroutines()
+		edges = analysis.DeriveResourceEdgesFromTimeline(timeline, goroutines)
+	}
+
+	hints := analysis.FindDeadlockHints(edges, s.engine.ListGoroutines())
+	writeJSON(w, http.StatusOK, map[string]any{
+		"hints": hints,
+	})
 }
 
 // handleStream implements a Server-Sent Events (SSE) endpoint.
