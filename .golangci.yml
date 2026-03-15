@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
   modules-download-mode: readonly
@@ -14,11 +16,14 @@ linters:
     - bodyclose       # http.Response.Body not closed
 
     # ── style / naming ────────────────────────────────────────────────────────
-    - gofmt           # standard formatting
     - revive          # fast, configurable replacement for golint
 
     # ── safety ────────────────────────────────────────────────────────────────
     - gosec           # common security issues (G-series)
+
+formatters:
+  enable:
+    - gofmt           # standard formatting
 
 linters-settings:
   revive:
