@@ -16,6 +16,7 @@ import (
 	"github.com/Khachatur86/goroscope/internal/model"
 	"github.com/Khachatur86/goroscope/internal/session"
 	"github.com/Khachatur86/goroscope/internal/tracebridge"
+	"github.com/Khachatur86/goroscope/internal/version"
 )
 
 // Run is the CLI entry point; it parses args and dispatches to the appropriate command.
@@ -34,20 +35,48 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return uiCommand(ctx, args[1:], stdout, stderr)
 	case "replay":
 		return replayCommand(ctx, args[1:], stdout, stderr)
+	case "version":
+		_, _ = fmt.Fprintln(stdout, version.Version)
+		return nil
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q", args[0])
+		return fmt.Errorf("unknown command %q\n\nRun 'goroscope help' for usage.", args[0])
 	}
 }
 
 func printUsage(w io.Writer) {
+	_, _ = fmt.Fprintln(w, "Goroscope — local Go concurrency debugger")
+	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Usage:")
-	_, _ = fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--open-browser] [--session-name name] [--poll-interval 1s] [--save path.gtrace] <package-or-binary>")
-	_, _ = fmt.Fprintln(w, "  goroscope collect [--addr 127.0.0.1:7070] [--open-browser]")
-	_, _ = fmt.Fprintln(w, "  goroscope ui [--addr 127.0.0.1:7070] [--open-browser]")
-	_, _ = fmt.Fprintln(w, "  goroscope replay [--addr 127.0.0.1:7070] [--open-browser] <capture-file>")
+	_, _ = fmt.Fprintln(w, "  goroscope run [flags] <package-or-binary>")
+	_, _ = fmt.Fprintln(w, "  goroscope collect [flags]")
+	_, _ = fmt.Fprintln(w, "  goroscope ui [flags]")
+	_, _ = fmt.Fprintln(w, "  goroscope replay [flags] <capture-file>")
+	_, _ = fmt.Fprintln(w, "  goroscope version")
+	_, _ = fmt.Fprintln(w, "  goroscope help")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Commands:")
+	_, _ = fmt.Fprintln(w, "  run       Run a Go program with live trace capture (target must use agent)")
+	_, _ = fmt.Fprintln(w, "  collect   Load demo data and serve UI")
+	_, _ = fmt.Fprintln(w, "  ui        Load demo data and serve UI")
+	_, _ = fmt.Fprintln(w, "  replay    Load a .gtrace capture file and serve UI")
+	_, _ = fmt.Fprintln(w, "  version   Print version")
+	_, _ = fmt.Fprintln(w, "  help      Show this help")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Common flags (run, collect, ui, replay):")
+	_, _ = fmt.Fprintln(w, "  -addr string       HTTP bind address (default \"127.0.0.1:7070\")")
+	_, _ = fmt.Fprintln(w, "  -open-browser      Open the default browser to the UI")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Run-specific flags:")
+	_, _ = fmt.Fprintln(w, "  -session-name      Session name (default \"local-run\")")
+	_, _ = fmt.Fprintln(w, "  -poll-interval     How often to re-read the trace file (default 1s)")
+	_, _ = fmt.Fprintln(w, "  -save path         Save capture to .gtrace file when session completes")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Example:")
+	_, _ = fmt.Fprintln(w, "  goroscope run ./examples/trace_demo --open-browser")
+	_, _ = fmt.Fprintln(w, "  goroscope ui --open-browser")
 }
 
 // openBrowserURL opens the default browser to the given URL. It returns silently on
@@ -68,6 +97,12 @@ func openBrowserURL(url string) {
 func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope run [flags] <package-or-binary>\n\n")
+		_, _ = fmt.Fprintf(stderr, "Run a Go program with live trace capture. The target must import\n")
+		_, _ = fmt.Fprintf(stderr, "github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main.\n\n")
+		fs.PrintDefaults()
+	}
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
@@ -76,6 +111,9 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	savePath := fs.String("save", "", "Save capture to file when session completes (e.g. ./captures/run.gtrace)")
 
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
 		return err
 	}
 
@@ -99,10 +137,18 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("collect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope collect [flags]\n\n")
+		_, _ = fmt.Fprintf(stderr, "Load demo data and serve the UI.\n\n")
+		fs.PrintDefaults()
+	}
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
 		return err
 	}
 
@@ -117,10 +163,18 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("ui", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope ui [flags]\n\n")
+		_, _ = fmt.Fprintf(stderr, "Load demo data and serve the UI.\n\n")
+		fs.PrintDefaults()
+	}
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
 		return err
 	}
 
@@ -135,10 +189,18 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope replay [flags] <capture-file>\n\n")
+		_, _ = fmt.Fprintf(stderr, "Load a .gtrace capture file and serve the UI.\n\n")
+		fs.PrintDefaults()
+	}
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
 		return err
 	}
 

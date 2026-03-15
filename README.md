@@ -2,50 +2,77 @@
 
 Goroscope is a local Go concurrency debugger that captures runtime trace events and visualizes goroutines, blocking, channels, and mutex interactions on an interactive timeline.
 
-## Current Status
+## Install
 
-This repository contains a working local MVP built around `runtime/trace`:
+```bash
+go install github.com/Khachatur86/goroscope/cmd/goroscope@latest
+```
 
-- Go CLI with `run`, `collect`, `ui`, and `replay` commands
-- cooperative trace capture via the `agent` package
-- trace parsing and normalization in `internal/tracebridge`
-- in-memory analysis engine and session manager
-- local REST + SSE API with an embedded browser UI under `internal/api/ui`
-- future React workspace scaffold under `web/`
-- product specification and architecture notes under `docs/`
+Or build from source:
+
+```bash
+git clone https://github.com/Khachatur86/goroscope
+cd goroscope
+make build
+# Binary: bin/goroscope
+```
+
+Build with version: `make build VERSION=1.0.0`
 
 ## Quick Start
 
 ```bash
-make build
-go run ./cmd/goroscope ui --open-browser
+goroscope ui --open-browser
 ```
 
 Or without the flag: open `http://127.0.0.1:7070` manually.
 
-Build with version: `make build VERSION=1.0.0`
+## Current Status
+
+This repository contains a working local MVP built around `runtime/trace`:
+
+- Go CLI with `run`, `collect`, `ui`, `replay`, and `version` commands
+- cooperative trace capture via the `agent` package
+- trace parsing and normalization in `internal/tracebridge`
+- in-memory analysis engine and session manager
+- local REST + SSE API with an embedded browser UI under `internal/api/ui`
+- VS Code extension with Session panel and open-in-editor from stack frames
+- product specification and architecture notes under `docs/`
 
 ## Runtime Trace Demo
 
-The first real `run` pipeline is cooperative: the target app must import the Goroscope agent and call `agent.StartFromEnv()` in `main`.
+The `run` pipeline is cooperative: the target app must import the Goroscope agent and call `agent.StartFromEnv()` in `main`.
 
-An example target is included:
-
-```bash
-go run ./cmd/goroscope run ./examples/trace_demo
-```
-
-This starts the local UI immediately, runs the target, and refreshes the timeline from the growing `runtime/trace` while the process is still running. Live updates are pushed to the browser over Server-Sent Events, with a periodic fallback refresh in the UI.
-
-## Other Entry Points
+Examples:
 
 ```bash
-go run ./cmd/goroscope ui
-go run ./cmd/goroscope collect
-go run ./cmd/goroscope replay ./captures/sample.gtrace
+goroscope run ./examples/trace_demo --open-browser
+goroscope run ./examples/worker_pool --open-browser
 ```
 
-`ui` and `collect` currently load bundled demo data. `replay` loads a capture file from disk. The current runnable UI is the embedded asset bundle in `internal/api/ui`; the `web/` directory is a future standalone frontend workspace.
+This starts the local UI immediately, runs the target, and refreshes the timeline from the growing `runtime/trace` while the process is still running. Live updates are pushed to the browser over Server-Sent Events.
+
+## Commands
+
+| Command   | Description                                      |
+|-----------|--------------------------------------------------|
+| `run`     | Run a Go program with live trace capture         |
+| `collect` | Load demo data and serve UI                      |
+| `ui`      | Load demo data and serve UI                      |
+| `replay`  | Load a .gtrace capture file and serve UI         |
+| `version` | Print version                                    |
+| `help`    | Show usage                                       |
+
+```bash
+goroscope help
+goroscope run -h
+```
+
+## Troubleshooting
+
+**"target did not emit a runtime trace"** — The target must import `github.com/Khachatur86/goroscope/agent` and call `agent.StartFromEnv()` in `main`. See `examples/trace_demo` and `examples/worker_pool`.
+
+**"Cannot connect to Goroscope"** (VS Code) — Ensure goroscope is running (`goroscope run ...` or `goroscope ui`). Check `goroscope.addr` in VS Code settings.
 
 ## API
 
@@ -62,14 +89,16 @@ Open the UI with `?goroutine=123` to auto-select that goroutine. The URL updates
 ## Layout
 
 ```text
-agent/               Opt-in trace bootstrap for target programs
-cmd/goroscope        CLI entrypoint
-examples/trace_demo  Example target instrumented with the agent
-internal/api         Local REST API, SSE stream, and embedded UI assets
-internal/analysis    Goroutine state engine and timeline construction
-internal/model       Core domain types
-internal/session     Session lifecycle
-internal/tracebridge Runtime trace execution, parsing, and replay
-web/                 Future React frontend scaffold
-docs/                Product and architecture docs
+agent/                  Opt-in trace bootstrap for target programs
+cmd/goroscope           CLI entrypoint
+examples/trace_demo     Example: channels + mutex
+examples/worker_pool    Example: worker pool pattern
+internal/api            Local REST API, SSE stream, and embedded UI assets
+internal/analysis       Goroutine state engine and timeline construction
+internal/model          Core domain types
+internal/session        Session lifecycle
+internal/tracebridge    Runtime trace execution, parsing, and replay
+vscode/                 VS Code extension
+web/                    Future React frontend scaffold
+docs/                   Product and architecture docs
 ```
