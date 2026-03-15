@@ -69,6 +69,14 @@ const timelineStates = ["RUNNING", "RUNNABLE", "WAITING", "BLOCKED", "SYSCALL", 
 const stallStates = new Set(["WAITING", "BLOCKED", "SYSCALL"]);
 const offCPUStates = new Set(["RUNNABLE", "WAITING", "BLOCKED", "SYSCALL"]);
 
+const LANE_ITEM_HEIGHT = 88;
+const LANE_VIRTUAL_THRESHOLD = 100;
+const LANE_LIST_VIEWPORT_HEIGHT = 500;
+
+const laneListState = {
+  scrollTop: 0,
+};
+
 const elements = {
   refreshButton: document.getElementById("refresh-button"),
   sessionName: document.getElementById("session-name"),
@@ -1141,37 +1149,24 @@ function renderSummary() {
   }
 }
 
-function renderGoroutineList() {
-  const goroutines = getFilteredGoroutines();
-  const focus = getRelatedFocus();
+function buildLaneItemHTML(goroutine, focus, diagnostics) {
+  const focusRoles = getFocusRoles(focus, goroutine.goroutine_id);
+  const primaryFocusRole = getPrimaryFocusRole(focusRoles);
+  const focusClass = focus.enabled
+    ? focusRoles ? ` focus-related focus-${primaryFocusRole}` : " focus-dimmed"
+    : "";
+  const waitBadge = goroutine.wait_ns > 0
+    ? `<span class="wait-badge">${formatDuration(goroutine.wait_ns)}</span>`
+    : "";
+  const focusTags = focus.enabled ? renderFocusTags(focus, goroutine.goroutine_id) : "";
+  const suspicionTags = renderSuspicionTags(diagnostics);
+  const primaryFlag = diagnostics?.primaryFlag
+    ? `<div class="lane-priority-line">${escapeHTML(diagnostics.primaryFlag.detail)}</div>`
+    : "";
 
-  if (goroutines.length === 0) {
-    elements.goroutineList.innerHTML = `<div class="empty-message">No goroutines match the current filters.</div>`;
-    return;
-  }
-
-  elements.goroutineList.innerHTML = "";
-  for (const goroutine of goroutines) {
-    const button = document.createElement("button");
-    button.type = "button";
-    const diagnostics = buildGoroutineDiagnostics(goroutine);
-    const focusRoles = getFocusRoles(focus, goroutine.goroutine_id);
-    const primaryFocusRole = getPrimaryFocusRole(focusRoles);
-    const focusClass = focus.enabled
-      ? focusRoles ? ` focus-related focus-${primaryFocusRole}` : " focus-dimmed"
-      : "";
-    button.className = `lane-item${goroutine.goroutine_id === state.selectedId ? " active" : ""}${focusClass}`;
-
-    const waitBadge = goroutine.wait_ns > 0
-      ? `<span class="wait-badge">${formatDuration(goroutine.wait_ns)}</span>`
-      : "";
-    const focusTags = focus.enabled ? renderFocusTags(focus, goroutine.goroutine_id) : "";
-    const suspicionTags = renderSuspicionTags(diagnostics);
-    const primaryFlag = diagnostics?.primaryFlag
-      ? `<div class="lane-priority-line">${escapeHTML(diagnostics.primaryFlag.detail)}</div>`
-      : "";
-
-    button.innerHTML = `
+  return {
+    className: `lane-item${goroutine.goroutine_id === state.selectedId ? " active" : ""}${focusClass}`,
+    html: `
       <div class="lane-item-header">
         <span class="lane-item-title">G${goroutine.goroutine_id}</span>
         <span class="state-pill ${goroutine.state}">${goroutine.state}</span>
@@ -1183,11 +1178,104 @@ function renderGoroutineList() {
       ${suspicionTags}
       ${primaryFlag}
       ${focusTags}
+    `,
+    goroutine,
+  };
+}
+
+function renderGoroutineList() {
+  const goroutines = getFilteredGoroutines();
+  const focus = getRelatedFocus();
+
+  if (goroutines.length === 0) {
+    elements.goroutineList.innerHTML = `<div class="empty-message">No goroutines match the current filters.</div>`;
+    return;
+  }
+
+  const useVirtual = goroutines.length > LANE_VIRTUAL_THRESHOLD;
+
+  if (!useVirtual) {
+    elements.goroutineList.innerHTML = "";
+    elements.goroutineList.classList.remove("lane-list-virtual");
+    for (const goroutine of goroutines) {
+      const diagnostics = buildGoroutineDiagnostics(goroutine);
+      const { className, html, goroutine: g } = buildLaneItemHTML(goroutine, focus, diagnostics);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = className;
+      button.innerHTML = html;
+      button.addEventListener("click", () => selectGoroutine(g.goroutine_id));
+      elements.goroutineList.appendChild(button);
+    }
+    return;
+  }
+
+  const viewport = elements.goroutineList.querySelector(".lane-list-viewport");
+  const scrollTop = viewport ? viewport.scrollTop : laneListState.scrollTop;
+  const totalHeight = goroutines.length * LANE_ITEM_HEIGHT;
+
+  if (!viewport) {
+    elements.goroutineList.classList.add("lane-list-virtual");
+    elements.goroutineList.innerHTML = `
+      <div class="lane-list-viewport">
+        <div class="lane-list-spacer" style="height: ${totalHeight}px"></div>
+        <div class="lane-list-content"></div>
+      </div>
     `;
-    button.addEventListener("click", () => {
-      selectGoroutine(goroutine.goroutine_id);
+    const newViewport = elements.goroutineList.querySelector(".lane-list-viewport");
+    newViewport.addEventListener("scroll", () => {
+      laneListState.scrollTop = newViewport.scrollTop;
+      renderGoroutineListVisible(getFilteredGoroutines(), getRelatedFocus(), newViewport);
     });
-    elements.goroutineList.appendChild(button);
+  } else {
+    const spacer = viewport.querySelector(".lane-list-spacer");
+    if (spacer) spacer.style.height = `${totalHeight}px`;
+  }
+
+  const vp = elements.goroutineList.querySelector(".lane-list-viewport");
+  if (vp) {
+    let targetScroll = scrollTop;
+    if (state.selectedId) {
+      const selectedIndex = goroutines.findIndex((g) => g.goroutine_id === state.selectedId);
+      if (selectedIndex >= 0) {
+        const selectedTop = selectedIndex * LANE_ITEM_HEIGHT;
+        const selectedBottom = selectedTop + LANE_ITEM_HEIGHT;
+        if (selectedTop < scrollTop) {
+          targetScroll = selectedTop;
+        } else if (selectedBottom > scrollTop + LANE_LIST_VIEWPORT_HEIGHT) {
+          targetScroll = selectedBottom - LANE_LIST_VIEWPORT_HEIGHT;
+        }
+      }
+    }
+    vp.scrollTop = Math.min(targetScroll, Math.max(0, totalHeight - LANE_LIST_VIEWPORT_HEIGHT));
+    laneListState.scrollTop = vp.scrollTop;
+    renderGoroutineListVisible(goroutines, focus, vp);
+  }
+}
+
+function renderGoroutineListVisible(goroutines, focus, viewport) {
+  const content = viewport?.querySelector(".lane-list-content");
+  if (!content) return;
+
+  const scrollTop = viewport.scrollTop;
+  const startIndex = Math.max(0, Math.floor(scrollTop / LANE_ITEM_HEIGHT));
+  const visibleCount = Math.ceil(LANE_LIST_VIEWPORT_HEIGHT / LANE_ITEM_HEIGHT) + 2;
+  const endIndex = Math.min(goroutines.length, startIndex + visibleCount);
+
+  content.innerHTML = "";
+  content.style.top = `${startIndex * LANE_ITEM_HEIGHT}px`;
+
+  for (let i = startIndex; i < endIndex; i++) {
+    const goroutine = goroutines[i];
+    const diagnostics = buildGoroutineDiagnostics(goroutine);
+    const { className, html, goroutine: g } = buildLaneItemHTML(goroutine, focus, diagnostics);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `lane-item lane-item-virtual ${className}`;
+    button.style.minHeight = `${LANE_ITEM_HEIGHT - 10}px`;
+    button.innerHTML = html;
+    button.addEventListener("click", () => selectGoroutine(g.goroutine_id));
+    content.appendChild(button);
   }
 }
 

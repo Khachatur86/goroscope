@@ -348,6 +348,36 @@ select {
   overflow: auto;
 }
 
+.lane-list-virtual {
+  padding: 0;
+  overflow: hidden;
+}
+
+.lane-list-virtual .lane-list-viewport {
+  position: relative;
+  height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.lane-list-virtual .lane-list-spacer {
+  pointer-events: none;
+}
+
+.lane-list-virtual .lane-list-content {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  display: grid;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.lane-list-virtual .lane-list-content .lane-item-virtual {
+  pointer-events: auto;
+  overflow: hidden;
+}
+
 .lane-item {
   border: 1px solid rgba(20, 33, 61, 0.1);
   border-radius: 18px;
