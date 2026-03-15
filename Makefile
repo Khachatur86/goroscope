@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run ui fmt test
+.PHONY: build run ui fmt test test-race vet lint vscode
 
 build:
 	mkdir -p bin
@@ -18,3 +18,15 @@ fmt:
 
 test:
 	go test ./...
+
+test-race:
+	go test -race ./...
+
+vet:
+	go vet ./...
+
+lint:
+	golangci-lint run
+
+vscode:
+	cd vscode && npm install && npm run compile

@@ -1,0 +1,88 @@
+{
+  "name": "goroscope",
+  "displayName": "Goroscope",
+  "description": "Local Go concurrency debugger - inspect goroutines, blocking behavior, and stack snapshots",
+  "version": "0.1.0",
+  "publisher": "goroscope",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:goroscope.runCurrentPackage",
+    "onCommand:goroscope.runSelectedMain",
+    "onCommand:goroscope.attachToSession",
+    "onCommand:goroscope.stopSession",
+    "onCommand:goroscope.openTimeline"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "goroscope.runCurrentPackage",
+        "title": "Goroscope: Run Current Package"
+      },
+      {
+        "command": "goroscope.runSelectedMain",
+        "title": "Goroscope: Run Selected Main"
+      },
+      {
+        "command": "goroscope.attachToSession",
+        "title": "Goroscope: Attach to Current Session"
+      },
+      {
+        "command": "goroscope.stopSession",
+        "title": "Goroscope: Stop Session"
+      },
+      {
+        "command": "goroscope.openTimeline",
+        "title": "Goroscope: Open Timeline"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "goroscope",
+          "title": "Goroscope",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "goroscope": [
+        {
+          "id": "goroscope.session",
+          "name": "Session"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Goroscope",
+      "properties": {
+        "goroscope.addr": {
+          "type": "string",
+          "default": "127.0.0.1:7070",
+          "description": "HTTP address for the Goroscope API"
+        },
+        "goroscope.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to goroscope binary. Empty = use PATH or workspace bin/goroscope"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  }
+}

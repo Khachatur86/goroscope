@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/http/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -72,7 +74,29 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/processor-timeline", s.handleProcessorTimeline)
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
+
+	if isLocalhostAddr(s.addr) {
+		mux.Handle("/debug/pprof/", http.StripPrefix("/debug/pprof", http.HandlerFunc(pprof.Index)))
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
+
 	return mux
+}
+
+// isLocalhostAddr reports whether addr binds to localhost (127.0.0.1, ::1, or localhost).
+// pprof endpoints are only exposed when the server is local-only (OBS-3).
+func isLocalhostAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return strings.ToLower(host) == "localhost"
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

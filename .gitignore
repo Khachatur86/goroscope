@@ -1,7 +1,10 @@
 .DS_Store
+tmp_trace_probe.out
 bin/
 coverage.out
 captures/*.gtrace
 !captures/sample.gtrace
 web/dist/
 web/node_modules/
+vscode/out/
+vscode/node_modules/

@@ -89,6 +89,7 @@ const elements = {
   blockedCount: document.getElementById("blocked-count"),
   longBlockedCount: document.getElementById("long-blocked-count"),
   longBlockedCard: document.getElementById("long-blocked-card"),
+  jumpToInput: document.getElementById("jump-to-input"),
   searchInput: document.getElementById("search-input"),
   stateFilter: document.getElementById("state-filter"),
   reasonFilter: document.getElementById("reason-filter"),
@@ -122,6 +123,26 @@ const heatmapContext = elements.heatmapCanvas ? elements.heatmapCanvas.getContex
 
 elements.refreshButton.addEventListener("click", () => {
   loadData();
+});
+
+if (elements.jumpToInput) {
+  elements.jumpToInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const id = parseInt(elements.jumpToInput.value, 10);
+      if (Number.isFinite(id) && id > 0) {
+        jumpToGoroutine(id);
+        elements.jumpToInput.value = "";
+      }
+    }
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "g") {
+    event.preventDefault();
+    elements.jumpToInput?.focus();
+  }
 });
 
 elements.searchInput.addEventListener("input", (event) => {
@@ -535,6 +556,20 @@ async function selectGoroutine(id) {
   render();
 }
 
+async function jumpToGoroutine(id) {
+  const exists = state.goroutines.some((g) => g.goroutine_id === id);
+  if (!exists) {
+    try {
+      const g = await fetchJSON(`/api/v1/goroutines/${id}`);
+      state.goroutines = [...state.goroutines, g];
+      resetDerivedCaches();
+    } catch {
+      return;
+    }
+  }
+  await selectGoroutine(id);
+}
+
 function resetDerivedCaches() {
   derivedCache.diagnosticsByID = new Map();
   derivedCache.resourceEdgesByID = null;
@@ -560,7 +595,7 @@ function getStateUrgencyRank(stateName) {
 }
 
 function getFilteredGoroutines() {
-  return state.goroutines
+  const filtered = state.goroutines
     .filter((item) => state.stateFilter === "ALL" || item.state === state.stateFilter)
     .filter((item) => !state.reasonFilter || item.reason === state.reasonFilter)
     .filter((item) => {
@@ -577,8 +612,14 @@ function getFilteredGoroutines() {
       ].join(" ").toLowerCase();
 
       return haystack.includes(state.search);
-    })
-    .sort(compareGoroutinesForSort);
+    });
+  const selected = state.selectedId && !filtered.some((g) => g.goroutine_id === state.selectedId)
+    ? state.goroutines.find((g) => g.goroutine_id === state.selectedId)
+    : null;
+  if (selected) {
+    filtered.push(selected);
+  }
+  return filtered.sort(compareGoroutinesForSort);
 }
 
 function compareGoroutinesForSort(left, right) {
