@@ -131,18 +131,9 @@ export function App() {
             search: filters.search || undefined,
             min_wait_ns: filters.minWaitNs || undefined,
           };
-    const timelineParams =
-      hasGoroutineInURL
-        ? undefined
-        : {
-            state: filters.state !== "ALL" ? filters.state : undefined,
-            reason: filters.reason || undefined,
-            search: filters.search || undefined,
-          };
-    const [sess, gs, , res, ins, deadlock] = await Promise.all([
+    const [sess, gs, res, ins, deadlock] = await Promise.all([
       fetchCurrentSession(),
       fetchGoroutines(goroutineParams),
-      fetchTimeline(timelineParams),
       fetchResourceGraph(),
       fetchInsights(filters.minWaitNs || undefined),
       fetchDeadlockHints(),
@@ -161,8 +152,41 @@ export function App() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 2000);
-    return () => clearInterval(interval);
+
+    let source: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let alive = true;
+
+    const connect = () => {
+      if (!alive) return;
+      setStreamStatus("connecting");
+      source = new EventSource("/api/v1/stream");
+
+      source.addEventListener("connected", () => {
+        setStreamStatus("live");
+      });
+
+      source.addEventListener("update", () => {
+        loadData();
+      });
+
+      source.onerror = () => {
+        setStreamStatus("disconnected");
+        source?.close();
+        source = null;
+        if (alive) {
+          reconnectTimer = setTimeout(connect, 3000);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      alive = false;
+      source?.close();
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    };
   }, [loadData]);
 
   const initialGoroutineFromUrl = useRef<number | null>(parseGoroutineFromURL());
@@ -249,6 +273,7 @@ export function App() {
   const jumpToInputRef = useRef<HTMLInputElement>(null);
   const timelinePanelRef = useRef<HTMLElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<"connecting" | "live" | "disconnected">("connecting");
 
   const handleSavePng = async () => {
     const el = timelinePanelRef.current;
@@ -355,6 +380,13 @@ export function App() {
           <p className="subtitle">Inspect goroutines, blocking behavior, and stack snapshots on a live runtime timeline.</p>
         </div>
         <div className="hero-actions">
+          <span
+            className={`stream-status stream-status--${streamStatus}`}
+            title={`Stream: ${streamStatus}`}
+            aria-label={`Stream status: ${streamStatus}`}
+          >
+            ● {streamStatus}
+          </span>
           <button id="copy-link-btn" type="button" className="action-button secondary" onClick={handleCopyLink}>
             Copy link
           </button>

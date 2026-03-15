@@ -44,6 +44,30 @@ body {
   color: #94a3b8;
 }
 
+.stream-status {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.stream-status--connecting {
+  color: #94a3b8;
+  border-color: #334155;
+}
+
+.stream-status--live {
+  color: #34d399;
+  border-color: #065f46;
+}
+
+.stream-status--disconnected {
+  color: #f87171;
+  border-color: #7f1d1d;
+}
+
 .action-button {
   padding: 0.5rem 1rem;
   background: #3b82f6;
