@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,7 +42,31 @@ var (
 	//   [7] to-state label
 	stateTransitionRE = regexp.MustCompile(`\bP=(-?\d+)\s+G=(-?\d+)\s.*\bTime=(\d+)\s+Resource=Goroutine\((\d+)\)\s+Reason="([^"]*)"(?:\s+GoID=\d+)?\s+([A-Za-z]+)->([A-Za-z]+)$`)
 	workspaceRoot     = mustGetwd()
+	gorootOnce        sync.Once
+	gorootValue       string
 )
+
+// getGOROOT returns GOROOT path via "go env GOROOT" because runtime.GOROOT
+// is deprecated since Go 1.24.
+func getGOROOT() string {
+	gorootOnce.Do(func() {
+		cmd := exec.Command("go", "env", "GOROOT")
+		out, err := cmd.Output()
+		if err != nil {
+			return
+		}
+		gorootValue = strings.TrimSpace(string(out))
+	})
+	return gorootValue
+}
+
+func getGOROOTSrc() string {
+	goroot := getGOROOT()
+	if goroot == "" {
+		return ""
+	}
+	return filepath.Clean(filepath.Join(goroot, "src")) + string(os.PathSeparator)
+}
 
 type parsedTransition struct {
 	TimeNS int64
@@ -563,8 +586,8 @@ func isRelevantFrame(frame model.StackFrame) bool {
 			return true
 		}
 
-		gorootSrc := filepath.Clean(filepath.Join(runtime.GOROOT(), "src")) + string(os.PathSeparator)
-		if strings.HasPrefix(cleanFile, gorootSrc) {
+		gorootSrc := getGOROOTSrc()
+		if gorootSrc != "" && strings.HasPrefix(cleanFile, gorootSrc) {
 			return false
 		}
 		if cleanFile != "" {

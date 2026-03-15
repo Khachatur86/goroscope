@@ -2,7 +2,6 @@ package tracebridge
 
 import (
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -141,7 +140,7 @@ func TestParseParsedTrace_EmptyOrNoEvents(t *testing.T) {
 	t.Parallel()
 
 	// Trace with only runtime goroutines (frames under GOROOT/src) — filter yields no events.
-	gorootProc := filepath.Join(runtime.GOROOT(), "src", "runtime", "proc.go")
+	gorootProc := filepath.Join(getGOROOT(), "src", "runtime", "proc.go")
 	parsed := `M=-1 P=-1 G=-1 Sync Time=100 N=1 Trace=101 Mono=100 Wall=2026-03-14T12:00:00Z
 M=1 P=0 G=1 StateTransition Time=100 Resource=Goroutine(5) Reason="" GoID=5 NotExist->Runnable
 Stack=
