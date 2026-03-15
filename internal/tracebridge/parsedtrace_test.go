@@ -1,6 +1,8 @@
 package tracebridge
 
 import (
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -83,6 +85,83 @@ M=1 P=0 G=1 StateTransition Time=500 Resource=Goroutine(1) Reason="" GoID=1 Runn
 	// G1 has no parent (G=-1 on its create transition).
 	if _, ok := capture.ParentIDs[1]; ok {
 		t.Fatalf("expected G1 to have no parent, got parent_id=%d", capture.ParentIDs[1])
+	}
+}
+
+func TestParseParsedTrace_MalformedLines(t *testing.T) {
+	t.Parallel()
+
+	// Trace with garbage lines and one invalid transition (Time=invalid) — parser
+	// must skip malformed lines and not crash (NFR: collector must not crash).
+	const parsed = `M=-1 P=-1 G=-1 Sync Time=100 N=1 Trace=101 Mono=100 Wall=2026-03-14T12:00:00Z
+garbage line
+M=1 P=0 G=-1 StateTransition Time=100 Resource=Goroutine(1) Reason="" GoID=1 Undetermined->Running
+Stack=
+	main.main @ 0x1
+		/work/main.go:10
+
+M=1 P=0 G=1 StateTransition Time=invalid Resource=Goroutine(5) Reason="" GoID=5 NotExist->Runnable
+
+M=1 P=0 G=1 StateTransition Time=200 Resource=Goroutine(1) Reason="chan receive" GoID=1 Running->Waiting
+Stack=
+	main.main @ 0x1
+		/work/main.go:20
+
+M=1 P=0 G=1 StateTransition Time=500 Resource=Goroutine(1) Reason="" GoID=1 Running->NotExist
+`
+
+	capture, err := ParseParsedTrace(strings.NewReader(parsed))
+	if err != nil {
+		t.Fatalf("expected parsed trace to decode despite malformed line: %v", err)
+	}
+
+	// G5 transition was skipped (invalid time); G1 events should be present.
+	if len(capture.Events) < 3 {
+		t.Fatalf("expected at least 3 events (G1 create, block, end), got %d", len(capture.Events))
+	}
+}
+
+func TestParseParsedTrace_MissingSync(t *testing.T) {
+	t.Parallel()
+
+	// Trace without Sync line — must fail with clear error.
+	const parsed = `M=1 P=0 G=-1 StateTransition Time=100 Resource=Goroutine(1) Reason="" GoID=1 Undetermined->Running
+`
+
+	_, err := ParseParsedTrace(strings.NewReader(parsed))
+	if err == nil {
+		t.Fatal("expected error when sync line is missing")
+	}
+	if !strings.Contains(err.Error(), "sync") {
+		t.Fatalf("expected sync-related error, got %v", err)
+	}
+}
+
+func TestParseParsedTrace_EmptyOrNoEvents(t *testing.T) {
+	t.Parallel()
+
+	// Trace with only runtime goroutines (frames under GOROOT/src) — filter yields no events.
+	gorootProc := filepath.Join(runtime.GOROOT(), "src", "runtime", "proc.go")
+	parsed := `M=-1 P=-1 G=-1 Sync Time=100 N=1 Trace=101 Mono=100 Wall=2026-03-14T12:00:00Z
+M=1 P=0 G=1 StateTransition Time=100 Resource=Goroutine(5) Reason="" GoID=5 NotExist->Runnable
+Stack=
+	runtime.main @ 0x1
+		` + gorootProc + `:200
+
+M=1 P=0 G=5 StateTransition Time=200 Resource=Goroutine(5) Reason="" GoID=5 Runnable->Running
+Stack=
+	runtime.worker @ 0x2
+		` + gorootProc + `:201
+
+M=1 P=0 G=5 StateTransition Time=500 Resource=Goroutine(5) Reason="" GoID=5 Running->NotExist
+`
+
+	_, err := ParseParsedTrace(strings.NewReader(parsed))
+	if err == nil {
+		t.Fatal("expected error when no user goroutine events produced")
+	}
+	if !strings.Contains(err.Error(), "no goroutine events") {
+		t.Fatalf("expected no-events error, got %v", err)
 	}
 }
 

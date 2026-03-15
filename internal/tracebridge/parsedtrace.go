@@ -269,13 +269,15 @@ func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 			//   match[5] = Reason string
 			//   match[6] = from-state label
 			//   match[7] = to-state label
+			//
+			// Skip malformed transitions instead of failing (NFR: collector must not crash).
 			timeNS, err := strconv.ParseInt(match[3], 10, 64)
 			if err != nil {
-				return model.Capture{}, fmt.Errorf("parse transition time: %w", err)
+				continue
 			}
 			goID, err := strconv.ParseInt(match[4], 10, 64)
 			if err != nil {
-				return model.Capture{}, fmt.Errorf("parse goroutine id: %w", err)
+				continue
 			}
 			processorID := -1
 			if pid, err := strconv.Atoi(match[1]); err == nil {

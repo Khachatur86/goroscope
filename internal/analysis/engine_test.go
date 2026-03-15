@@ -175,3 +175,70 @@ func TestEngineStoresLatestStackSnapshot(t *testing.T) {
 		t.Fatalf("unexpected waiting segment bounds: %+v", timeline[1])
 	}
 }
+
+func TestEngine_IgnoresInvalidEvents(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine()
+	base := time.Date(2026, time.March, 14, 12, 0, 0, 0, time.UTC)
+	engine.Reset(&model.Session{
+		ID:        "sess_invalid",
+		Name:      "invalid",
+		Target:    "demo://invalid",
+		Status:    model.SessionStatusRunning,
+		StartedAt: base,
+	})
+
+	// GoroutineID 0 is ignored (NFR: must not crash).
+	engine.ApplyEvent(model.Event{
+		Kind:        model.EventKindGoroutineCreate,
+		GoroutineID: 0,
+		Timestamp:   base,
+	})
+
+	engine.ApplyEvent(model.Event{
+		Kind:        model.EventKindGoroutineCreate,
+		GoroutineID: 42,
+		Timestamp:   base,
+	})
+
+	goroutines := engine.ListGoroutines()
+	if len(goroutines) != 1 {
+		t.Fatalf("expected 1 goroutine, got %d", len(goroutines))
+	}
+	if goroutines[0].ID != 42 {
+		t.Fatalf("expected goroutine 42, got %d", goroutines[0].ID)
+	}
+}
+
+func TestEngine_IgnoresStackSnapshotForUnknownGoroutine(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine()
+	base := time.Date(2026, time.March, 14, 12, 0, 0, 0, time.UTC)
+	engine.Reset(&model.Session{
+		ID:        "sess_stack",
+		Name:      "stack",
+		Target:    "demo://stack",
+		Status:    model.SessionStatusRunning,
+		StartedAt: base,
+	})
+
+	// Stack snapshot for goroutine with no prior events — creates minimal goroutine entry.
+	engine.ApplyStackSnapshot(model.StackSnapshot{
+		GoroutineID: 99,
+		Timestamp:   base,
+		Frames:      []model.StackFrame{{Func: "main.worker", File: "/app/main.go", Line: 10}},
+	})
+
+	goroutine, ok := engine.GetGoroutine(99)
+	if !ok {
+		t.Fatal("expected goroutine 99 to exist after stack snapshot")
+	}
+	if goroutine.ID != 99 {
+		t.Fatalf("expected goroutine 99, got %d", goroutine.ID)
+	}
+	if goroutine.LastStack == nil {
+		t.Fatal("expected stack to be stored")
+	}
+}

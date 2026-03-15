@@ -75,6 +75,9 @@ func decodeCapture(data []byte) (model.Capture, error) {
 		return model.Capture{}, fmt.Errorf("decode capture JSON: %w", err)
 	}
 
+	if capture.Events == nil {
+		return model.Capture{}, fmt.Errorf("capture events is nil")
+	}
 	if len(capture.Events) == 0 {
 		return model.Capture{}, fmt.Errorf("capture contains no events")
 	}

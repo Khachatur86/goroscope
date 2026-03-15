@@ -3,6 +3,7 @@ package tracebridge
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Khachatur86/goroscope/internal/model"
@@ -57,6 +58,43 @@ func TestLoadCaptureFile(t *testing.T) {
 	}
 	if len(capture.Events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(capture.Events))
+	}
+}
+
+func TestLoadCaptureFile_MalformedJSON(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.gtrace")
+	if err := os.WriteFile(path, []byte(`{invalid json`), 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	_, err := LoadCaptureFile(path)
+	if err == nil {
+		t.Fatal("expected error for malformed JSON")
+	}
+	if !strings.Contains(err.Error(), "decode") {
+		t.Fatalf("expected decode-related error, got %v", err)
+	}
+}
+
+func TestLoadCaptureFile_EmptyEvents(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.gtrace")
+	content := `{"name":"empty","events":[]}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	_, err := LoadCaptureFile(path)
+	if err == nil {
+		t.Fatal("expected error for capture with no events")
+	}
+	if !strings.Contains(err.Error(), "no events") {
+		t.Fatalf("expected no-events error, got %v", err)
 	}
 }
 
