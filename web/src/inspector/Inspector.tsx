@@ -1,8 +1,9 @@
-import type { Goroutine } from "../api/client";
+import type { Goroutine, TimelineSegment } from "../api/client";
 
 type Props = {
   goroutine: Goroutine | null;
   goroutines: Goroutine[];
+  segmentOverride?: TimelineSegment | null;
   onSelectGoroutine?: (id: number) => void;
 };
 
@@ -23,7 +24,7 @@ function formatTimestamp(s?: string): string {
   }
 }
 
-export function Inspector({ goroutine, goroutines, onSelectGoroutine }: Props) {
+export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine }: Props) {
   if (!goroutine) {
     return (
       <div className="inspector empty">Pick a goroutine to inspect.</div>
@@ -49,10 +50,19 @@ export function Inspector({ goroutine, goroutines, onSelectGoroutine }: Props) {
     : null;
   const children = goroutinesList.filter((g) => g.parent_id === goroutine.goroutine_id);
 
+  const state = segmentOverride?.state ?? goroutine.state;
+  const reason = segmentOverride?.reason ?? goroutine.reason;
+  const resource = segmentOverride?.resource_id ?? goroutine.resource_id;
+
   return (
     <div className="inspector">
       <div className="inspector-section">
-        <div className="state-pill">{goroutine.state}</div>
+        <div className={`state-pill ${state}`}>{state}</div>
+        {segmentOverride && (
+          <span className="inspector-segment-hint" title="State at clicked segment">
+            @ segment
+          </span>
+        )}
       </div>
       <div className="inspector-section inspector-grid">
         <div>
@@ -66,15 +76,19 @@ export function Inspector({ goroutine, goroutines, onSelectGoroutine }: Props) {
         </div>
         <div>
           <div className="inspector-label">Wait Time</div>
-          <div className="inspector-value">{formatDuration(goroutine.wait_ns ?? 0)}</div>
+          <div className="inspector-value">
+            {segmentOverride
+              ? formatDuration(segmentOverride.end_ns - segmentOverride.start_ns)
+              : formatDuration(goroutine.wait_ns ?? 0)}
+          </div>
         </div>
         <div>
           <div className="inspector-label">Reason</div>
-          <div className="inspector-value">{goroutine.reason ?? "—"}</div>
+          <div className="inspector-value">{reason ?? "—"}</div>
         </div>
         <div>
           <div className="inspector-label">Resource</div>
-          <div className="inspector-value">{goroutine.resource_id ?? "—"}</div>
+          <div className="inspector-value">{resource ?? "—"}</div>
         </div>
         <div>
           <div className="inspector-label">Created</div>

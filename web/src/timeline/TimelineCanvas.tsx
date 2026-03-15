@@ -74,7 +74,7 @@ type Props = {
   segments: TimelineSegment[];
   processorSegments?: ProcessorSegment[];
   selectedId: number | null;
-  onSelectGoroutine: (id: number) => void;
+  onSelectGoroutine: (id: number, segment?: TimelineSegment) => void;
   zoomToSelected: boolean;
   onHoverSegment?: (seg: TimelineSegment | null) => void;
   /** Controlled mode: parent owns zoom/pan state for minimap sync */
@@ -453,14 +453,14 @@ export function TimelineCanvas({
       if (isDragging && !hasDragged) {
         const seg = hitTest(e.clientX, e.clientY);
         if (seg) {
-          onSelectGoroutine(seg.goroutine_id);
+          onSelectGoroutine(seg.goroutine_id, seg);
         } else {
           const rowIndex = Math.floor(
             (e.clientY - (canvasRef.current?.getBoundingClientRect().top ?? 0) - gTop) /
               METRICS.rowHeight
           );
           if (rowIndex >= 0 && rowIndex < goroutines.length) {
-            onSelectGoroutine(goroutines[rowIndex].goroutine_id);
+            onSelectGoroutine(goroutines[rowIndex].goroutine_id, undefined);
           }
         }
       }

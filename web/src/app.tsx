@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { FixedSizeList, type ListChildComponentProps } from "react-window";
-import type { Goroutine, Session, DeadlockHint } from "./api/client";
+import type { Goroutine, Session, DeadlockHint, TimelineSegment } from "./api/client";
 import {
   fetchCurrentSession,
   fetchGoroutines,
@@ -9,6 +9,7 @@ import {
   fetchResourceGraph,
   fetchInsights,
   fetchDeadlockHints,
+  uploadReplayCapture,
 } from "./api/client";
 import { Filters } from "./filters/Filters";
 import { Inspector } from "./inspector/Inspector";
@@ -93,6 +94,7 @@ export function App() {
   const [goroutines, setGoroutines] = useState<Goroutine[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedGoroutine, setSelectedGoroutine] = useState<Goroutine | null>(null);
+  const [selectedSegment, setSelectedSegment] = useState<TimelineSegment | null>(null);
   const [resources, setResources] = useState<{ from_goroutine_id: number; to_goroutine_id: number; resource_id?: string }[]>([]);
   const [insights, setInsights] = useState<{ long_blocked_count: number }>({ long_blocked_count: 0 });
   const [deadlockHints, setDeadlockHints] = useState<DeadlockHint[]>([]);
@@ -266,7 +268,15 @@ export function App() {
     window.history.replaceState(null, "", url);
   }, [selectedId, filters.state, filters.reason, filters.resource, filters.search]);
 
-  const handleSelect = (id: number) => setSelectedId(id);
+  const handleSelect = (id: number) => {
+    setSelectedId(id);
+    setSelectedSegment(null);
+  };
+
+  const handleSelectFromTimeline = (id: number, segment?: TimelineSegment) => {
+    setSelectedId(id);
+    setSelectedSegment(segment ?? null);
+  };
 
   const handleJumpTo = (id: number) => {
     if (!goroutines.some((g) => g.goroutine_id === id)) {
@@ -301,10 +311,52 @@ export function App() {
     setFilters((f) => ({ ...f, minWaitNs: "1000000000" }));
   };
 
+  const processReplayFile = useCallback(
+    async (file: File) => {
+      if (!file.name.endsWith(".gtrace") && !file.name.endsWith(".json")) {
+        setReplayError("Please select a .gtrace or .json capture file.");
+        return;
+      }
+      setReplayError(null);
+      setReplayUploading(true);
+      try {
+        await uploadReplayCapture(file);
+        await loadData();
+      } catch (err) {
+        setReplayError(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setReplayUploading(false);
+      }
+    },
+    [loadData]
+  );
+
+  const handleOpenCapture = () => captureInputRef.current?.click();
+
+  const handleCaptureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processReplayFile(file);
+    e.target.value = "";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) processReplayFile(file);
+  };
+
   const jumpToInputRef = useRef<HTMLInputElement>(null);
   const timelinePanelRef = useRef<HTMLElement>(null);
+  const captureInputRef = useRef<HTMLInputElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [streamStatus, setStreamStatus] = useState<"connecting" | "live" | "disconnected">("connecting");
+  const [replayUploading, setReplayUploading] = useState(false);
+  const [replayError, setReplayError] = useState<string | null>(null);
 
   const handleSavePng = async () => {
     const el = timelinePanelRef.current;
@@ -403,7 +455,19 @@ export function App() {
   }, [selectedId, displayGoroutines]);
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      <input
+        ref={captureInputRef}
+        type="file"
+        accept=".gtrace,.json"
+        onChange={handleCaptureFileChange}
+        style={{ display: "none" }}
+        aria-hidden
+      />
       <header className="hero">
         <div>
           <p className="eyebrow">Local Go Concurrency Debugger</p>
@@ -424,8 +488,22 @@ export function App() {
           <button type="button" className="action-button" onClick={loadData}>
             Refresh
           </button>
+          <button
+            type="button"
+            className="action-button secondary"
+            onClick={handleOpenCapture}
+            disabled={replayUploading}
+            title="Open .gtrace capture file (or drag-and-drop onto the page)"
+          >
+            {replayUploading ? "Loading…" : "Open capture"}
+          </button>
         </div>
       </header>
+      {replayError && (
+        <div className="replay-error" role="alert">
+          {replayError}
+        </div>
+      )}
 
       <section className="legend-panel">
         <span className="legend-chip running">RUNNING</span>
@@ -560,7 +638,7 @@ export function App() {
           <Timeline
             goroutines={displayGoroutines}
             selectedId={selectedId}
-            onSelectGoroutine={handleSelect}
+            onSelectGoroutine={handleSelectFromTimeline}
             filters={filters}
             zoomToSelected={zoomToSelected}
             viewMode={viewMode}
@@ -572,6 +650,7 @@ export function App() {
           <Inspector
             goroutine={selectedGoroutine}
             goroutines={goroutines}
+            segmentOverride={selectedSegment}
             onSelectGoroutine={handleSelect}
           />
           <ResourceGraph

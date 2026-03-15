@@ -33,6 +33,11 @@ func LoadCaptureFile(path string) (model.Capture, error) {
 	return decodeCapture(data)
 }
 
+// LoadCaptureFromBytes decodes a capture from raw JSON bytes (e.g. from an upload).
+func LoadCaptureFromBytes(data []byte) (model.Capture, error) {
+	return decodeCapture(data)
+}
+
 // BindCaptureSession reassigns all events in capture to the given session ID.
 func BindCaptureSession(capture model.Capture, sessionID string) model.Capture {
 	bound := capture

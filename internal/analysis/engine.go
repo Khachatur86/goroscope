@@ -19,6 +19,7 @@ type Engine struct {
 	activeSegments    map[int64]activeSegment
 	edges             []model.ResourceEdge
 	processorSegments []model.ProcessorSegment
+	dataVersion       uint64 // incremented on any state change, for ETag
 
 	subsMu      sync.Mutex
 	subscribers map[chan struct{}]struct{}
@@ -141,6 +142,15 @@ func (e *Engine) SetResourceGraph(edges []model.ResourceEdge) {
 	defer e.mu.Unlock()
 
 	e.edges = append([]model.ResourceEdge(nil), edges...)
+	e.dataVersion++
+}
+
+// DataVersion returns a monotonic version that changes whenever engine state changes.
+// Used for ETag / conditional requests.
+func (e *Engine) DataVersion() uint64 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.dataVersion
 }
 
 // CurrentSession returns the active session, or nil if none is set.
@@ -244,6 +254,7 @@ func (e *Engine) resetLocked(session *model.Session) {
 	e.activeSegments = make(map[int64]activeSegment)
 	e.edges = nil
 	e.processorSegments = nil
+	e.dataVersion++
 }
 
 func (e *Engine) applyEventsLocked(events []model.Event) {
@@ -277,6 +288,7 @@ func (e *Engine) applyEventLocked(event model.Event) {
 	}
 	e.updateSegmentsLocked(event.GoroutineID, current, next, event)
 	e.goroutines[next.ID] = next
+	e.dataVersion++
 }
 
 func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot) {
@@ -301,6 +313,7 @@ func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot) {
 	stackCopy.Frames = append([]model.StackFrame(nil), snapshot.Frames...)
 	goroutine.LastStack = &stackCopy
 	e.goroutines[goroutine.ID] = goroutine
+	e.dataVersion++
 }
 
 func (e *Engine) updateSegmentsLocked(id int64, current, next model.Goroutine, event model.Event) {

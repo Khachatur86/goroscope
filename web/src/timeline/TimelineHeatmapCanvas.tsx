@@ -37,7 +37,7 @@ type Props = {
   segments: TimelineSegment[];
   processorSegments: ProcessorSegment[];
   selectedId: number | null;
-  onSelectGoroutine: (id: number) => void;
+  onSelectGoroutine: (id: number, segment?: TimelineSegment) => void;
   zoomLevel: number;
   panOffsetNS: number;
   fullMinStart: number;
@@ -265,7 +265,7 @@ export function TimelineHeatmapCanvas({
       if (y < gTop) return;
       const rowIndex = Math.floor((y - gTop) / METRICS.gRowH);
       if (rowIndex >= 0 && rowIndex < goroutines.length) {
-        onSelectGoroutine(goroutines[rowIndex].goroutine_id);
+        onSelectGoroutine(goroutines[rowIndex].goroutine_id, undefined);
       }
     },
     [goroutines, gTop, onSelectGoroutine, isDragging]

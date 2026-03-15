@@ -39,5 +39,10 @@ jobs:
           version: v2.1.6
           args: --timeout=5m
 
+      - name: Vuln check
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
       - name: Build
         run: make build VERSION=ci

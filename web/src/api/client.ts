@@ -128,3 +128,18 @@ export async function fetchInsights(minWaitNs?: string): Promise<Insights> {
 export async function fetchDeadlockHints(): Promise<{ hints: DeadlockHint[] }> {
   return fetchJson<{ hints: DeadlockHint[] }>("/api/v1/deadlock-hints").catch(() => ({ hints: [] }));
 }
+
+/** Upload a .gtrace file for replay. Returns session_id on success. */
+export async function uploadReplayCapture(file: File): Promise<{ status: string; session_id: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/v1/replay/load", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `upload failed: ${res.status}`);
+  }
+  return res.json();
+}

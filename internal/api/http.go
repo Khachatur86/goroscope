@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -19,6 +20,7 @@ import (
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/model"
 	"github.com/Khachatur86/goroscope/internal/session"
+	"github.com/Khachatur86/goroscope/internal/tracebridge"
 	"github.com/Khachatur86/goroscope/internal/version"
 )
 
@@ -88,6 +90,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
 	mux.HandleFunc("/api/v1/deadlock-hints", s.handleDeadlockHints)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
+	mux.HandleFunc("/api/v1/replay/load", s.handleReplayLoad)
 
 	if isLocalhostAddr(s.addr) {
 		mux.Handle("/debug/pprof/", http.StripPrefix("/debug/pprof", http.HandlerFunc(pprof.Index)))
@@ -262,6 +265,13 @@ func goroutineMatchesSearch(g model.Goroutine, search string) bool {
 }
 
 func (s *Server) handleGoroutines(w http.ResponseWriter, r *http.Request) {
+	etag := fmt.Sprintf(`"%x"`, s.engine.DataVersion())
+	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("ETag", etag)
+
 	params := parseGoroutineListParams(r)
 	all := s.engine.ListGoroutines()
 	filtered := filterGoroutines(all, params)
@@ -400,6 +410,13 @@ func parseTimelineListParams(r *http.Request) timelineListParams {
 }
 
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
+	etag := fmt.Sprintf(`"%x"`, s.engine.DataVersion())
+	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("ETag", etag)
+
 	params := parseTimelineListParams(r)
 	all := s.engine.Timeline()
 	goroutines := s.engine.ListGoroutines()
@@ -454,6 +471,47 @@ func (s *Server) handleDeadlockHints(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hints": hints,
 	})
+}
+
+// handleReplayLoad accepts a .gtrace file upload and loads it into the engine.
+// POST /api/v1/replay/load with multipart form field "file".
+func (s *Server) handleReplayLoad(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	const maxUploadSize = 100 << 20 // 100 MiB
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		http.Error(w, fmt.Sprintf("parse multipart: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("missing or invalid file field: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	capture, err := tracebridge.LoadCaptureFromBytes(data)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid capture: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	current := s.sessions.StartSession("replay", "upload.gtrace")
+	capture = tracebridge.BindCaptureSession(capture, current.ID)
+	s.engine.LoadCapture(current, capture)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "session_id": current.ID})
 }
 
 // handleStream implements a Server-Sent Events (SSE) endpoint.

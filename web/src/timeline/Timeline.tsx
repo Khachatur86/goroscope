@@ -15,7 +15,7 @@ type FiltersState = {
 type Props = {
   goroutines: Goroutine[];
   selectedId: number | null;
-  onSelectGoroutine: (id: number) => void;
+  onSelectGoroutine: (id: number, segment?: TimelineSegment) => void;
   filters: FiltersState;
   zoomToSelected?: boolean;
   viewMode?: "lanes" | "heatmap";
