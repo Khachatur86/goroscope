@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -63,7 +64,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/sessions", s.handleSessions)
 	mux.HandleFunc("/api/v1/session/current", s.handleSessionCurrent)
 	mux.HandleFunc("/api/v1/goroutines", s.handleGoroutines)
+	mux.HandleFunc("/api/v1/goroutines/{id}/children", s.handleGoroutineChildren)
 	mux.HandleFunc("/api/v1/goroutines/{id}", s.handleGoroutineByID)
+	mux.HandleFunc("/api/v1/insights", s.handleInsights)
 	mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
 	mux.HandleFunc("/api/v1/processor-timeline", s.handleProcessorTimeline)
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
@@ -100,11 +103,12 @@ func (s *Server) handleSessionCurrent(w http.ResponseWriter, _ *http.Request) {
 
 // goroutineListParams holds query parameters for the goroutines endpoint.
 type goroutineListParams struct {
-	State  model.GoroutineState
-	Reason model.BlockingReason
-	Search string
-	Limit  int
-	Offset int
+	State     model.GoroutineState
+	Reason    model.BlockingReason
+	Search    string
+	MinWaitNS int64 // filter goroutines in wait state with WaitNS >= MinWaitNS
+	Limit     int
+	Offset    int
 }
 
 func parseGoroutineListParams(r *http.Request) goroutineListParams {
@@ -123,6 +127,11 @@ func parseGoroutineListParams(r *http.Request) goroutineListParams {
 	if v := q.Get("search"); v != "" {
 		params.Search = strings.TrimSpace(strings.ToLower(v))
 	}
+	if v := q.Get("min_wait_ns"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			params.MinWaitNS = n
+		}
+	}
 	if v := q.Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			params.Limit = n
@@ -137,6 +146,15 @@ func parseGoroutineListParams(r *http.Request) goroutineListParams {
 	return params
 }
 
+func isWaitState(s model.GoroutineState) bool {
+	switch s {
+	case model.StateBlocked, model.StateWaiting, model.StateSyscall:
+		return true
+	default:
+		return false
+	}
+}
+
 func filterGoroutines(goroutines []model.Goroutine, params goroutineListParams) []model.Goroutine {
 	var out []model.Goroutine
 	for _, g := range goroutines {
@@ -148,6 +166,11 @@ func filterGoroutines(goroutines []model.Goroutine, params goroutineListParams) 
 		}
 		if params.Search != "" {
 			if !goroutineMatchesSearch(g, params.Search) {
+				continue
+			}
+		}
+		if params.MinWaitNS > 0 {
+			if !isWaitState(g.State) || g.WaitNS < params.MinWaitNS {
 				continue
 			}
 		}
@@ -225,6 +248,68 @@ func (s *Server) handleGoroutineByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, goroutine)
+}
+
+func (s *Server) handleGoroutineChildren(w http.ResponseWriter, r *http.Request) {
+	parentID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid goroutine id"})
+		return
+	}
+
+	all := s.engine.ListGoroutines()
+	var children []model.Goroutine
+	for _, g := range all {
+		if g.ParentID == parentID {
+			children = append(children, g)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, children)
+}
+
+// insightsResponse is the response for /api/v1/insights.
+type insightsResponse struct {
+	LongBlockedCount int64              `json:"long_blocked_count"`
+	LongBlocked      []model.Goroutine   `json:"long_blocked"`
+	MinWaitNS        int64               `json:"min_wait_ns"`
+}
+
+func (s *Server) handleInsights(w http.ResponseWriter, r *http.Request) {
+	const defaultMinWaitNS = int64(time.Second)
+
+	minWaitNS := defaultMinWaitNS
+	if v := r.URL.Query().Get("min_wait_ns"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			minWaitNS = n
+		}
+	}
+
+	all := s.engine.ListGoroutines()
+	var longBlocked []model.Goroutine
+	for _, g := range all {
+		if isWaitState(g.State) && g.WaitNS >= minWaitNS {
+			longBlocked = append(longBlocked, g)
+		}
+	}
+
+	totalCount := len(longBlocked)
+
+	sort.Slice(longBlocked, func(i, j int) bool {
+		return longBlocked[i].WaitNS > longBlocked[j].WaitNS
+	})
+
+	// Limit to top 20 for response size.
+	topN := 20
+	if len(longBlocked) > topN {
+		longBlocked = longBlocked[:topN]
+	}
+
+	writeJSON(w, http.StatusOK, insightsResponse{
+		LongBlockedCount: int64(totalCount),
+		LongBlocked:      longBlocked,
+		MinWaitNS:        minWaitNS,
+	})
 }
 
 // timelineListParams holds query parameters for the timeline endpoint.

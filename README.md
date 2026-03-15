@@ -45,6 +45,16 @@ go run ./cmd/goroscope replay ./captures/sample.gtrace
 
 `ui` and `collect` currently load bundled demo data. `replay` loads a capture file from disk. The current runnable UI is the embedded asset bundle in `internal/api/ui`; the `web/` directory is a future standalone frontend workspace.
 
+## API
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/v1/goroutines` | List goroutines. Query: `state`, `reason`, `search`, `min_wait_ns`, `limit`, `offset` |
+| `GET /api/v1/goroutines/{id}` | Goroutine details |
+| `GET /api/v1/goroutines/{id}/children` | Child goroutines (spawned by this one) |
+| `GET /api/v1/insights` | Long-blocked goroutines. Query: `min_wait_ns` (default 1s) |
+| `GET /api/v1/timeline` | Timeline segments. Query: `state`, `reason`, `search` |
+
 ## Layout
 
 ```text
