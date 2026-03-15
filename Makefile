@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run ui fmt test test-race vet lint bench web vscode
+.PHONY: build run run-react ui fmt test test-race vet lint bench web vscode
 
 build:
 	mkdir -p bin
@@ -9,6 +9,9 @@ build:
 
 run:
 	go run ./cmd/goroscope run ./app
+
+run-react: build web
+	./bin/goroscope run -ui=react -ui-path=web/dist -open-browser ./examples/trace_demo
 
 ui:
 	go run ./cmd/goroscope ui

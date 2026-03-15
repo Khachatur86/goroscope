@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { Goroutine, TimelineSegment } from "../api/client";
+import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 
 const COLORS: Record<string, string> = {
   RUNNING: "#10cfb8",
@@ -23,29 +23,64 @@ const METRICS = {
   labelGutterWidth: 182,
   leftPadding: 14,
   rightPadding: 18,
+  pRowH: 18,
+  pLabelH: 14,
+  pGap: 2,
 };
+
+function goroutineHue(id: number): number {
+  const hues = [195, 30, 270, 140, 355, 60, 310, 170, 80, 230, 15, 330];
+  return hues[Number(id) % hues.length];
+}
 
 type Props = {
   goroutines: Goroutine[];
   segments: TimelineSegment[];
+  processorSegments?: ProcessorSegment[];
   selectedId: number | null;
   onSelectGoroutine: (id: number) => void;
   zoomToSelected: boolean;
   onHoverSegment?: (seg: TimelineSegment | null) => void;
+  /** Controlled mode: parent owns zoom/pan state for minimap sync */
+  zoomLevel?: number;
+  panOffsetNS?: number;
+  onZoomPanChange?: (zoomLevel: number, panOffsetNS: number) => void;
 };
 
 export function TimelineCanvas({
   goroutines,
   segments,
+  processorSegments = [],
   selectedId,
   onSelectGoroutine,
   zoomToSelected,
   onHoverSegment,
+  zoomLevel: controlledZoom,
+  panOffsetNS: controlledPan,
+  onZoomPanChange,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [panOffsetNS, setPanOffsetNS] = useState(0);
+  const [internalZoom, setInternalZoom] = useState(1);
+  const [internalPan, setInternalPan] = useState(0);
+
+  const isControlled = controlledZoom !== undefined && controlledPan !== undefined;
+  const zoomLevel = isControlled ? controlledZoom : internalZoom;
+  const panOffsetNS = isControlled ? controlledPan : internalPan;
+  const setZoomLevel = useCallback(
+    (v: number) => {
+      if (isControlled) onZoomPanChange?.(v, panOffsetNS);
+      else setInternalZoom(v);
+    },
+    [isControlled, panOffsetNS, onZoomPanChange]
+  );
+  const setPanOffsetNS = useCallback(
+    (v: number) => {
+      if (isControlled) onZoomPanChange?.(zoomLevel, v);
+      else setInternalPan(v);
+    },
+    [isControlled, zoomLevel, onZoomPanChange]
+  );
   const [isDragging, setIsDragging] = useState(false);
   const [hasDragged, setHasDragged] = useState(false);
   const dragStartX = useRef(0);
@@ -57,8 +92,9 @@ export function TimelineCanvas({
   const fullMaxEnd = Math.max(...segments.map((s) => s.end_ns));
   const fullSpan = Math.max(fullMaxEnd - fullMinStart, 1);
 
-  // Sync zoom/pan when zoomToSelected changes
+  // Sync zoom/pan when zoomToSelected changes (only in uncontrolled mode)
   useEffect(() => {
+    if (isControlled) return;
     if (zoomToSelected && selectedId) {
       const selectedSegs = segments.filter((s) => s.goroutine_id === selectedId);
       if (selectedSegs.length > 0) {
@@ -75,7 +111,7 @@ export function TimelineCanvas({
     }
     setZoomLevel(1);
     setPanOffsetNS(0);
-  }, [zoomToSelected, selectedId, fullMinStart, fullSpan, segments]);
+  }, [isControlled, zoomToSelected, selectedId, fullMinStart, fullSpan, segments]);
 
   const visibleSpan = fullSpan / zoomLevel;
   const visibleStart = fullMinStart + Math.max(0, Math.min(fullSpan - visibleSpan, panOffsetNS));
@@ -84,13 +120,24 @@ export function TimelineCanvas({
   const getInnerWidth = (width: number) =>
     Math.max(1, width - METRICS.labelGutterWidth - METRICS.leftPadding - METRICS.rightPadding);
 
+  const processorIds = [...new Set(processorSegments.map((s) => s.processor_id))].sort((a, b) => a - b);
+  const numPs = processorIds.length;
+  const gmpH =
+    numPs > 0
+      ? METRICS.pLabelH + numPs * METRICS.pRowH + METRICS.pGap + 8
+      : 0;
+  const gTop = METRICS.axisHeight + gmpH;
+
   const render = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
 
     const width = Math.max(320, container.clientWidth);
-    const height = Math.max(220, METRICS.axisHeight + goroutines.length * METRICS.rowHeight + 16);
+    const height = Math.max(
+      220,
+      gTop + goroutines.length * METRICS.rowHeight + 16
+    );
     const dpr = window.devicePixelRatio || 1;
     const innerWidth = getInnerWidth(width);
 
@@ -127,18 +174,65 @@ export function TimelineCanvas({
       ctx.fillText(formatDuration(value - fullMinStart), x + 6, 20);
     }
 
+    // GMP strip
+    if (numPs > 0) {
+      const gmpTop = METRICS.axisHeight + 6;
+      ctx.fillStyle = "rgba(219,228,238,0.38)";
+      ctx.font = '10px "IBM Plex Mono", monospace';
+      ctx.fillText("GMP", 4, gmpTop + 10);
+
+      const pLanesTop = gmpTop + METRICS.pLabelH;
+      processorIds.forEach((pid, pIdx) => {
+        const py = pLanesTop + pIdx * METRICS.pRowH;
+        ctx.fillStyle = "rgba(255,255,255,0.025)";
+        ctx.fillRect(plotLeft, py, innerWidth, METRICS.pRowH - 1);
+        ctx.fillStyle = "rgba(219,228,238,0.50)";
+        ctx.font = '10px "IBM Plex Mono", monospace';
+        ctx.fillText(`P${pid}`, plotLeft - 54, py + 11);
+
+        processorSegments
+          .filter((s) => s.processor_id === pid)
+          .filter((s) => s.start_ns < visibleStart + visibleSpan && s.end_ns > visibleStart)
+          .forEach((seg) => {
+            const rawX = plotLeft + ((seg.start_ns - visibleStart) / visibleSpan) * innerWidth;
+            const rawX2 = plotLeft + ((seg.end_ns - visibleStart) / visibleSpan) * innerWidth;
+            const cx = Math.max(plotLeft, Math.min(rawX, plotLeft + innerWidth));
+            const cx2 = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
+            const cw = Math.max(cx2 - cx, rawX2 > rawX ? 1 : 0);
+            if (cw === 0) return;
+            ctx.fillStyle = `hsl(${goroutineHue(seg.goroutine_id)}, 70%, 58%)`;
+            ctx.fillRect(cx, py + 1, cw, METRICS.pRowH - 3);
+            if (cw > 2) {
+              ctx.fillStyle = "rgba(255,255,255,0.20)";
+              ctx.fillRect(cx + 1, py + 1, cw - 2, 1);
+            }
+            if (cw > 28) {
+              ctx.fillStyle = "rgba(255,255,255,0.90)";
+              ctx.font = '9px "IBM Plex Mono", monospace';
+              ctx.fillText(`G${seg.goroutine_id}`, cx + 3, py + 11);
+            }
+          });
+        ctx.strokeStyle = "rgba(219,228,238,0.06)";
+        ctx.beginPath();
+        ctx.moveTo(plotLeft, py + METRICS.pRowH - 0.5);
+        ctx.lineTo(plotLeft + innerWidth, py + METRICS.pRowH - 0.5);
+        ctx.stroke();
+      });
+    }
+
     // Gutter
     ctx.fillStyle = "rgba(2, 6, 23, 0.48)";
     ctx.fillRect(0, METRICS.axisHeight, plotLeft - 8, height - METRICS.axisHeight);
+    const goroutineRowsTop = gTop;
     ctx.strokeStyle = "rgba(219, 228, 238, 0.10)";
     ctx.beginPath();
     ctx.moveTo(plotLeft - 0.5, METRICS.axisHeight - 18);
     ctx.lineTo(plotLeft - 0.5, height - 16);
     ctx.stroke();
 
-    // Rows and segments
+    // Goroutine rows and segments
     goroutines.forEach((g, index) => {
-      const y = METRICS.axisHeight + index * METRICS.rowHeight;
+      const y = goroutineRowsTop + index * METRICS.rowHeight;
       const isSelected = g.goroutine_id === selectedId;
 
       if (index % 2 === 0) {
@@ -198,11 +292,15 @@ export function TimelineCanvas({
   }, [
     goroutines,
     segments,
+    processorSegments,
+    processorIds,
+    numPs,
     selectedId,
     visibleStart,
     visibleSpan,
     fullMinStart,
     hoveredSegment,
+    gTop,
   ]);
 
   useEffect(() => {
@@ -228,7 +326,7 @@ export function TimelineCanvas({
       const width = container.clientWidth;
       const innerWidth = getInnerWidth(width);
 
-      const rowIndex = Math.floor((y - METRICS.axisHeight) / METRICS.rowHeight);
+      const rowIndex = Math.floor((y - gTop) / METRICS.rowHeight);
       if (rowIndex < 0 || rowIndex >= goroutines.length) return null;
       const g = goroutines[rowIndex];
 
@@ -238,12 +336,12 @@ export function TimelineCanvas({
         const rawX2 = plotLeft + ((seg.end_ns - visibleStart) / visibleSpan) * innerWidth;
         const cx = Math.max(plotLeft, Math.min(rawX, plotLeft + innerWidth));
         const cx2 = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
-        const barY = METRICS.axisHeight + rowIndex * METRICS.rowHeight + 4;
+        const barY = gTop + rowIndex * METRICS.rowHeight + 4;
         if (x >= cx && x <= cx2 && y >= barY && y <= barY + 20) return seg;
       }
       return null;
     },
-    [goroutines, segments, visibleStart, visibleSpan]
+    [goroutines, segments, visibleStart, visibleSpan, gTop]
   );
 
   const handleWheel = useCallback(
@@ -315,7 +413,7 @@ export function TimelineCanvas({
           onSelectGoroutine(seg.goroutine_id);
         } else {
           const rowIndex = Math.floor(
-            (e.clientY - (canvasRef.current?.getBoundingClientRect().top ?? 0) - METRICS.axisHeight) /
+            (e.clientY - (canvasRef.current?.getBoundingClientRect().top ?? 0) - gTop) /
               METRICS.rowHeight
           );
           if (rowIndex >= 0 && rowIndex < goroutines.length) {
@@ -326,7 +424,7 @@ export function TimelineCanvas({
       setIsDragging(false);
       setHasDragged(false);
     },
-    [isDragging, hasDragged, hitTest, goroutines, onSelectGoroutine]
+    [isDragging, hasDragged, hitTest, goroutines, onSelectGoroutine, gTop]
   );
 
   const handleMouseLeave = useCallback(() => {

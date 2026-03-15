@@ -13,6 +13,13 @@ goroscope ui -ui=react -open-browser
 
 Or use the convenience target: `make ui-react`
 
+**Live trace with React** (flags before target):
+
+```bash
+make run-react
+# or: goroscope run -ui=react -open-browser ./examples/trace_demo
+```
+
 **Option B — Vite dev server (hot reload):**
 
 ```bash

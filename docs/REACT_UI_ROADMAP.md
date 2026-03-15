@@ -24,7 +24,7 @@
 | 5 | Minimap | Высокая | Миникарта обзора при зуме |
 | 6 | Related focus | Средняя | Фокус на связанных горутинах |
 | 7 | Heatmap view | Высокая | Переключение lanes ↔ heatmap |
-| 8 | Canvas timeline | Высокая | Zoom, pan, drag на canvas |
+| 8 | Canvas timeline | ~~Высокая~~ ✓ | Zoom, pan, drag на canvas |
 
 ---
 
@@ -59,12 +59,12 @@
 - [x] Масштабировать ось времени на этот диапазон (div-based)
 
 #### 2.2 Canvas-based Timeline с zoom/pan
-- [ ] Заменить div-based Timeline на canvas (по аналогии с vanilla `app.js`)
-- [ ] Реализовать: `timelineView = { zoomLevel, panOffsetNS }`
-- [ ] Wheel: zoom in/out с центром на курсоре
-- [ ] Mousedown/mousemove/mouseup: drag для pan при zoom > 1
-- [ ] Hit-test на mousemove для tooltip с state/reason/duration
-- [ ] Рендер сегментов с учётом zoom/pan
+- [x] Заменить div-based Timeline на canvas (по аналогии с vanilla `app.js`)
+- [x] Реализовать: `timelineView = { zoomLevel, panOffsetNS }`
+- [x] Wheel: zoom in/out с центром на курсоре
+- [x] Mousedown/mousemove/mouseup: drag для pan при zoom > 1
+- [x] Hit-test на mousemove для tooltip с state/reason/duration
+- [x] Рендер сегментов с учётом zoom/pan
 
 ---
 
@@ -73,7 +73,7 @@
 #### 3.1 Minimap
 - [x] Полоска с индикатором viewport при zoom (div-based)
 - [x] Показывать при Zoom to G
-- [ ] Drag по minimap для навигации (требует canvas/pan)
+- [x] Drag по minimap для навигации (canvas lanes)
 
 #### 3.2 Related focus
 - [x] Кнопка "Related focus"

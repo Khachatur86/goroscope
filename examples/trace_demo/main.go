@@ -1,4 +1,5 @@
 // Package main is a demo target program instrumented with the goroscope agent.
+// Demonstrates a worker-pool pattern with multiple goroutines for timeline visualization.
 package main
 
 import (
@@ -8,6 +9,11 @@ import (
 	"time"
 
 	"github.com/Khachatur86/goroscope/agent"
+)
+
+const (
+	numWorkers = 8
+	numJobs    = 24
 )
 
 func main() {
@@ -21,32 +27,41 @@ func main() {
 		}
 	}()
 
-	jobs := make(chan int)
-	results := make(chan int)
+	jobs := make(chan int, numJobs)
+	results := make(chan int, numJobs)
 	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				mu.Lock()
+				time.Sleep(10 * time.Millisecond)
+				mu.Unlock()
+				results <- job * 2
+			}
+		}()
+	}
 
 	go func() {
-		for job := range jobs {
-			mu.Lock()
-			time.Sleep(15 * time.Millisecond)
-			mu.Unlock()
-			results <- job * 2
-		}
-		close(results)
-	}()
-
-	go func() {
-		for _, job := range []int{1, 2, 3} {
-			jobs <- job
+		for i := 1; i <= numJobs; i++ {
+			jobs <- i
 			time.Sleep(10 * time.Millisecond)
 		}
 		close(jobs)
 	}()
 
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
 	sum := 0
 	for result := range results {
 		sum += result
-		time.Sleep(8 * time.Millisecond)
+		time.Sleep(6 * time.Millisecond)
 	}
 
 	fmt.Printf("trace demo complete: sum=%d\n", sum)

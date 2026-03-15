@@ -102,6 +102,8 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		_, _ = fmt.Fprintf(stderr, "Usage: goroscope run [flags] <package-or-binary>\n\n")
 		_, _ = fmt.Fprintf(stderr, "Run a Go program with live trace capture. The target must import\n")
 		_, _ = fmt.Fprintf(stderr, "github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main.\n\n")
+		_, _ = fmt.Fprintf(stderr, "Flags must appear before the target. Example with React UI:\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope run -ui=react -open-browser ./examples/trace_demo\n\n")
 		fs.PrintDefaults()
 	}
 

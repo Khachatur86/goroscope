@@ -2,220 +2,91 @@
   "name": "demo-capture",
   "target": "demo://ui",
   "events": [
-    {
-      "session_id": "fixture_demo",
-      "seq": 1,
-      "timestamp": "2026-03-14T12:00:00Z",
-      "kind": "goroutine.create",
-      "goroutine_id": 1,
-      "labels": {
-        "function": "main.producer"
-      }
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 2,
-      "timestamp": "2026-03-14T12:00:00Z",
-      "kind": "goroutine.start",
-      "goroutine_id": 1
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 3,
-      "timestamp": "2026-03-14T12:00:00.8Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 1,
-      "state": "RUNNABLE"
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 4,
-      "timestamp": "2026-03-14T12:00:00.05Z",
-      "kind": "goroutine.create",
-      "goroutine_id": 42,
-      "parent_id": 1,
-      "labels": {
-        "function": "main.worker"
-      }
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 5,
-      "timestamp": "2026-03-14T12:00:00.1Z",
-      "kind": "goroutine.start",
-      "goroutine_id": 42
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 6,
-      "timestamp": "2026-03-14T12:00:00.9Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 42,
-      "state": "BLOCKED",
-      "reason": "chan_recv",
-      "resource_id": "chan:0xc000018230"
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 7,
-      "timestamp": "2026-03-14T12:00:01.6Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 42,
-      "state": "RUNNING"
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 8,
-      "timestamp": "2026-03-14T12:00:01.77Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 42,
-      "state": "BLOCKED",
-      "reason": "chan_recv",
-      "resource_id": "chan:0xc000018230"
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 9,
-      "timestamp": "2026-03-14T12:00:02Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 42,
-      "state": "BLOCKED",
-      "reason": "chan_recv",
-      "resource_id": "chan:0xc000018230"
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 10,
-      "timestamp": "2026-03-14T12:00:00.1Z",
-      "kind": "goroutine.create",
-      "goroutine_id": 77,
-      "parent_id": 42,
-      "labels": {
-        "function": "main.sink"
-      }
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 11,
-      "timestamp": "2026-03-14T12:00:00.1Z",
-      "kind": "goroutine.start",
-      "goroutine_id": 77
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 12,
-      "timestamp": "2026-03-14T12:00:00.2Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 77,
-      "state": "WAITING",
-      "reason": "mutex_lock",
-      "resource_id": "mutex:0xc000014180"
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 13,
-      "timestamp": "2026-03-14T12:00:01.3Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 77,
-      "state": "SYSCALL",
-      "reason": "syscall"
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 14,
-      "timestamp": "2026-03-14T12:00:01.89Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 77,
-      "state": "WAITING",
-      "reason": "mutex_lock",
-      "resource_id": "mutex:0xc000014180"
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 15,
-      "timestamp": "2026-03-14T12:00:02Z",
-      "kind": "goroutine.state",
-      "goroutine_id": 77,
-      "state": "WAITING",
-      "reason": "mutex_lock",
-      "resource_id": "mutex:0xc000014180"
-    }
+    {"session_id": "fixture_demo", "seq": 1, "timestamp": "2026-03-14T12:00:00Z", "kind": "goroutine.create", "goroutine_id": 1, "labels": {"function": "main.producer"}},
+    {"session_id": "fixture_demo", "seq": 2, "timestamp": "2026-03-14T12:00:00Z", "kind": "goroutine.start", "goroutine_id": 1},
+    {"session_id": "fixture_demo", "seq": 3, "timestamp": "2026-03-14T12:00:00.08Z", "kind": "goroutine.state", "goroutine_id": 1, "state": "RUNNABLE"},
+    {"session_id": "fixture_demo", "seq": 4, "timestamp": "2026-03-14T12:00:00.05Z", "kind": "goroutine.create", "goroutine_id": 42, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 5, "timestamp": "2026-03-14T12:00:00.1Z", "kind": "goroutine.start", "goroutine_id": 42},
+    {"session_id": "fixture_demo", "seq": 6, "timestamp": "2026-03-14T12:00:00.06Z", "kind": "goroutine.create", "goroutine_id": 43, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 7, "timestamp": "2026-03-14T12:00:00.07Z", "kind": "goroutine.create", "goroutine_id": 44, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 8, "timestamp": "2026-03-14T12:00:00.08Z", "kind": "goroutine.create", "goroutine_id": 45, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 9, "timestamp": "2026-03-14T12:00:00.09Z", "kind": "goroutine.create", "goroutine_id": 46, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 10, "timestamp": "2026-03-14T12:00:00.1Z", "kind": "goroutine.create", "goroutine_id": 47, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 11, "timestamp": "2026-03-14T12:00:00.11Z", "kind": "goroutine.create", "goroutine_id": 48, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 12, "timestamp": "2026-03-14T12:00:00.12Z", "kind": "goroutine.create", "goroutine_id": 49, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 13, "timestamp": "2026-03-14T12:00:00.13Z", "kind": "goroutine.create", "goroutine_id": 50, "parent_id": 1, "labels": {"function": "main.worker"}},
+    {"session_id": "fixture_demo", "seq": 14, "timestamp": "2026-03-14T12:00:00.11Z", "kind": "goroutine.start", "goroutine_id": 43},
+    {"session_id": "fixture_demo", "seq": 15, "timestamp": "2026-03-14T12:00:00.12Z", "kind": "goroutine.start", "goroutine_id": 44},
+    {"session_id": "fixture_demo", "seq": 16, "timestamp": "2026-03-14T12:00:00.13Z", "kind": "goroutine.start", "goroutine_id": 45},
+    {"session_id": "fixture_demo", "seq": 17, "timestamp": "2026-03-14T12:00:00.14Z", "kind": "goroutine.start", "goroutine_id": 46},
+    {"session_id": "fixture_demo", "seq": 18, "timestamp": "2026-03-14T12:00:00.15Z", "kind": "goroutine.start", "goroutine_id": 47},
+    {"session_id": "fixture_demo", "seq": 19, "timestamp": "2026-03-14T12:00:00.16Z", "kind": "goroutine.start", "goroutine_id": 48},
+    {"session_id": "fixture_demo", "seq": 20, "timestamp": "2026-03-14T12:00:00.17Z", "kind": "goroutine.start", "goroutine_id": 49},
+    {"session_id": "fixture_demo", "seq": 21, "timestamp": "2026-03-14T12:00:00.18Z", "kind": "goroutine.start", "goroutine_id": 50},
+    {"session_id": "fixture_demo", "seq": 22, "timestamp": "2026-03-14T12:00:00.2Z", "kind": "goroutine.state", "goroutine_id": 42, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 23, "timestamp": "2026-03-14T12:00:00.25Z", "kind": "goroutine.state", "goroutine_id": 43, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 24, "timestamp": "2026-03-14T12:00:00.3Z", "kind": "goroutine.state", "goroutine_id": 44, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 25, "timestamp": "2026-03-14T12:00:00.35Z", "kind": "goroutine.state", "goroutine_id": 45, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 26, "timestamp": "2026-03-14T12:00:00.4Z", "kind": "goroutine.state", "goroutine_id": 1, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 27, "timestamp": "2026-03-14T12:00:00.1Z", "kind": "goroutine.create", "goroutine_id": 77, "parent_id": 42, "labels": {"function": "main.sink"}},
+    {"session_id": "fixture_demo", "seq": 28, "timestamp": "2026-03-14T12:00:00.11Z", "kind": "goroutine.start", "goroutine_id": 77},
+    {"session_id": "fixture_demo", "seq": 29, "timestamp": "2026-03-14T12:00:00.2Z", "kind": "goroutine.state", "goroutine_id": 77, "state": "WAITING", "reason": "mutex_lock", "resource_id": "mutex:0xc000014180"},
+    {"session_id": "fixture_demo", "seq": 30, "timestamp": "2026-03-14T12:00:00.5Z", "kind": "goroutine.state", "goroutine_id": 42, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 31, "timestamp": "2026-03-14T12:00:00.55Z", "kind": "goroutine.state", "goroutine_id": 43, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 32, "timestamp": "2026-03-14T12:00:00.6Z", "kind": "goroutine.state", "goroutine_id": 1, "state": "RUNNABLE"},
+    {"session_id": "fixture_demo", "seq": 33, "timestamp": "2026-03-14T12:00:00.65Z", "kind": "goroutine.state", "goroutine_id": 44, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 34, "timestamp": "2026-03-14T12:00:00.7Z", "kind": "goroutine.state", "goroutine_id": 45, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 35, "timestamp": "2026-03-14T12:00:00.75Z", "kind": "goroutine.state", "goroutine_id": 46, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 36, "timestamp": "2026-03-14T12:00:00.8Z", "kind": "goroutine.state", "goroutine_id": 47, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 37, "timestamp": "2026-03-14T12:00:00.85Z", "kind": "goroutine.state", "goroutine_id": 48, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 38, "timestamp": "2026-03-14T12:00:00.9Z", "kind": "goroutine.state", "goroutine_id": 49, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 39, "timestamp": "2026-03-14T12:00:00.95Z", "kind": "goroutine.state", "goroutine_id": 50, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 40, "timestamp": "2026-03-14T12:00:01.0Z", "kind": "goroutine.state", "goroutine_id": 42, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 41, "timestamp": "2026-03-14T12:00:01.0Z", "kind": "goroutine.state", "goroutine_id": 77, "state": "SYSCALL", "reason": "syscall"},
+    {"session_id": "fixture_demo", "seq": 42, "timestamp": "2026-03-14T12:00:01.1Z", "kind": "goroutine.state", "goroutine_id": 46, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 43, "timestamp": "2026-03-14T12:00:01.15Z", "kind": "goroutine.state", "goroutine_id": 47, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 44, "timestamp": "2026-03-14T12:00:01.2Z", "kind": "goroutine.state", "goroutine_id": 48, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 45, "timestamp": "2026-03-14T12:00:01.25Z", "kind": "goroutine.state", "goroutine_id": 49, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 46, "timestamp": "2026-03-14T12:00:01.3Z", "kind": "goroutine.state", "goroutine_id": 50, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 47, "timestamp": "2026-03-14T12:00:01.35Z", "kind": "goroutine.state", "goroutine_id": 45, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 48, "timestamp": "2026-03-14T12:00:01.4Z", "kind": "goroutine.state", "goroutine_id": 43, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 49, "timestamp": "2026-03-14T12:00:01.45Z", "kind": "goroutine.state", "goroutine_id": 44, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 50, "timestamp": "2026-03-14T12:00:01.5Z", "kind": "goroutine.state", "goroutine_id": 42, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 51, "timestamp": "2026-03-14T12:00:01.55Z", "kind": "goroutine.state", "goroutine_id": 77, "state": "WAITING", "reason": "mutex_lock", "resource_id": "mutex:0xc000014180"},
+    {"session_id": "fixture_demo", "seq": 52, "timestamp": "2026-03-14T12:00:01.6Z", "kind": "goroutine.state", "goroutine_id": 42, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 53, "timestamp": "2026-03-14T12:00:01.65Z", "kind": "goroutine.state", "goroutine_id": 45, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 54, "timestamp": "2026-03-14T12:00:01.7Z", "kind": "goroutine.state", "goroutine_id": 43, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 55, "timestamp": "2026-03-14T12:00:01.75Z", "kind": "goroutine.state", "goroutine_id": 44, "state": "RUNNING"},
+    {"session_id": "fixture_demo", "seq": 56, "timestamp": "2026-03-14T12:00:01.8Z", "kind": "goroutine.state", "goroutine_id": 46, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 57, "timestamp": "2026-03-14T12:00:01.85Z", "kind": "goroutine.state", "goroutine_id": 47, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 58, "timestamp": "2026-03-14T12:00:01.9Z", "kind": "goroutine.state", "goroutine_id": 48, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 59, "timestamp": "2026-03-14T12:00:01.95Z", "kind": "goroutine.state", "goroutine_id": 49, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 60, "timestamp": "2026-03-14T12:00:02Z", "kind": "goroutine.state", "goroutine_id": 50, "state": "BLOCKED", "reason": "chan_recv", "resource_id": "chan:0xc000018230"},
+    {"session_id": "fixture_demo", "seq": 61, "timestamp": "2026-03-14T12:00:02Z", "kind": "goroutine.state", "goroutine_id": 77, "state": "WAITING", "reason": "mutex_lock", "resource_id": "mutex:0xc000014180"}
   ],
   "stacks": [
-    {
-      "session_id": "fixture_demo",
-      "seq": 16,
-      "timestamp": "2026-03-14T12:00:00.9Z",
-      "stack_id": "stk_producer",
-      "goroutine_id": 1,
-      "frames": [
-        {
-          "func": "main.producer",
-          "file": "/workspace/app/main.go",
-          "line": 24
-        },
-        {
-          "func": "main.main",
-          "file": "/workspace/app/main.go",
-          "line": 88
-        }
-      ]
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 17,
-      "timestamp": "2026-03-14T12:00:02Z",
-      "stack_id": "stk_worker",
-      "goroutine_id": 42,
-      "frames": [
-        {
-          "func": "main.worker",
-          "file": "/workspace/app/main.go",
-          "line": 57
-        },
-        {
-          "func": "main.main",
-          "file": "/workspace/app/main.go",
-          "line": 92
-        }
-      ]
-    },
-    {
-      "session_id": "fixture_demo",
-      "seq": 18,
-      "timestamp": "2026-03-14T12:00:02Z",
-      "stack_id": "stk_sink",
-      "goroutine_id": 77,
-      "frames": [
-        {
-          "func": "main.sink",
-          "file": "/workspace/app/main.go",
-          "line": 73
-        },
-        {
-          "func": "main.main",
-          "file": "/workspace/app/main.go",
-          "line": 95
-        }
-      ]
-    }
+    {"session_id": "fixture_demo", "seq": 62, "timestamp": "2026-03-14T12:00:00.9Z", "stack_id": "stk_producer", "goroutine_id": 1, "frames": [{"func": "main.producer", "file": "/workspace/app/main.go", "line": 24}, {"func": "main.main", "file": "/workspace/app/main.go", "line": 88}]},
+    {"session_id": "fixture_demo", "seq": 63, "timestamp": "2026-03-14T12:00:02Z", "stack_id": "stk_worker", "goroutine_id": 42, "frames": [{"func": "main.worker", "file": "/workspace/app/main.go", "line": 57}, {"func": "main.main", "file": "/workspace/app/main.go", "line": 92}]},
+    {"session_id": "fixture_demo", "seq": 64, "timestamp": "2026-03-14T12:00:02Z", "stack_id": "stk_sink", "goroutine_id": 77, "frames": [{"func": "main.sink", "file": "/workspace/app/main.go", "line": 73}, {"func": "main.main", "file": "/workspace/app/main.go", "line": 95}]},
+    {"session_id": "fixture_demo", "seq": 65, "timestamp": "2026-03-14T12:00:01.5Z", "stack_id": "stk_worker43", "goroutine_id": 43, "frames": [{"func": "main.worker", "file": "/workspace/app/main.go", "line": 57}, {"func": "main.main", "file": "/workspace/app/main.go", "line": 92}]},
+    {"session_id": "fixture_demo", "seq": 66, "timestamp": "2026-03-14T12:00:01.0Z", "stack_id": "stk_worker50", "goroutine_id": 50, "frames": [{"func": "main.worker", "file": "/workspace/app/main.go", "line": 57}, {"func": "main.main", "file": "/workspace/app/main.go", "line": 92}]}
   ],
   "parent_ids": {
     "42": 1,
+    "43": 1,
+    "44": 1,
+    "45": 1,
+    "46": 1,
+    "47": 1,
+    "48": 1,
+    "49": 1,
+    "50": 1,
     "77": 42
   },
   "resources": [
-    {
-      "from_goroutine_id": 1,
-      "to_goroutine_id": 42,
-      "resource_id": "chan:0xc000018230",
-      "kind": "channel"
-    },
-    {
-      "from_goroutine_id": 42,
-      "to_goroutine_id": 77,
-      "resource_id": "mutex:0xc000014180",
-      "kind": "mutex"
-    }
+    {"from_goroutine_id": 1, "to_goroutine_id": 42, "resource_id": "chan:0xc000018230", "kind": "channel"},
+    {"from_goroutine_id": 1, "to_goroutine_id": 43, "resource_id": "chan:0xc000018230", "kind": "channel"},
+    {"from_goroutine_id": 1, "to_goroutine_id": 44, "resource_id": "chan:0xc000018230", "kind": "channel"},
+    {"from_goroutine_id": 42, "to_goroutine_id": 77, "resource_id": "mutex:0xc000014180", "kind": "mutex"}
   ]
 }

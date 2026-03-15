@@ -60,6 +60,15 @@ goroscope run ./examples/trace_demo --open-browser
 goroscope run ./examples/worker_pool --open-browser
 ```
 
+**React UI** for live run (flags must come before the target):
+
+```bash
+make web
+goroscope run -ui=react -open-browser ./examples/trace_demo
+```
+
+Or `make run-react`.
+
 This starts the local UI immediately, runs the target, and refreshes the timeline from the growing `runtime/trace` while the process is still running. Live updates are pushed to the browser over Server-Sent Events.
 
 ## Commands
