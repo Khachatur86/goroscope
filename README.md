@@ -18,10 +18,10 @@ This repository contains a working local MVP built around `runtime/trace`:
 
 ```bash
 make build
-go run ./cmd/goroscope ui
+go run ./cmd/goroscope ui --open-browser
 ```
 
-Then open `http://127.0.0.1:7070`.
+Or without the flag: open `http://127.0.0.1:7070` manually.
 
 ## Runtime Trace Demo
 

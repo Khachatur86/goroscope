@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
@@ -40,10 +42,25 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--session-name name] [--poll-interval 1s] [--save path.gtrace] <package-or-binary>")
-	fmt.Fprintln(w, "  goroscope collect [--addr 127.0.0.1:7070]")
-	fmt.Fprintln(w, "  goroscope ui [--addr 127.0.0.1:7070]")
-	fmt.Fprintln(w, "  goroscope replay [--addr 127.0.0.1:7070] <capture-file>")
+	fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--open-browser] [--session-name name] [--poll-interval 1s] [--save path.gtrace] <package-or-binary>")
+	fmt.Fprintln(w, "  goroscope collect [--addr 127.0.0.1:7070] [--open-browser]")
+	fmt.Fprintln(w, "  goroscope ui [--addr 127.0.0.1:7070] [--open-browser]")
+	fmt.Fprintln(w, "  goroscope replay [--addr 127.0.0.1:7070] [--open-browser] <capture-file>")
+}
+
+// openBrowserURL opens the default browser to the given URL. It returns silently on
+// failure (e.g. headless environment) so the CLI does not block or error.
+func openBrowserURL(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	_ = cmd.Start()
 }
 
 func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -51,10 +68,10 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	fs.SetOutput(stderr)
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
+	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	sessionName := fs.String("session-name", "local-run", "Session name")
 	pollInterval := fs.Duration("poll-interval", time.Second, "How often to re-read the live trace file")
 	savePath := fs.String("save", "", "Save capture to file when session completes (e.g. ./captures/run.gtrace)")
-	noBrowser := fs.Bool("no-browser", true, "Reserved for future browser integration")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -65,10 +82,9 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		target = fs.Arg(0)
 	}
 
-	_ = noBrowser
-
 	return serveLiveRunSession(ctx, serveLiveRunInput{
 		Addr:         *addr,
+		OpenBrowser:  *openBrowser,
 		SessionName:  *sessionName,
 		Target:       target,
 		PollInterval: *pollInterval,
@@ -83,6 +99,7 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 	fs.SetOutput(stderr)
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
+	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -92,7 +109,7 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 		return err
 	}
 
-	return serveCaptureSession(ctx, *addr, "collector", "collector", capture, stdout)
+	return serveCaptureSession(ctx, *addr, "collector", "collector", capture, stdout, *openBrowser)
 }
 
 func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -100,6 +117,7 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	fs.SetOutput(stderr)
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
+	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -109,7 +127,7 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return err
 	}
 
-	return serveCaptureSession(ctx, *addr, "ui-demo", "demo://ui", capture, stdout)
+	return serveCaptureSession(ctx, *addr, "ui-demo", "demo://ui", capture, stdout, *openBrowser)
 }
 
 func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -117,6 +135,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	fs.SetOutput(stderr)
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
+	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -131,12 +150,13 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return err
 	}
 
-	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout)
+	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout, *openBrowser)
 }
 
 // serveLiveRunInput holds parameters for serveLiveRunSession.
 type serveLiveRunInput struct {
 	Addr         string
+	OpenBrowser  bool
 	SessionName  string
 	Target       string
 	PollInterval time.Duration
@@ -145,14 +165,22 @@ type serveLiveRunInput struct {
 	Stderr       io.Writer
 }
 
-func serveCaptureSession(ctx context.Context, addr, sessionName, target string, capture model.Capture, stdout io.Writer) error {
+func serveCaptureSession(ctx context.Context, addr, sessionName, target string, capture model.Capture, stdout io.Writer, openBrowser bool) error {
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
 	current := sessions.StartSession(sessionName, target)
 	engine.LoadCapture(current, tracebridge.BindCaptureSession(capture, current.ID))
 
 	server := api.NewServer(addr, engine, sessions)
-	fmt.Fprintf(stdout, "goroscope scaffold serving %q at http://%s\n", target, addr)
+	url := "http://" + addr
+	fmt.Fprintf(stdout, "goroscope scaffold serving %q at %s\n", target, url)
+
+	if openBrowser {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			openBrowserURL(url)
+		}()
+	}
 
 	return server.Serve(ctx)
 }
@@ -181,7 +209,15 @@ func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 	})
 
 	server := api.NewServer(in.Addr, engine, sessions)
-	fmt.Fprintf(in.Stdout, "goroscope live run serving %q at http://%s\n", in.Target, in.Addr)
+	url := "http://" + in.Addr
+	fmt.Fprintf(in.Stdout, "goroscope live run serving %q at %s\n", in.Target, url)
+
+	if in.OpenBrowser {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			openBrowserURL(url)
+		}()
+	}
 
 	return server.Serve(ctx)
 }
