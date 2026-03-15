@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 import { fetchTimeline, fetchProcessorTimeline } from "../api/client";
 import { TimelineCanvas } from "./TimelineCanvas";
@@ -59,8 +59,12 @@ export function Timeline({
       .catch(() => setProcessorSegments([]));
   }, []);
 
-  const filteredSegments = (segments ?? []).filter((seg) =>
-    (goroutines ?? []).some((g) => g.goroutine_id === seg.goroutine_id)
+  const filteredSegments = useMemo(
+    () =>
+      (segments ?? []).filter((seg) =>
+        (goroutines ?? []).some((g) => g.goroutine_id === seg.goroutine_id)
+      ),
+    [segments, goroutines]
   );
 
   const fullMinStart = Math.min(...filteredSegments.map((s) => s.start_ns));
@@ -68,25 +72,39 @@ export function Timeline({
   const fullSpan = Math.max(fullMaxEnd - fullMinStart, 1);
   const isHeatmap = viewMode === "heatmap";
 
-  // Sync canvas zoom/pan when zoomToSelected or selected goroutine changes
+  // Keep refs to latest computed values so the zoom effect can read them
+  // without including them as deps (which would re-fire on every poll cycle).
+  const filteredSegmentsRef = useRef(filteredSegments);
+  filteredSegmentsRef.current = filteredSegments;
+  const fullMinStartRef = useRef(fullMinStart);
+  fullMinStartRef.current = fullMinStart;
+  const fullMaxEndRef = useRef(fullMaxEnd);
+  fullMaxEndRef.current = fullMaxEnd;
+  const fullSpanRef = useRef(fullSpan);
+  fullSpanRef.current = fullSpan;
+
+  // Sync canvas zoom/pan only when the user explicitly changes zoomToSelected
+  // or selects a different goroutine — not on background poll updates.
   useEffect(() => {
-    if (zoomToSelected && selectedId && filteredSegments.length > 0) {
-      const selectedSegs = filteredSegments.filter((s) => s.goroutine_id === selectedId);
+    if (zoomToSelected && selectedId) {
+      const segs = filteredSegmentsRef.current;
+      const selectedSegs = segs.filter((s) => s.goroutine_id === selectedId);
       if (selectedSegs.length > 0) {
         const minStart = Math.min(...selectedSegs.map((s) => s.start_ns));
         const maxEnd = Math.max(...selectedSegs.map((s) => s.end_ns));
         const padding = Math.max((maxEnd - minStart) * 0.1, 1);
-        const visibleStart = Math.max(fullMinStart, minStart - padding);
-        const visibleEnd = Math.min(fullMaxEnd, maxEnd + padding);
+        const visibleStart = Math.max(fullMinStartRef.current, minStart - padding);
+        const visibleEnd = Math.min(fullMaxEndRef.current, maxEnd + padding);
         const visibleSpan = visibleEnd - visibleStart;
-        setCanvasPanOffsetNS(visibleStart - fullMinStart);
-        setCanvasZoomLevel(fullSpan / visibleSpan);
+        setCanvasPanOffsetNS(visibleStart - fullMinStartRef.current);
+        setCanvasZoomLevel(fullSpanRef.current / visibleSpan);
         return;
       }
     }
     setCanvasZoomLevel(1);
     setCanvasPanOffsetNS(0);
-  }, [zoomToSelected, selectedId, fullMinStart, fullSpan, filteredSegments]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomToSelected, selectedId]);
 
   if (filteredSegments.length === 0) {
     return (
