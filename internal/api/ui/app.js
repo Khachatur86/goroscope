@@ -106,6 +106,7 @@ const elements = {
   timelineRange: document.getElementById("timeline-range"),
   focusRelatedButton: document.getElementById("focus-related-button"),
   resetZoomButton: document.getElementById("reset-zoom-button"),
+  exportPngButton: document.getElementById("export-png-button"),
   inspector: document.getElementById("inspector"),
   resourceList: document.getElementById("resource-list"),
   resourceGraphToggle: document.getElementById("resource-graph-toggle"),
@@ -145,8 +146,33 @@ document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "g") {
     event.preventDefault();
     elements.jumpToInput?.focus();
+    return;
+  }
+  if (event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA" || event.target.isContentEditable) {
+    return;
+  }
+  const filtered = getFilteredGoroutines();
+  if (filtered.length === 0) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    navigateGoroutine(1);
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    navigateGoroutine(-1);
+    return;
   }
 });
+
+function navigateGoroutine(delta) {
+  const filtered = getFilteredGoroutines();
+  const idx = state.selectedId
+    ? filtered.findIndex((g) => g.goroutine_id === state.selectedId)
+    : -1;
+  const nextIdx = idx < 0 ? (delta > 0 ? 0 : filtered.length - 1) : Math.max(0, Math.min(filtered.length - 1, idx + delta));
+  selectGoroutine(filtered[nextIdx].goroutine_id);
+}
 
 elements.searchInput.addEventListener("input", (event) => {
   state.search = event.target.value.trim().toLowerCase();
@@ -210,6 +236,18 @@ if (elements.resetZoomButton) {
     timelineView.zoomLevel = 1;
     timelineView.panOffsetNS = 0;
     renderCurrentView();
+  });
+}
+
+if (elements.exportPngButton) {
+  elements.exportPngButton.addEventListener("click", () => {
+    const canvas = state.viewMode === "heatmap" ? elements.heatmapCanvas : elements.timelineCanvas;
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `goroscope-timeline-${state.viewMode}-${Date.now()}.png`;
+    a.click();
   });
 }
 
