@@ -1,0 +1,47 @@
+image: golang:1.23
+
+stages:
+  - test
+  - lint
+  - build
+
+variables:
+  GOPATH: "$CI_PROJECT_DIR/.go"
+  GOLANGCI_LINT_VERSION: "v2.1.6"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .go/pkg/mod
+    - .cache/go-build
+
+before_script:
+  - mkdir -p .go .cache/go-build
+  - export GOFLAGS="-mod=readonly"
+  - export GOCACHE="$CI_PROJECT_DIR/.cache/go-build"
+
+vet:
+  stage: test
+  script:
+    - go vet ./...
+
+test:
+  stage: test
+  script:
+    - go test -race ./...
+
+lint:
+  stage: lint
+  script:
+    - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
+        | sh -s -- -b /usr/local/bin ${GOLANGCI_LINT_VERSION}
+    - golangci-lint run --timeout=5m
+
+build:
+  stage: build
+  script:
+    - make build VERSION=ci
+  artifacts:
+    paths:
+      - bin/
+    expire_in: 1 week
