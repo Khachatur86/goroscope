@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { FixedSizeList, type ListChildComponentProps } from "react-window";
 import type { Goroutine, Session, DeadlockHint } from "./api/client";
 import {
   fetchCurrentSession,
@@ -14,6 +15,36 @@ import { Inspector } from "./inspector/Inspector";
 import { Timeline } from "./timeline/Timeline";
 import { ResourceGraph } from "./resource-graph/ResourceGraph";
 import { filterAndSortGoroutines } from "./utils/goroutines";
+
+/** Height of one row in the virtualised goroutine list (px). */
+const GOROUTINE_ITEM_HEIGHT = 44;
+/** Visible height of the virtualised goroutine list (px). */
+const GOROUTINE_LIST_HEIGHT = 400;
+
+type GoroutineRowData = {
+  goroutines: Goroutine[];
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+};
+
+function GoroutineRow({ index, style, data }: ListChildComponentProps<GoroutineRowData>) {
+  const g = data.goroutines[index];
+  return (
+    <div style={style}>
+      <button
+        type="button"
+        className={`lane-item ${data.selectedId === g.goroutine_id ? "active" : ""}`}
+        onClick={() => data.onSelect(g.goroutine_id)}
+      >
+        <span className={`state-pill ${g.state}`}>{g.state}</span>
+        <span className="lane-item-title">G{g.goroutine_id}</span>
+        <span className="lane-item-meta">
+          {g.labels?.function ?? g.reason ?? "—"}
+        </span>
+      </button>
+    </div>
+  );
+}
 
 type FiltersState = {
   state: string;
@@ -453,22 +484,18 @@ export function App() {
           </div>
           <Filters filters={filters} onFiltersChange={setFilters} onJumpTo={handleJumpTo} jumpToInputRef={jumpToInputRef} />
           <div className="goroutine-list">
-            {displayGoroutines.map((g) => (
-              <button
-                key={g.goroutine_id}
-                type="button"
-                className={`lane-item ${selectedId === g.goroutine_id ? "active" : ""}`}
-                onClick={() => handleSelect(g.goroutine_id)}
-              >
-                <span className={`state-pill ${g.state}`}>{g.state}</span>
-                <span className="lane-item-title">G{g.goroutine_id}</span>
-                <span className="lane-item-meta">
-                  {g.labels?.function ?? g.reason ?? "—"}
-                </span>
-              </button>
-            ))}
-            {displayGoroutines.length === 0 && (
+            {displayGoroutines.length === 0 ? (
               <p className="empty-message">No goroutines match the current filters.</p>
+            ) : (
+              <FixedSizeList
+                height={GOROUTINE_LIST_HEIGHT}
+                itemCount={displayGoroutines.length}
+                itemSize={GOROUTINE_ITEM_HEIGHT}
+                width="100%"
+                itemData={{ goroutines: displayGoroutines, selectedId, onSelect: handleSelect }}
+              >
+                {GoroutineRow}
+              </FixedSizeList>
             )}
           </div>
         </aside>

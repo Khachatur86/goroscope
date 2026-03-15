@@ -242,11 +242,13 @@ body {
 }
 
 .goroutine-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  max-height: 400px;
-  overflow-y: auto;
+  height: 400px;
+  overflow: hidden; /* react-window manages its own scroll */
+}
+
+.goroutine-list .lane-item {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .lane-item {

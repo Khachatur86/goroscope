@@ -10,9 +10,11 @@
     "test": "echo \"no frontend tests yet\""
   },
   "dependencies": {
+    "@types/react-window": "^1.8.8",
     "html2canvas": "^1.4.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-window": "^1.8.11"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

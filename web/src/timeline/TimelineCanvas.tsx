@@ -17,6 +17,42 @@ function formatDuration(ns: number): string {
   return `${ns}ns`;
 }
 
+/**
+ * Format a nanosecond offset for axis tick labels.
+ * Strips unnecessary trailing zeros so ticks read "10ms" not "10.00ms".
+ */
+function formatAxisLabel(ns: number): string {
+  if (ns === 0) return "0";
+  const stripZeros = (n: number) => parseFloat(n.toPrecision(4)).toString();
+  if (ns >= 1e9) return `${stripZeros(ns / 1e9)}s`;
+  if (ns >= 1e6) return `${stripZeros(ns / 1e6)}ms`;
+  if (ns >= 1e3) return `${stripZeros(ns / 1e3)}µs`;
+  return `${ns}ns`;
+}
+
+/**
+ * Return "nice" tick positions within [visibleStart, visibleStart+visibleSpan].
+ * Step size is rounded to the nearest 1/2/5 × 10^n so labels land on clean numbers.
+ */
+function computeNiceTicks(visibleStart: number, visibleSpan: number, targetCount: number): number[] {
+  if (visibleSpan <= 0 || targetCount < 1) return [];
+  const rawStep = visibleSpan / targetCount;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const normalized = rawStep / magnitude;
+  let niceStep: number;
+  if (normalized < 1.5) niceStep = magnitude;
+  else if (normalized < 3.5) niceStep = 2 * magnitude;
+  else if (normalized < 7.5) niceStep = 5 * magnitude;
+  else niceStep = 10 * magnitude;
+
+  const firstTick = Math.ceil(visibleStart / niceStep) * niceStep;
+  const ticks: number[] = [];
+  for (let t = firstTick; t <= visibleStart + visibleSpan + niceStep * 0.001; t += niceStep) {
+    if (t <= visibleStart + visibleSpan) ticks.push(t);
+  }
+  return ticks;
+}
+
 const METRICS = {
   axisHeight: 38,
   rowHeight: 28,
@@ -153,26 +189,33 @@ export function TimelineCanvas({
     ctx.fillStyle = "#0d1117";
     ctx.fillRect(0, 0, width, height);
 
-    // Axis
+    // Axis baseline
     ctx.strokeStyle = "rgba(219, 228, 238, 0.14)";
     ctx.beginPath();
     ctx.moveTo(plotLeft, METRICS.axisHeight - 10);
     ctx.lineTo(width - METRICS.rightPadding, METRICS.axisHeight - 10);
     ctx.stroke();
 
-    for (let i = 0; i < 5; i++) {
-      const ratio = i / 4;
+    // Time axis ticks — use nice-number algorithm so labels are always round values
+    const targetTickCount = Math.max(4, Math.floor(innerWidth / 90));
+    const ticks = computeNiceTicks(visibleStart, visibleSpan, targetTickCount);
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ticks.forEach((tick) => {
+      const ratio = (tick - visibleStart) / visibleSpan;
+      if (ratio < 0 || ratio > 1) return;
       const x = plotLeft + ratio * innerWidth;
-      const value = visibleStart + ratio * visibleSpan;
       ctx.strokeStyle = "rgba(219, 228, 238, 0.12)";
       ctx.beginPath();
       ctx.moveTo(x, METRICS.axisHeight - 18);
       ctx.lineTo(x, height - 16);
       ctx.stroke();
+      const label = formatAxisLabel(tick - fullMinStart);
+      const labelWidth = ctx.measureText(label).width;
+      // Clamp label so it doesn't overflow right edge
+      const labelX = Math.min(x + 4, width - METRICS.rightPadding - labelWidth - 2);
       ctx.fillStyle = "#dbe4ee";
-      ctx.font = '11px "IBM Plex Mono", monospace';
-      ctx.fillText(formatDuration(value - fullMinStart), x + 6, 20);
-    }
+      ctx.fillText(label, labelX, 20);
+    });
 
     // GMP strip
     if (numPs > 0) {
