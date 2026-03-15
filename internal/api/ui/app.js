@@ -11,6 +11,7 @@ const state = {
   relatedFocus: false,
   search: "",
   stateFilter: "ALL",
+  reasonFilter: "",
   minWaitNs: "",
   sortMode: "SUSPICIOUS",
   // "lanes" = classic lane view; "heatmap" = pixel heatmap + GMP strip.
@@ -89,6 +90,7 @@ const elements = {
   longBlockedCard: document.getElementById("long-blocked-card"),
   searchInput: document.getElementById("search-input"),
   stateFilter: document.getElementById("state-filter"),
+  reasonFilter: document.getElementById("reason-filter"),
   minWaitFilter: document.getElementById("min-wait-filter"),
   sortMode: document.getElementById("sort-mode"),
   lanePriority: document.getElementById("lane-priority"),
@@ -131,6 +133,13 @@ elements.stateFilter.addEventListener("change", (event) => {
   ensureSelection();
   render();
 });
+
+if (elements.reasonFilter) {
+  elements.reasonFilter.addEventListener("change", (event) => {
+    state.reasonFilter = event.target.value;
+    loadData();
+  });
+}
 
 if (elements.minWaitFilter) {
   elements.minWaitFilter.addEventListener("change", (event) => {
@@ -405,6 +414,9 @@ function buildGoroutinesURL() {
   if (state.stateFilter && state.stateFilter !== "ALL") {
     params.set("state", state.stateFilter);
   }
+  if (state.reasonFilter) {
+    params.set("reason", state.reasonFilter);
+  }
   if (state.minWaitNs) {
     params.set("min_wait_ns", state.minWaitNs);
   }
@@ -512,6 +524,7 @@ function getStateUrgencyRank(stateName) {
 function getFilteredGoroutines() {
   return state.goroutines
     .filter((item) => state.stateFilter === "ALL" || item.state === state.stateFilter)
+    .filter((item) => !state.reasonFilter || item.reason === state.reasonFilter)
     .filter((item) => {
       if (!state.search) {
         return true;

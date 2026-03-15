@@ -14,6 +14,7 @@ import (
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/model"
 	"github.com/Khachatur86/goroscope/internal/session"
+	"github.com/Khachatur86/goroscope/internal/version"
 )
 
 type Server struct {
@@ -84,7 +85,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"version": version.Version,
+	})
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, _ *http.Request) {

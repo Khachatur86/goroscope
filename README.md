@@ -23,6 +23,8 @@ go run ./cmd/goroscope ui --open-browser
 
 Or without the flag: open `http://127.0.0.1:7070` manually.
 
+Build with version: `make build VERSION=1.0.0`
+
 ## Runtime Trace Demo
 
 The first real `run` pipeline is cooperative: the target app must import the Goroscope agent and call `agent.StartFromEnv()` in `main`.

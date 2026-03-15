@@ -75,6 +75,21 @@
             </select>
           </label>
           <label class="field">
+            <span>Reason</span>
+            <select id="reason-filter">
+              <option value="">Any</option>
+              <option value="chan_send">chan_send</option>
+              <option value="chan_recv">chan_recv</option>
+              <option value="select">select</option>
+              <option value="mutex_lock">mutex_lock</option>
+              <option value="sync_cond">sync_cond</option>
+              <option value="syscall">syscall</option>
+              <option value="sleep">sleep</option>
+              <option value="gc_assist">gc_assist</option>
+              <option value="unknown">unknown</option>
+            </select>
+          </label>
+          <label class="field">
             <span>Min wait</span>
             <select id="min-wait-filter">
               <option value="">Any</option>
