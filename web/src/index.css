@@ -466,6 +466,16 @@ body {
   color: #e2e8f0;
 }
 
+.timeline-control-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.focus-related-button.active {
+  color: #fff;
+  background: linear-gradient(135deg, #1d4ed8, #0f766e);
+}
+
 .empty-message {
   color: #94a3b8;
   font-size: 0.9rem;

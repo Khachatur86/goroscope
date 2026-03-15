@@ -80,10 +80,10 @@
 - [ ] Toggle кнопка "Minimap" (показывать при zoom > 1)
 
 #### 3.2 Related focus
-- [ ] Кнопка "Related focus"
-- [ ] Логика: горутины, связанные с выбранной (resource edges, parent/children)
-- [ ] Фильтр/подсветка только связанных на timeline
-- [ ] Toggle on/off
+- [x] Кнопка "Related focus"
+- [x] Логика: горутины, связанные с выбранной (resource edges, parent/children)
+- [x] Фильтр списка и timeline только связанных
+- [x] Toggle on/off
 
 #### 3.3 Heatmap view
 - [ ] Кнопка "⊞ Heatmap"

@@ -65,6 +65,7 @@ export function App() {
   const [resources, setResources] = useState<{ from_goroutine_id: number; to_goroutine_id: number; resource_id?: string }[]>([]);
   const [insights, setInsights] = useState<{ long_blocked_count: number }>({ long_blocked_count: 0 });
   const [deadlockHints, setDeadlockHints] = useState<DeadlockHint[]>([]);
+  const [relatedFocus, setRelatedFocus] = useState(false);
   const [filters, setFilters] = useState<FiltersState>(() => {
     const fromUrl = parseFiltersFromURL();
     return {
@@ -78,13 +79,27 @@ export function App() {
   });
 
   const filteredGoroutines = filterAndSortGoroutines(goroutines, filters);
-  const displayGoroutines =
+  let displayGoroutines =
     selectedId && !filteredGoroutines.some((g) => g.goroutine_id === selectedId)
       ? (() => {
           const sel = goroutines.find((g) => g.goroutine_id === selectedId);
           return sel ? [sel, ...filteredGoroutines] : filteredGoroutines;
         })()
       : filteredGoroutines;
+
+  if (relatedFocus && selectedId) {
+    const relatedIds = new Set<number>([selectedId]);
+    const selected = goroutines.find((g) => g.goroutine_id === selectedId);
+    if (selected?.parent_id) relatedIds.add(selected.parent_id);
+    goroutines.forEach((g) => {
+      if (g.parent_id === selectedId) relatedIds.add(g.goroutine_id);
+    });
+    resources.forEach((e) => {
+      if (e.from_goroutine_id === selectedId) relatedIds.add(e.to_goroutine_id);
+      if (e.to_goroutine_id === selectedId) relatedIds.add(e.from_goroutine_id);
+    });
+    displayGoroutines = displayGoroutines.filter((g) => relatedIds.has(g.goroutine_id));
+  }
 
   const initialUrlId = useRef(parseGoroutineFromURL());
   useEffect(() => {
@@ -420,6 +435,16 @@ export function App() {
         <section ref={timelinePanelRef} className="panel timeline-panel">
           <div className="timeline-controls">
             <h2>Timeline</h2>
+            <button
+              type="button"
+              className={`timeline-control-button focus-related-button ${relatedFocus ? "active" : ""}`}
+              onClick={() => setRelatedFocus((v) => !v)}
+              disabled={selectedId === null}
+              title="Focus on selected goroutine and related (parent, children, resource edges)"
+              aria-pressed={relatedFocus}
+            >
+              Related focus
+            </button>
             <button type="button" className="timeline-control-button" onClick={handleSavePng} title="Save timeline as PNG">
               Save PNG
             </button>
