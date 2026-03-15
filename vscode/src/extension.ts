@@ -3,11 +3,16 @@ import * as path from "path";
 import * as childProcess from "child_process";
 import * as fs from "fs";
 
+import { SessionPanelProvider } from "./sessionPanel";
+
 const DEFAULT_ADDR = "127.0.0.1:7070";
 let goroscopeProcess: childProcess.ChildProcess | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
+  const sessionProvider = new SessionPanelProvider();
   context.subscriptions.push(
+    sessionProvider,
+    vscode.window.registerTreeDataProvider("goroscope.session", sessionProvider),
     vscode.commands.registerCommand("goroscope.runCurrentPackage", () =>
       runCurrentPackage()
     ),
@@ -18,7 +23,10 @@ export function activate(context: vscode.ExtensionContext): void {
       openTimeline()
     ),
     vscode.commands.registerCommand("goroscope.stopSession", stopSession),
-    vscode.commands.registerCommand("goroscope.openTimeline", openTimeline)
+    vscode.commands.registerCommand("goroscope.openTimeline", openTimeline),
+    vscode.commands.registerCommand("goroscope.refreshSession", () =>
+      sessionProvider.refresh()
+    )
   );
 }
 
@@ -146,10 +154,29 @@ function openTimeline(): void {
   );
 
   panel.webview.html = getWebviewHtml(url);
+
+  panel.webview.onDidReceiveMessage(
+    async (msg: { type: string; file?: string; line?: number }) => {
+      if (msg.type === "openFile" && msg.file) {
+        const line = typeof msg.line === "number" && msg.line > 0 ? msg.line : 1;
+        try {
+          const doc = await vscode.workspace.openTextDocument(msg.file);
+          await vscode.window.showTextDocument(doc, {
+            selection: new vscode.Range(line - 1, 0, line - 1, 0),
+            preview: false,
+          });
+        } catch (err) {
+          vscode.window.showErrorMessage(
+            `Goroscope: Cannot open ${msg.file}: ${err}`
+          );
+        }
+      }
+    }
+  );
 }
 
 function getWebviewHtml(apiUrl: string): string {
-  const csp = `default-src 'none'; frame-src ${apiUrl};`;
+  const csp = `default-src 'none'; frame-src ${apiUrl}; script-src 'unsafe-inline';`;
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -162,6 +189,16 @@ function getWebviewHtml(apiUrl: string): string {
 </head>
 <body>
   <iframe src="${apiUrl}" title="Goroscope UI"></iframe>
+  <script>
+    (function() {
+      const vscode = acquireVsCodeApi();
+      window.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'goroscope:openFile' && event.data.file) {
+          vscode.postMessage({ type: 'openFile', file: event.data.file, line: event.data.line || 1 });
+        }
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }

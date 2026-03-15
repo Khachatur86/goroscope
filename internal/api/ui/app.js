@@ -1430,13 +1430,19 @@ function renderInspector() {
 
   const diagnostics = buildGoroutineDiagnostics(goroutine);
   const frames = goroutine.last_stack?.frames ?? [];
+  const inIframe = typeof window !== "undefined" && window.self !== window.top;
   const stackMarkup = frames.length > 0
-    ? frames.map((frame) => `
-        <div class="stack-frame">
+    ? frames.map((frame) => {
+        const file = escapeHTML(frame.file || "");
+        const line = Number.isFinite(frame.line) ? frame.line : 0;
+        const clickable = inIframe && file ? ` data-stack-file="${file}" data-stack-line="${line}" role="button" tabindex="0"` : "";
+        return `
+        <div class="stack-frame${clickable ? " stack-frame-clickable" : ""}"${clickable}>
           <div class="stack-func">${escapeHTML(frame.func)}</div>
           <div class="stack-path">${escapeHTML(frame.file)}:${frame.line}</div>
         </div>
-      `).join("")
+      `;
+      }).join("")
     : `<div class="empty-message">No stack snapshot yet.</div>`;
 
   elements.inspector.innerHTML = `
@@ -1485,6 +1491,23 @@ function renderInspector() {
   elements.inspector.querySelectorAll("[data-select-goroutine]").forEach((button) => {
     button.addEventListener("click", () => {
       selectGoroutine(Number(button.dataset.selectGoroutine));
+    });
+  });
+
+  // Wire up stack-frame click handlers for open-in-editor (when embedded in VS Code).
+  elements.inspector.querySelectorAll("[data-stack-file]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const file = el.dataset.stackFile;
+      const line = parseInt(el.dataset.stackLine, 10) || 1;
+      if (file && window.self !== window.top) {
+        window.parent.postMessage({ type: "goroscope:openFile", file, line }, "*");
+      }
+    });
+    el.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === " ") && el.dataset.stackFile) {
+        e.preventDefault();
+        el.click();
+      }
     });
   });
 }

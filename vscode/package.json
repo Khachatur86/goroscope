@@ -16,7 +16,8 @@
     "onCommand:goroscope.runSelectedMain",
     "onCommand:goroscope.attachToSession",
     "onCommand:goroscope.stopSession",
-    "onCommand:goroscope.openTimeline"
+    "onCommand:goroscope.openTimeline",
+    "onView:goroscope.session"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -40,6 +41,10 @@
       {
         "command": "goroscope.openTimeline",
         "title": "Goroscope: Open Timeline"
+      },
+      {
+        "command": "goroscope.refreshSession",
+        "title": "Goroscope: Refresh Session"
       }
     ],
     "viewsContainers": {
@@ -55,7 +60,16 @@
       "goroscope": [
         {
           "id": "goroscope.session",
-          "name": "Session"
+          "name": "Session",
+          "contextualTitle": "Goroscope Session"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "goroscope.refreshSession",
+          "when": "view == goroscope.session"
         }
       ]
     },

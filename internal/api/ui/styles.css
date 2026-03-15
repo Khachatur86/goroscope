@@ -850,6 +850,14 @@ select {
   background: rgba(20, 33, 61, 0.05);
 }
 
+.stack-frame-clickable {
+  cursor: pointer;
+}
+
+.stack-frame-clickable:hover {
+  background: rgba(20, 33, 61, 0.12);
+}
+
 .stack-func {
   font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
   font-size: 0.94rem;
