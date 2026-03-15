@@ -33,8 +33,7 @@ test:
 lint:
   stage: lint
   script:
-    - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
-        | sh -s -- -b /usr/local/bin ${GOLANGCI_LINT_VERSION}
+    - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin ${GOLANGCI_LINT_VERSION}
     - golangci-lint run --timeout=5m
 
 build:
