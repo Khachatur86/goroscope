@@ -1,3 +1,4 @@
+// Package main is a demo target program instrumented with the goroscope agent.
 package main
 
 import (

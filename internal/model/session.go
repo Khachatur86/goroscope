@@ -2,14 +2,17 @@ package model
 
 import "time"
 
+// SessionStatus indicates the lifecycle state of a tracing session.
 type SessionStatus string
 
+// Session status constants.
 const (
 	SessionStatusRunning   SessionStatus = "RUNNING"
 	SessionStatusCompleted SessionStatus = "COMPLETED"
 	SessionStatusFailed    SessionStatus = "FAILED"
 )
 
+// Session represents a single goroscope tracing session.
 type Session struct {
 	ID        string        `json:"id"`
 	Name      string        `json:"name"`

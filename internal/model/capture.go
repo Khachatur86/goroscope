@@ -1,5 +1,7 @@
+// Package model defines the core domain types shared across goroscope packages.
 package model
 
+// Capture is a point-in-time snapshot of goroutine events and stack traces.
 type Capture struct {
 	Name      string          `json:"name"`
 	Target    string          `json:"target,omitempty"`

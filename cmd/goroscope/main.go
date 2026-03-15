@@ -1,3 +1,4 @@
+// Package main is the goroscope CLI entry point.
 package main
 
 import (

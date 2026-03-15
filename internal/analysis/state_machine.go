@@ -6,12 +6,15 @@ import (
 	"github.com/Khachatur86/goroscope/internal/model"
 )
 
+// StateMachine applies goroutine events to produce updated goroutine state.
 type StateMachine struct{}
 
+// NewStateMachine returns a new StateMachine.
 func NewStateMachine() *StateMachine {
 	return &StateMachine{}
 }
 
+// Apply returns the next goroutine state after applying the given event.
 func (s *StateMachine) Apply(current model.Goroutine, event model.Event) model.Goroutine {
 	next := current
 

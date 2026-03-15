@@ -55,3 +55,6 @@ issues:
       linters:
         - errcheck
         - gosec
+    # Revive var-naming false positive for "api" package name.
+    - linters: [revive]
+      text: "avoid meaningless package names"

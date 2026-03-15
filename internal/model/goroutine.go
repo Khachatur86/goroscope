@@ -2,8 +2,9 @@ package model
 
 import "time"
 
+// Goroutine holds the current state and metadata for a tracked goroutine.
 type Goroutine struct {
-	ID         int64             `json:"goroutine_id"`
+	ID int64 `json:"goroutine_id"`
 	// ParentID is the goroutine that spawned this one via a "go" statement.
 	// Zero means it was the root goroutine (G1) or the origin is unknown.
 	ParentID   int64             `json:"parent_id,omitempty"`

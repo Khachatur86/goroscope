@@ -12,6 +12,7 @@ import (
 //go:embed fixtures/demo.gtrace
 var fixtureFS embed.FS
 
+// LoadDemoCapture returns the bundled demo capture.
 func LoadDemoCapture() (model.Capture, error) {
 	data, err := fixtureFS.ReadFile("fixtures/demo.gtrace")
 	if err != nil {
@@ -21,7 +22,9 @@ func LoadDemoCapture() (model.Capture, error) {
 	return decodeCapture(data)
 }
 
+// LoadCaptureFile reads and deserialises a capture from a .gtrace file.
 func LoadCaptureFile(path string) (model.Capture, error) {
+	//nolint:gosec // path validated by caller
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return model.Capture{}, fmt.Errorf("read capture file %q: %w", path, err)
@@ -30,6 +33,7 @@ func LoadCaptureFile(path string) (model.Capture, error) {
 	return decodeCapture(data)
 }
 
+// BindCaptureSession reassigns all events in capture to the given session ID.
 func BindCaptureSession(capture model.Capture, sessionID string) model.Capture {
 	bound := capture
 
@@ -85,7 +89,7 @@ func SaveCaptureFile(path string, capture model.Capture) error {
 		return fmt.Errorf("encode capture: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("write capture file %q: %w", path, err)
 	}
 

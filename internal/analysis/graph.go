@@ -2,6 +2,7 @@ package analysis
 
 import "github.com/Khachatur86/goroscope/internal/model"
 
+// BuildResourceEdges derives resource dependency edges from a sequence of events.
 func BuildResourceEdges(events []model.Event) []model.ResourceEdge {
 	edges := make([]model.ResourceEdge, 0, len(events))
 

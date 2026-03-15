@@ -43,7 +43,7 @@ func TestLoadCaptureFile(t *testing.T) {
   ]
 }`
 
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write temp capture: %v", err)
 	}
 

@@ -1,3 +1,4 @@
+// Package agent provides opt-in trace bootstrap for target Go programs.
 package agent
 
 import (
@@ -15,6 +16,7 @@ func StartFromEnv() (func() error, error) {
 		return func() error { return nil }, nil
 	}
 
+	//nolint:gosec // trace path comes from env, not user input
 	file, err := os.Create(tracePath)
 	if err != nil {
 		return nil, err

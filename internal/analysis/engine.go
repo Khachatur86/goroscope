@@ -1,3 +1,4 @@
+// Package analysis implements the goroutine state engine and timeline construction.
 package analysis
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/Khachatur86/goroscope/internal/model"
 )
 
+// Engine processes goroutine events and maintains timeline state.
 type Engine struct {
 	mu                sync.RWMutex
 	session           *model.Session
@@ -29,6 +31,7 @@ type activeSegment struct {
 	ResourceID string
 }
 
+// NewEngine returns an empty, ready-to-use Engine.
 func NewEngine() *Engine {
 	return &Engine{
 		stateMachine:   NewStateMachine(),
@@ -70,6 +73,7 @@ func (e *Engine) notifySubscribers() {
 	}
 }
 
+// Reset clears all state and initialises the engine for a new session.
 func (e *Engine) Reset(session *model.Session) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -77,6 +81,7 @@ func (e *Engine) Reset(session *model.Session) {
 	e.resetLocked(session)
 }
 
+// LoadCapture replaces the engine state with the provided capture snapshot.
 func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
 	func() {
 		e.mu.Lock()
@@ -106,6 +111,7 @@ func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
 	e.notifySubscribers()
 }
 
+// ApplyEvent processes a single event and updates goroutine state.
 func (e *Engine) ApplyEvent(event model.Event) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -113,6 +119,7 @@ func (e *Engine) ApplyEvent(event model.Event) {
 	e.applyEventLocked(event)
 }
 
+// ApplyEvents processes a slice of events in order.
 func (e *Engine) ApplyEvents(events []model.Event) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -120,6 +127,7 @@ func (e *Engine) ApplyEvents(events []model.Event) {
 	e.applyEventsLocked(events)
 }
 
+// ApplyStackSnapshot attaches a stack snapshot to the relevant goroutine.
 func (e *Engine) ApplyStackSnapshot(snapshot model.StackSnapshot) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -127,6 +135,7 @@ func (e *Engine) ApplyStackSnapshot(snapshot model.StackSnapshot) {
 	e.applyStackSnapshotLocked(snapshot)
 }
 
+// SetResourceGraph replaces the current resource edge set.
 func (e *Engine) SetResourceGraph(edges []model.ResourceEdge) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -134,6 +143,7 @@ func (e *Engine) SetResourceGraph(edges []model.ResourceEdge) {
 	e.edges = append([]model.ResourceEdge(nil), edges...)
 }
 
+// CurrentSession returns the active session, or nil if none is set.
 func (e *Engine) CurrentSession() *model.Session {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -141,6 +151,7 @@ func (e *Engine) CurrentSession() *model.Session {
 	return e.session.Clone()
 }
 
+// ListGoroutines returns all tracked goroutines sorted by ID.
 func (e *Engine) ListGoroutines() []model.Goroutine {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -159,6 +170,7 @@ func (e *Engine) ListGoroutines() []model.Goroutine {
 	return out
 }
 
+// GetGoroutine returns the goroutine with the given ID, or false if not found.
 func (e *Engine) GetGoroutine(id int64) (model.Goroutine, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -171,6 +183,7 @@ func (e *Engine) GetGoroutine(id int64) (model.Goroutine, bool) {
 	return cloneGoroutine(goroutine), true
 }
 
+// Timeline returns all closed and open timeline segments.
 func (e *Engine) Timeline() []model.TimelineSegment {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -202,7 +215,7 @@ func (e *Engine) Timeline() []model.TimelineSegment {
 	return out
 }
 
-// ProcessorTimeline returns a snapshot of the processor-segment log.  Each
+// ProcessorTimeline returns a snapshot of the processor-segment log. Each
 // segment records an interval during which a specific goroutine ran on a
 // specific logical processor (P).
 func (e *Engine) ProcessorTimeline() []model.ProcessorSegment {
@@ -214,6 +227,7 @@ func (e *Engine) ProcessorTimeline() []model.ProcessorSegment {
 	return out
 }
 
+// ResourceGraph returns the current set of resource dependency edges.
 func (e *Engine) ResourceGraph() []model.ResourceEdge {
 	e.mu.RLock()
 	defer e.mu.RUnlock()

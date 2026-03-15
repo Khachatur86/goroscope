@@ -1,3 +1,4 @@
+// Package tracebridge bridges runtime/trace execution, parsing, and replay.
 package tracebridge
 
 import (
@@ -20,7 +21,7 @@ import (
 )
 
 var (
-	syncLineRE        = regexp.MustCompile(`Sync Time=(\d+).*Wall=([0-9T:\-+:.Z]+)`)
+	syncLineRE = regexp.MustCompile(`Sync Time=(\d+).*Wall=([0-9T:\-+:.Z]+)`)
 	// stateTransitionRE matches a goroutine state-transition line emitted by
 	// "go tool trace -d=parsed".
 	//
@@ -45,8 +46,8 @@ var (
 )
 
 type parsedTransition struct {
-	TimeNS   int64
-	GoID     int64
+	TimeNS int64
+	GoID   int64
 	// ParentID is the goroutine captured in the GoID= field on a
 	// NotExist→* transition. Zero means the field was absent or non-create.
 	ParentID    int64
@@ -63,6 +64,7 @@ type activePSlot struct {
 	startNS     int64 // raw trace nanoseconds (before wall-clock conversion)
 }
 
+// LiveTraceRun manages a running Go target process with tracing enabled.
 type LiveTraceRun struct {
 	tracePath string
 	tempDir   string
@@ -95,6 +97,7 @@ type parsedTraceBuilder struct {
 	rawPSegments []model.ProcessorSegment
 }
 
+// BuildCaptureFromRawTrace parses a raw runtime/trace file into a Capture.
 func BuildCaptureFromRawTrace(ctx context.Context, tracePath string) (model.Capture, error) {
 	cmd := exec.CommandContext(ctx, "go", "tool", "trace", "-d=parsed", tracePath)
 	output, err := cmd.CombinedOutput()
@@ -105,12 +108,13 @@ func BuildCaptureFromRawTrace(ctx context.Context, tracePath string) (model.Capt
 	return ParseParsedTrace(bytes.NewReader(output))
 }
 
+// RunGoTargetWithTrace runs the target, collects the trace, and returns the resulting Capture.
 func RunGoTargetWithTrace(ctx context.Context, target string, stdout, stderr io.Writer) (model.Capture, error) {
 	liveRun, err := StartGoTargetWithTrace(ctx, target, stdout, stderr)
 	if err != nil {
 		return model.Capture{}, err
 	}
-	defer liveRun.Close()
+	defer func() { _ = liveRun.Close() }()
 
 	if err := liveRun.Wait(); err != nil {
 		return model.Capture{}, fmt.Errorf("run target %q: %w", target, err)
@@ -119,6 +123,7 @@ func RunGoTargetWithTrace(ctx context.Context, target string, stdout, stderr io.
 	return liveRun.BuildCapture(ctx)
 }
 
+// StartGoTargetWithTrace launches the target with tracing and returns a LiveTraceRun handle.
 func StartGoTargetWithTrace(ctx context.Context, target string, stdout, stderr io.Writer) (*LiveTraceRun, error) {
 	tempDir, err := os.MkdirTemp("", "goroscope-trace-*")
 	if err != nil {
@@ -152,10 +157,12 @@ func StartGoTargetWithTrace(ctx context.Context, target string, stdout, stderr i
 	return liveRun, nil
 }
 
+// Done returns a channel closed when the target process exits.
 func (r *LiveTraceRun) Done() <-chan struct{} {
 	return r.done
 }
 
+// Wait blocks until the target process exits and returns any error.
 func (r *LiveTraceRun) Wait() error {
 	<-r.done
 
@@ -164,6 +171,7 @@ func (r *LiveTraceRun) Wait() error {
 	return r.waitErr
 }
 
+// TraceSize returns the current size of the trace file in bytes.
 func (r *LiveTraceRun) TraceSize() (int64, error) {
 	info, err := os.Stat(r.tracePath)
 	if err != nil {
@@ -173,6 +181,7 @@ func (r *LiveTraceRun) TraceSize() (int64, error) {
 	return info.Size(), nil
 }
 
+// BuildCapture finalises the trace and builds a Capture from the current trace file.
 func (r *LiveTraceRun) BuildCapture(ctx context.Context) (model.Capture, error) {
 	size, err := r.TraceSize()
 	if err != nil {
@@ -188,6 +197,7 @@ func (r *LiveTraceRun) BuildCapture(ctx context.Context) (model.Capture, error) 
 	return BuildCaptureFromRawTrace(ctx, r.tracePath)
 }
 
+// Close stops the target process and releases resources.
 func (r *LiveTraceRun) Close() error {
 	var err error
 	r.closeOnce.Do(func() {
@@ -197,6 +207,7 @@ func (r *LiveTraceRun) Close() error {
 	return err
 }
 
+// ParseParsedTrace decodes a runtime/trace stream from r into a Capture.
 func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 	builder := parsedTraceBuilder{
 		capture: model.Capture{

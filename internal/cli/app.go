@@ -1,3 +1,4 @@
+// Package cli implements the goroscope command-line interface.
 package cli
 
 import (
@@ -17,6 +18,7 @@ import (
 	"github.com/Khachatur86/goroscope/internal/tracebridge"
 )
 
+// Run is the CLI entry point; it parses args and dispatches to the appropriate command.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		printUsage(stdout)
@@ -41,11 +43,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--open-browser] [--session-name name] [--poll-interval 1s] [--save path.gtrace] <package-or-binary>")
-	fmt.Fprintln(w, "  goroscope collect [--addr 127.0.0.1:7070] [--open-browser]")
-	fmt.Fprintln(w, "  goroscope ui [--addr 127.0.0.1:7070] [--open-browser]")
-	fmt.Fprintln(w, "  goroscope replay [--addr 127.0.0.1:7070] [--open-browser] <capture-file>")
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--open-browser] [--session-name name] [--poll-interval 1s] [--save path.gtrace] <package-or-binary>")
+	_, _ = fmt.Fprintln(w, "  goroscope collect [--addr 127.0.0.1:7070] [--open-browser]")
+	_, _ = fmt.Fprintln(w, "  goroscope ui [--addr 127.0.0.1:7070] [--open-browser]")
+	_, _ = fmt.Fprintln(w, "  goroscope replay [--addr 127.0.0.1:7070] [--open-browser] <capture-file>")
 }
 
 // openBrowserURL opens the default browser to the given URL. It returns silently on
@@ -173,7 +175,7 @@ func serveCaptureSession(ctx context.Context, addr, sessionName, target string, 
 
 	server := api.NewServer(addr, engine, sessions)
 	url := "http://" + addr
-	fmt.Fprintf(stdout, "goroscope scaffold serving %q at %s\n", target, url)
+	_, _ = fmt.Fprintf(stdout, "goroscope scaffold serving %q at %s\n", target, url)
 
 	if openBrowser {
 		go func() {
@@ -195,7 +197,7 @@ func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 	if err != nil {
 		return err
 	}
-	defer liveRun.Close()
+	defer func() { _ = liveRun.Close() }()
 
 	go watchLiveTrace(ctx, watchLiveTraceInput{
 		SessionID:    current.ID,
@@ -210,7 +212,7 @@ func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 
 	server := api.NewServer(in.Addr, engine, sessions)
 	url := "http://" + in.Addr
-	fmt.Fprintf(in.Stdout, "goroscope live run serving %q at %s\n", in.Target, url)
+	_, _ = fmt.Fprintf(in.Stdout, "goroscope live run serving %q at %s\n", in.Target, url)
 
 	if in.OpenBrowser {
 		go func() {
@@ -295,7 +297,7 @@ func watchLiveTrace(ctx context.Context, in watchLiveTraceInput) {
 			return
 		case <-ticker.C:
 			if _, err := refreshCapture(false); err != nil {
-				fmt.Fprintf(in.Stderr, "goroscope: refresh live trace: %v\n", err)
+				_, _ = fmt.Fprintf(in.Stderr, "goroscope: refresh live trace: %v\n", err)
 			}
 		case <-in.LiveRun.Done():
 			runErr := in.LiveRun.Wait()
@@ -304,17 +306,17 @@ func watchLiveTrace(ctx context.Context, in watchLiveTraceInput) {
 			switch {
 			case runErr != nil:
 				in.Sessions.FailCurrent(runErr.Error())
-				fmt.Fprintf(in.Stderr, "goroscope: target exited with error: %v\n", runErr)
+				_, _ = fmt.Fprintf(in.Stderr, "goroscope: target exited with error: %v\n", runErr)
 			case refreshErr != nil:
 				in.Sessions.FailCurrent(refreshErr.Error())
-				fmt.Fprintf(in.Stderr, "goroscope: finalize trace capture: %v\n", refreshErr)
+				_, _ = fmt.Fprintf(in.Stderr, "goroscope: finalize trace capture: %v\n", refreshErr)
 			default:
 				in.Sessions.CompleteCurrent()
 				if in.SavePath != "" && len(finalCapture.Events) > 0 {
 					if err := tracebridge.SaveCaptureFile(in.SavePath, finalCapture); err != nil {
-						fmt.Fprintf(in.Stderr, "goroscope: save capture: %v\n", err)
+						_, _ = fmt.Fprintf(in.Stderr, "goroscope: save capture: %v\n", err)
 					} else {
-						fmt.Fprintf(in.Stderr, "goroscope: saved capture to %s\n", in.SavePath)
+						_, _ = fmt.Fprintf(in.Stderr, "goroscope: saved capture to %s\n", in.SavePath)
 					}
 				}
 			}

@@ -102,8 +102,8 @@ func TestFilterGoroutines(t *testing.T) {
 		{ID: 3, State: model.StateWaiting, Reason: model.ReasonMutexLock, WaitNS: int64(500 * time.Millisecond)},
 		{ID: 4, State: model.StateSyscall, WaitNS: int64(3 * time.Second)},
 		{
-			ID:    5,
-			State: model.StateRunning,
+			ID:     5,
+			State:  model.StateRunning,
 			Labels: map[string]string{"function": "main.workerPool"},
 			LastStack: &model.StackSnapshot{
 				Frames: []model.StackFrame{
@@ -165,8 +165,8 @@ func TestFilterGoroutines(t *testing.T) {
 			wantIDs: nil,
 		},
 		{
-			name:   "search with no match",
-			params: goroutineListParams{Search: "zzznomatch"},
+			name:    "search with no match",
+			params:  goroutineListParams{Search: "zzznomatch"},
 			wantIDs: nil,
 		},
 	}

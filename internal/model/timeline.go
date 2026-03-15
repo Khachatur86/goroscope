@@ -1,5 +1,6 @@
 package model
 
+// TimelineSegment is a contiguous interval during which a goroutine was in a given state.
 type TimelineSegment struct {
 	GoroutineID int64          `json:"goroutine_id"`
 	StartNS     int64          `json:"start_ns"`

@@ -1,3 +1,4 @@
+// Package api provides the local REST API, SSE stream, and embedded UI assets.
 package api
 
 import (
@@ -19,12 +20,14 @@ import (
 	"github.com/Khachatur86/goroscope/internal/version"
 )
 
+// Server is the goroscope local HTTP server.
 type Server struct {
 	addr     string
 	engine   *analysis.Engine
 	sessions *session.Manager
 }
 
+// NewServer returns a Server bound to addr with the given engine and session manager.
 func NewServer(addr string, engine *analysis.Engine, sessions *session.Manager) *Server {
 	return &Server{
 		addr:     addr,
@@ -33,6 +36,7 @@ func NewServer(addr string, engine *analysis.Engine, sessions *session.Manager) 
 	}
 }
 
+// Serve starts the HTTP server and blocks until ctx is cancelled.
 func (s *Server) Serve(ctx context.Context) error {
 	httpServer := &http.Server{
 		Addr:    s.addr,
@@ -244,9 +248,9 @@ func (s *Server) handleGoroutines(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 		writeJSON(w, http.StatusOK, goroutineListResponse{
 			Goroutines: filtered,
-			Total:     total,
-			Limit:     params.Limit,
-			Offset:    params.Offset,
+			Total:      total,
+			Limit:      params.Limit,
+			Offset:     params.Offset,
 		})
 		return
 	}
@@ -298,9 +302,9 @@ func (s *Server) handleGoroutineChildren(w http.ResponseWriter, r *http.Request)
 
 // insightsResponse is the response for /api/v1/insights.
 type insightsResponse struct {
-	LongBlockedCount int64              `json:"long_blocked_count"`
-	LongBlocked      []model.Goroutine   `json:"long_blocked"`
-	MinWaitNS        int64               `json:"min_wait_ns"`
+	LongBlockedCount int64             `json:"long_blocked_count"`
+	LongBlocked      []model.Goroutine `json:"long_blocked"`
+	MinWaitNS        int64             `json:"min_wait_ns"`
 }
 
 func (s *Server) handleInsights(w http.ResponseWriter, r *http.Request) {
@@ -429,7 +433,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	defer s.engine.Unsubscribe(ch)
 
 	// Immediately send a "connected" event so the client knows the stream is live.
-	fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
+	_, _ = fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
 	flusher.Flush()
 
 	for {
@@ -440,7 +444,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			fmt.Fprintf(w, "event: update\ndata: {}\n\n")
+			_, _ = fmt.Fprintf(w, "event: update\ndata: {}\n\n")
 			flusher.Flush()
 		}
 	}

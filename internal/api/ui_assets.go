@@ -1,3 +1,4 @@
+//nolint:revive // "api" is a meaningful package name, not a stub like "common" or "util"
 package api
 
 import (
