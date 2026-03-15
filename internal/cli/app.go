@@ -40,7 +40,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--session-name name] [--poll-interval 1s] <package-or-binary>")
+	fmt.Fprintln(w, "  goroscope run [--addr 127.0.0.1:7070] [--session-name name] [--poll-interval 1s] [--save path.gtrace] <package-or-binary>")
 	fmt.Fprintln(w, "  goroscope collect [--addr 127.0.0.1:7070]")
 	fmt.Fprintln(w, "  goroscope ui [--addr 127.0.0.1:7070]")
 	fmt.Fprintln(w, "  goroscope replay [--addr 127.0.0.1:7070] <capture-file>")
@@ -53,6 +53,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	sessionName := fs.String("session-name", "local-run", "Session name")
 	pollInterval := fs.Duration("poll-interval", time.Second, "How often to re-read the live trace file")
+	savePath := fs.String("save", "", "Save capture to file when session completes (e.g. ./captures/run.gtrace)")
 	noBrowser := fs.Bool("no-browser", true, "Reserved for future browser integration")
 
 	if err := fs.Parse(args); err != nil {
@@ -66,7 +67,15 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	_ = noBrowser
 
-	return serveLiveRunSession(ctx, *addr, *sessionName, target, *pollInterval, stdout, stderr)
+	return serveLiveRunSession(ctx, serveLiveRunInput{
+		Addr:         *addr,
+		SessionName:  *sessionName,
+		Target:       target,
+		PollInterval: *pollInterval,
+		SavePath:     *savePath,
+		Stdout:       stdout,
+		Stderr:       stderr,
+	})
 }
 
 func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -125,6 +134,17 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout)
 }
 
+// serveLiveRunInput holds parameters for serveLiveRunSession.
+type serveLiveRunInput struct {
+	Addr         string
+	SessionName  string
+	Target       string
+	PollInterval time.Duration
+	SavePath     string
+	Stdout       io.Writer
+	Stderr       io.Writer
+}
+
 func serveCaptureSession(ctx context.Context, addr, sessionName, target string, capture model.Capture, stdout io.Writer) error {
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
@@ -137,13 +157,13 @@ func serveCaptureSession(ctx context.Context, addr, sessionName, target string, 
 	return server.Serve(ctx)
 }
 
-func serveLiveRunSession(ctx context.Context, addr, sessionName, target string, pollInterval time.Duration, stdout, stderr io.Writer) error {
+func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
-	current := sessions.StartSession(sessionName, target)
+	current := sessions.StartSession(in.SessionName, in.Target)
 	engine.Reset(current)
 
-	liveRun, err := tracebridge.StartGoTargetWithTrace(ctx, target, stdout, stderr)
+	liveRun, err := tracebridge.StartGoTargetWithTrace(ctx, in.Target, in.Stdout, in.Stderr)
 	if err != nil {
 		return err
 	}
@@ -151,15 +171,17 @@ func serveLiveRunSession(ctx context.Context, addr, sessionName, target string, 
 
 	go watchLiveTrace(ctx, watchLiveTraceInput{
 		SessionID:    current.ID,
+		Target:       in.Target,
 		LiveRun:      liveRun,
 		Engine:       engine,
 		Sessions:     sessions,
-		PollInterval: pollInterval,
-		Stderr:       stderr,
+		PollInterval: in.PollInterval,
+		SavePath:     in.SavePath,
+		Stderr:       in.Stderr,
 	})
 
-	server := api.NewServer(addr, engine, sessions)
-	fmt.Fprintf(stdout, "goroscope live run serving %q at http://%s\n", target, addr)
+	server := api.NewServer(in.Addr, engine, sessions)
+	fmt.Fprintf(in.Stdout, "goroscope live run serving %q at http://%s\n", in.Target, in.Addr)
 
 	return server.Serve(ctx)
 }
@@ -167,10 +189,12 @@ func serveLiveRunSession(ctx context.Context, addr, sessionName, target string, 
 // watchLiveTraceInput holds all non-context parameters for watchLiveTrace.
 type watchLiveTraceInput struct {
 	SessionID    string
+	Target       string
 	LiveRun      *tracebridge.LiveTraceRun
 	Engine       *analysis.Engine
 	Sessions     *session.Manager
 	PollInterval time.Duration
+	SavePath     string
 	Stderr       io.Writer
 }
 
@@ -185,43 +209,48 @@ func watchLiveTrace(ctx context.Context, in watchLiveTraceInput) {
 
 	var lastSize int64 = -1
 
-	refreshCapture := func(final bool) error {
+	refreshCapture := func(final bool) (model.Capture, error) {
 		size, err := in.LiveRun.TraceSize()
 		if err != nil {
 			if os.IsNotExist(err) && !final {
-				return nil
+				return model.Capture{}, nil
 			}
 			if os.IsNotExist(err) && final {
-				return fmt.Errorf("target did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
+				return model.Capture{}, fmt.Errorf("target did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
 			}
-			return err
+			return model.Capture{}, err
 		}
 		if size == 0 {
 			if final {
-				return fmt.Errorf("target did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
+				return model.Capture{}, fmt.Errorf("target did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
 			}
-			return nil
+			return model.Capture{}, nil
 		}
 		if !final && size == lastSize {
-			return nil
+			return model.Capture{}, nil
 		}
 
 		capture, err := in.LiveRun.BuildCapture(ctx)
 		if err != nil {
 			if final {
-				return err
+				return model.Capture{}, err
 			}
-			return nil
+			return model.Capture{}, nil
 		}
 
 		sessionState := in.Sessions.Current()
 		if sessionState == nil {
-			return nil
+			return model.Capture{}, nil
 		}
 
 		in.Engine.LoadCapture(sessionState, tracebridge.BindCaptureSession(capture, in.SessionID))
 		lastSize = size
-		return nil
+
+		if final {
+			capture.Target = in.Target
+			return capture, nil
+		}
+		return model.Capture{}, nil
 	}
 
 	for {
@@ -229,12 +258,12 @@ func watchLiveTrace(ctx context.Context, in watchLiveTraceInput) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := refreshCapture(false); err != nil {
+			if _, err := refreshCapture(false); err != nil {
 				fmt.Fprintf(in.Stderr, "goroscope: refresh live trace: %v\n", err)
 			}
 		case <-in.LiveRun.Done():
 			runErr := in.LiveRun.Wait()
-			refreshErr := refreshCapture(true)
+			finalCapture, refreshErr := refreshCapture(true)
 
 			switch {
 			case runErr != nil:
@@ -245,6 +274,13 @@ func watchLiveTrace(ctx context.Context, in watchLiveTraceInput) {
 				fmt.Fprintf(in.Stderr, "goroscope: finalize trace capture: %v\n", refreshErr)
 			default:
 				in.Sessions.CompleteCurrent()
+				if in.SavePath != "" && len(finalCapture.Events) > 0 {
+					if err := tracebridge.SaveCaptureFile(in.SavePath, finalCapture); err != nil {
+						fmt.Fprintf(in.Stderr, "goroscope: save capture: %v\n", err)
+					} else {
+						fmt.Fprintf(in.Stderr, "goroscope: saved capture to %s\n", in.SavePath)
+					}
+				}
 			}
 			return
 		}

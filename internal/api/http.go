@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
+	"github.com/Khachatur86/goroscope/internal/model"
 	"github.com/Khachatur86/goroscope/internal/session"
 )
 
@@ -96,8 +98,117 @@ func (s *Server) handleSessionCurrent(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, current)
 }
 
-func (s *Server) handleGoroutines(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.engine.ListGoroutines())
+// goroutineListParams holds query parameters for the goroutines endpoint.
+type goroutineListParams struct {
+	State  model.GoroutineState
+	Reason model.BlockingReason
+	Search string
+	Limit  int
+	Offset int
+}
+
+func parseGoroutineListParams(r *http.Request) goroutineListParams {
+	q := r.URL.Query()
+	params := goroutineListParams{
+		Limit:  -1, // -1 means no limit
+		Offset: 0,
+	}
+
+	if v := q.Get("state"); v != "" {
+		params.State = model.GoroutineState(v)
+	}
+	if v := q.Get("reason"); v != "" {
+		params.Reason = model.BlockingReason(v)
+	}
+	if v := q.Get("search"); v != "" {
+		params.Search = strings.TrimSpace(strings.ToLower(v))
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			params.Limit = n
+		}
+	}
+	if v := q.Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			params.Offset = n
+		}
+	}
+
+	return params
+}
+
+func filterGoroutines(goroutines []model.Goroutine, params goroutineListParams) []model.Goroutine {
+	var out []model.Goroutine
+	for _, g := range goroutines {
+		if params.State != "" && g.State != params.State {
+			continue
+		}
+		if params.Reason != "" && g.Reason != params.Reason {
+			continue
+		}
+		if params.Search != "" {
+			if !goroutineMatchesSearch(g, params.Search) {
+				continue
+			}
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+func goroutineMatchesSearch(g model.Goroutine, search string) bool {
+	for _, v := range g.Labels {
+		if strings.Contains(strings.ToLower(v), search) {
+			return true
+		}
+	}
+	if g.LastStack != nil {
+		for _, f := range g.LastStack.Frames {
+			if strings.Contains(strings.ToLower(f.Func), search) ||
+				strings.Contains(strings.ToLower(f.File), search) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (s *Server) handleGoroutines(w http.ResponseWriter, r *http.Request) {
+	params := parseGoroutineListParams(r)
+	all := s.engine.ListGoroutines()
+	filtered := filterGoroutines(all, params)
+	total := len(filtered)
+
+	if params.Limit >= 0 || params.Offset > 0 {
+		start := params.Offset
+		if start > total {
+			start = total
+		}
+		end := total
+		if params.Limit >= 0 && start+params.Limit < end {
+			end = start + params.Limit
+		}
+		filtered = filtered[start:end]
+
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
+		writeJSON(w, http.StatusOK, goroutineListResponse{
+			Goroutines: filtered,
+			Total:     total,
+			Limit:     params.Limit,
+			Offset:    params.Offset,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, filtered)
+}
+
+// goroutineListResponse is the paginated response for /api/v1/goroutines.
+type goroutineListResponse struct {
+	Goroutines []model.Goroutine `json:"goroutines"`
+	Total      int               `json:"total"`
+	Limit      int               `json:"limit"`
+	Offset     int               `json:"offset"`
 }
 
 func (s *Server) handleGoroutineByID(w http.ResponseWriter, r *http.Request) {
@@ -116,8 +227,61 @@ func (s *Server) handleGoroutineByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, goroutine)
 }
 
-func (s *Server) handleTimeline(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.engine.Timeline())
+// timelineListParams holds query parameters for the timeline endpoint.
+type timelineListParams struct {
+	State  model.GoroutineState
+	Reason model.BlockingReason
+	Search string
+}
+
+func parseTimelineListParams(r *http.Request) timelineListParams {
+	q := r.URL.Query()
+	var params timelineListParams
+	if v := q.Get("state"); v != "" {
+		params.State = model.GoroutineState(v)
+	}
+	if v := q.Get("reason"); v != "" {
+		params.Reason = model.BlockingReason(v)
+	}
+	if v := q.Get("search"); v != "" {
+		params.Search = strings.TrimSpace(strings.ToLower(v))
+	}
+	return params
+}
+
+func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
+	params := parseTimelineListParams(r)
+	all := s.engine.Timeline()
+	goroutines := s.engine.ListGoroutines()
+
+	if params.State == "" && params.Reason == "" && params.Search == "" {
+		writeJSON(w, http.StatusOK, all)
+		return
+	}
+
+	// Build set of goroutine IDs that match the filter.
+	matchIDs := make(map[int64]bool)
+	for _, g := range goroutines {
+		if params.State != "" && g.State != params.State {
+			continue
+		}
+		if params.Reason != "" && g.Reason != params.Reason {
+			continue
+		}
+		if params.Search != "" && !goroutineMatchesSearch(g, params.Search) {
+			continue
+		}
+		matchIDs[g.ID] = true
+	}
+
+	var filtered []model.TimelineSegment
+	for _, seg := range all {
+		if matchIDs[seg.GoroutineID] {
+			filtered = append(filtered, seg)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, filtered)
 }
 
 func (s *Server) handleProcessorTimeline(w http.ResponseWriter, _ *http.Request) {

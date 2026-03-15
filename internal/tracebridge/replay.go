@@ -77,3 +77,17 @@ func decodeCapture(data []byte) (model.Capture, error) {
 
 	return capture, nil
 }
+
+// SaveCaptureFile writes a capture to a JSON file for later replay.
+func SaveCaptureFile(path string, capture model.Capture) error {
+	data, err := json.MarshalIndent(capture, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode capture: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write capture file %q: %w", path, err)
+	}
+
+	return nil
+}
