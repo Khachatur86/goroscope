@@ -81,6 +81,8 @@ export function Timeline({
   }
 
   const span = maxEnd - minStart || 1;
+  const fullSpan = fullMaxEnd - fullMinStart || 1;
+  const showMinimap = zoomToSelected && fullSpan > span * 1.1;
 
   const byGoroutine = new Map<number, TimelineSegment[]>();
   for (const seg of filteredSegments) {
@@ -132,6 +134,19 @@ export function Timeline({
           );
         })}
       </div>
+      {showMinimap && (
+        <div className="timeline-minimap" title="Zoomed viewport in full trace">
+          <div className="timeline-minimap-track">
+            <div
+              className="timeline-minimap-viewport"
+              style={{
+                left: `${((minStart - fullMinStart) / fullSpan) * 100}%`,
+                width: `${(span / fullSpan) * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

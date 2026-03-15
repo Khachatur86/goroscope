@@ -476,6 +476,28 @@ body {
   background: linear-gradient(135deg, #1d4ed8, #0f766e);
 }
 
+.timeline-minimap {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.timeline-minimap-track {
+  height: 8px;
+  background: #1e293b;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.timeline-minimap-viewport {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(59, 130, 246, 0.6);
+  border-radius: 2px;
+  border: 1px solid rgba(96, 165, 250, 0.5);
+}
+
 .empty-message {
   color: #94a3b8;
   font-size: 0.9rem;

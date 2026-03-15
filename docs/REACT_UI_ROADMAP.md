@@ -71,11 +71,9 @@
 ### Фаза 3: Продвинутые фичи (3–5 дней)
 
 #### 3.1 Minimap
-- [ ] Отдельный canvas под основным timeline
-- [ ] Рендер сжатого обзора всего трейса
-- [ ] Индикатор видимой области (viewport)
-- [ ] Drag по minimap для навигации
-- [ ] Toggle кнопка "Minimap" (показывать при zoom > 1)
+- [x] Полоска с индикатором viewport при zoom (div-based)
+- [x] Показывать при Zoom to G
+- [ ] Drag по minimap для навигации (требует canvas/pan)
 
 #### 3.2 Related focus
 - [x] Кнопка "Related focus"
