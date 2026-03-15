@@ -830,6 +830,95 @@ select {
   padding: 0 20px 20px;
 }
 
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.section-toggle:hover {
+  color: var(--muted);
+}
+
+.section-count {
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.resource-graph-table {
+  max-height: 280px;
+  overflow: auto;
+  margin-top: 12px;
+}
+
+.resource-graph-table-inner {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.resource-graph-table-inner th,
+.resource-graph-table-inner td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(20, 33, 61, 0.08);
+}
+
+.resource-graph-table-inner th {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  background: var(--card);
+}
+
+.resource-graph-row {
+  transition: background 0.12s;
+}
+
+.resource-graph-row:hover {
+  background: rgba(20, 33, 61, 0.04);
+}
+
+.resource-graph-row-highlight {
+  background: rgba(77, 166, 255, 0.08);
+}
+
+.resource-graph-gid {
+  padding: 2px 8px;
+  border: 1px solid rgba(20, 33, 61, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.resource-graph-gid:hover {
+  background: rgba(20, 33, 61, 0.08);
+  border-color: rgba(20, 33, 61, 0.22);
+}
+
+.resource-graph-resource {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
 .resource-list {
   display: grid;
   gap: 10px;

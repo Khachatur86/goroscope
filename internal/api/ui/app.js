@@ -93,6 +93,9 @@ const elements = {
   resetZoomButton: document.getElementById("reset-zoom-button"),
   inspector: document.getElementById("inspector"),
   resourceList: document.getElementById("resource-list"),
+  resourceGraphToggle: document.getElementById("resource-graph-toggle"),
+  resourceGraphTable: document.getElementById("resource-graph-table"),
+  resourceGraphCount: document.getElementById("resource-graph-count"),
   tooltip: document.getElementById("timeline-tooltip"),
   sessionHistory: document.getElementById("session-history"),
   minimapCanvas: document.getElementById("minimap-canvas"),
@@ -125,6 +128,14 @@ if (elements.minWaitFilter) {
   elements.minWaitFilter.addEventListener("change", (event) => {
     state.minWaitNs = event.target.value;
     loadData();
+  });
+}
+
+if (elements.resourceGraphToggle && elements.resourceGraphTable) {
+  elements.resourceGraphToggle.addEventListener("click", () => {
+    const expanded = elements.resourceGraphToggle.getAttribute("aria-expanded") === "true";
+    elements.resourceGraphToggle.setAttribute("aria-expanded", String(!expanded));
+    elements.resourceGraphTable.hidden = !expanded;
   });
 }
 
@@ -1053,6 +1064,7 @@ function render() {
     renderGoroutineList();
     renderInspector();
     renderResources();
+    renderResourceGraph();
     renderCurrentView();
     renderSessionHistory();
   } finally {
@@ -1361,6 +1373,59 @@ function renderResources() {
       ${escapeHTML(edge.resource_id)}
     </div>
   `).join("");
+}
+
+function renderResourceGraph() {
+  const table = elements.resourceGraphTable;
+  if (!table) return;
+
+  const edges = state.resources;
+  if (elements.resourceGraphCount) {
+    elements.resourceGraphCount.textContent = edges.length > 0 ? `(${edges.length})` : "";
+  }
+  const selectedID = state.selectedId;
+
+  if (edges.length === 0) {
+    table.innerHTML = `<div class="empty-message">No resource edges in trace.</div>`;
+    table.hidden = false;
+    return;
+  }
+
+  const rows = edges.map((edge) => {
+    const involvesSelected = selectedID !== null &&
+      (edge.from_goroutine_id === selectedID || edge.to_goroutine_id === selectedID);
+    const rowClass = involvesSelected ? "resource-graph-row resource-graph-row-highlight" : "resource-graph-row";
+    return `
+      <tr class="${rowClass}" data-from="${edge.from_goroutine_id}" data-to="${edge.to_goroutine_id}">
+        <td><button type="button" class="resource-graph-gid" data-select-goroutine="${edge.from_goroutine_id}">G${edge.from_goroutine_id}</button></td>
+        <td><button type="button" class="resource-graph-gid" data-select-goroutine="${edge.to_goroutine_id}">G${edge.to_goroutine_id}</button></td>
+        <td>${escapeHTML(edge.kind || "—")}</td>
+        <td class="resource-graph-resource">${escapeHTML(edge.resource_id || "—")}</td>
+      </tr>
+    `;
+  }).join("");
+
+  table.innerHTML = `
+    <table class="resource-graph-table-inner">
+      <thead>
+        <tr>
+          <th>From</th>
+          <th>To</th>
+          <th>Kind</th>
+          <th>Resource</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+
+  table.querySelectorAll("[data-select-goroutine]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectGoroutine(Number(btn.dataset.selectGoroutine));
+    });
+  });
+
+  table.hidden = false;
 }
 
 function renderSessionHistory() {
