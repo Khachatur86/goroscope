@@ -4,9 +4,49 @@ run:
 
 linters:
   enable:
-    - errcheck
-    - gofmt
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
+    # ── correctness ───────────────────────────────────────────────────────────
+    - errcheck        # unchecked error return values
+    - govet           # go vet checks (shadowing, printf format, etc.)
+    - staticcheck     # comprehensive static analysis (SA*, S*, QF* checks)
+    - unused          # unused code
+    - ineffassign     # assignments whose values are never used
+    - nilerr          # return nil instead of the error variable (common bug)
+    - bodyclose       # http.Response.Body not closed
+
+    # ── style / naming ────────────────────────────────────────────────────────
+    - gofmt           # standard formatting
+    - revive          # fast, configurable replacement for golint
+
+    # ── safety ────────────────────────────────────────────────────────────────
+    - gosec           # common security issues (G-series)
+
+linters-settings:
+  revive:
+    rules:
+      # Catches package-name stutter (CS-2): kv.KVStore → kv.Store
+      - name: exported
+        arguments:
+          - "checkPrivateReceivers"
+          - "sayRepetitiveInsteadOfStutters"
+      # Enforce comment on exported symbols (API-1)
+      - name: comment-spacings
+      # Discourage naked returns in longer functions
+      - name: naked-return
+        arguments: [5]
+
+  gosec:
+    excludes:
+      # G104: errors unhandled in defer — handled via errcheck already
+      - G104
+
+issues:
+  # Do not limit the number of reported issues per linter.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    # Test files: relax errcheck and gosec (test helpers use t.Fatal, not wrapping).
+    - path: "_test\\.go"
+      linters:
+        - errcheck
+        - gosec
