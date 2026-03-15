@@ -334,6 +334,13 @@ export function App() {
         if (displayGoroutines[next]) setSelectedId(displayGoroutines[next].goroutine_id);
         return;
       }
+      if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        if (selectedId && displayGoroutines.some((g) => g.goroutine_id === selectedId)) {
+          setZoomToSelected(true);
+        }
+        return;
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -452,7 +459,7 @@ export function App() {
               className="timeline-control-button"
               onClick={() => setZoomToSelected(true)}
               disabled={selectedId === null}
-              title="Zoom timeline to selected goroutine"
+              title="Zoom timeline to selected goroutine (Z)"
             >
               Zoom to G
             </button>
