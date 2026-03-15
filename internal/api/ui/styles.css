@@ -109,7 +109,7 @@ select {
 }
 
 .summary-bar {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .summary-card,
@@ -145,6 +145,22 @@ select {
   margin-top: 6px;
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.summary-card-action {
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease;
+}
+
+.summary-card-action:hover {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(20, 33, 61, 0.18);
+  transform: translateY(-1px);
+}
+
+.summary-card-action.active {
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(245, 158, 11, 0.12));
+  border-color: rgba(244, 63, 94, 0.25);
 }
 
 .legend-panel {
@@ -1071,6 +1087,10 @@ select {
 }
 
 @media (max-width: 1220px) {
+  .summary-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .workspace {
     grid-template-columns: 260px minmax(0, 1fr);
   }

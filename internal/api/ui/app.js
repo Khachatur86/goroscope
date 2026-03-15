@@ -5,11 +5,13 @@ const state = {
   timeline: [],
   resources: [],
   processorTimeline: [],
+  insights: null,
   selectedId: null,
   selectedGoroutine: null,
   relatedFocus: false,
   search: "",
   stateFilter: "ALL",
+  minWaitNs: "",
   sortMode: "SUSPICIOUS",
   // "lanes" = classic lane view; "heatmap" = pixel heatmap + GMP strip.
   viewMode: "lanes",
@@ -75,8 +77,11 @@ const elements = {
   sessionStarted: document.getElementById("session-started"),
   goroutineCount: document.getElementById("goroutine-count"),
   blockedCount: document.getElementById("blocked-count"),
+  longBlockedCount: document.getElementById("long-blocked-count"),
+  longBlockedCard: document.getElementById("long-blocked-card"),
   searchInput: document.getElementById("search-input"),
   stateFilter: document.getElementById("state-filter"),
+  minWaitFilter: document.getElementById("min-wait-filter"),
   sortMode: document.getElementById("sort-mode"),
   lanePriority: document.getElementById("lane-priority"),
   goroutineList: document.getElementById("goroutine-list"),
@@ -115,6 +120,29 @@ elements.stateFilter.addEventListener("change", (event) => {
   ensureSelection();
   render();
 });
+
+if (elements.minWaitFilter) {
+  elements.minWaitFilter.addEventListener("change", (event) => {
+    state.minWaitNs = event.target.value;
+    loadData();
+  });
+}
+
+if (elements.longBlockedCard) {
+  elements.longBlockedCard.addEventListener("click", () => {
+    state.minWaitNs = "1000000000";
+    if (elements.minWaitFilter) {
+      elements.minWaitFilter.value = state.minWaitNs;
+    }
+    loadData();
+  });
+  elements.longBlockedCard.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      elements.longBlockedCard.click();
+    }
+  });
+}
 
 if (elements.sortMode) {
   elements.sortMode.addEventListener("change", (event) => {
@@ -353,16 +381,34 @@ window.addEventListener("mouseup", () => {
 
 // ─── Data loading ──────────────────────────────────────────────────────────
 
+function buildGoroutinesURL() {
+  const params = new URLSearchParams();
+  if (state.stateFilter && state.stateFilter !== "ALL") {
+    params.set("state", state.stateFilter);
+  }
+  if (state.minWaitNs) {
+    params.set("min_wait_ns", state.minWaitNs);
+  }
+  const qs = params.toString();
+  return qs ? `/api/v1/goroutines?${qs}` : "/api/v1/goroutines";
+}
+
 async function loadData() {
   try {
-    const [session, goroutines, timeline, resources, sessions, processorTimeline] = await Promise.all([
+    const goroutinesURL = buildGoroutinesURL();
+    const [session, goroutinesResp, timeline, resources, sessions, processorTimeline, insights] = await Promise.all([
       fetchJSON("/api/v1/session/current"),
-      fetchJSON("/api/v1/goroutines"),
+      fetchJSON(goroutinesURL),
       fetchJSON("/api/v1/timeline"),
       fetchJSON("/api/v1/resources/graph"),
       fetchJSON("/api/v1/sessions"),
       fetchJSON("/api/v1/processor-timeline").catch(() => []),
+      fetchJSON("/api/v1/insights").catch(() => ({ long_blocked_count: 0 })),
     ]);
+
+    const goroutines = Array.isArray(goroutinesResp)
+      ? goroutinesResp
+      : (goroutinesResp.goroutines ?? []);
 
     state.session = session;
     state.goroutines = goroutines;
@@ -370,6 +416,7 @@ async function loadData() {
     state.resources = resources;
     state.sessions = Array.isArray(sessions) ? sessions : [];
     state.processorTimeline = Array.isArray(processorTimeline) ? processorTimeline : [];
+    state.insights = insights;
     resetDerivedCaches();
 
     ensureSelection();
@@ -1056,6 +1103,7 @@ function renderSummary() {
 
   const goroutines = getFilteredGoroutines();
   const blockedCount = state.goroutines.filter((item) => item.state === "BLOCKED" || item.state === "WAITING").length;
+  const longBlockedCount = state.insights?.long_blocked_count ?? 0;
   const metaParts = [`Started ${formatTimestamp(state.session.started_at)}`];
 
   if (state.session.ended_at) {
@@ -1071,6 +1119,14 @@ function renderSummary() {
   elements.sessionStarted.textContent = metaParts.join(" • ");
   elements.goroutineCount.textContent = String(goroutines.length);
   elements.blockedCount.textContent = `${blockedCount} waiting or blocked`;
+
+  if (elements.longBlockedCount) {
+    elements.longBlockedCount.textContent = String(longBlockedCount);
+  }
+  if (elements.longBlockedCard) {
+    elements.longBlockedCard.classList.toggle("active", Boolean(state.minWaitNs));
+    elements.longBlockedCard.setAttribute("aria-pressed", state.minWaitNs ? "true" : "false");
+  }
 }
 
 function renderGoroutineList() {

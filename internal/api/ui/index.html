@@ -35,6 +35,11 @@
         <strong id="goroutine-count">0</strong>
         <span id="blocked-count" class="summary-meta">0 blocked</span>
       </div>
+      <div class="summary-card summary-card-action" id="long-blocked-card" role="button" tabindex="0" aria-label="Long blocked goroutines">
+        <span class="summary-label">Long blocked</span>
+        <strong id="long-blocked-count">0</strong>
+        <span class="summary-meta">≥1s wait</span>
+      </div>
     </section>
 
     <section class="legend-panel" aria-label="Timeline legend">
@@ -67,6 +72,16 @@
               <option value="BLOCKED">BLOCKED</option>
               <option value="SYSCALL">SYSCALL</option>
               <option value="DONE">DONE</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Min wait</span>
+            <select id="min-wait-filter">
+              <option value="">Any</option>
+              <option value="100000000">≥100ms</option>
+              <option value="500000000">≥500ms</option>
+              <option value="1000000000">≥1s</option>
+              <option value="5000000000">≥5s</option>
             </select>
           </label>
           <label class="field">
