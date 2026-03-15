@@ -34,5 +34,8 @@ bench:
 web:
 	cd web && npm install && npm run build
 
+ui-react: build web
+	./bin/goroscope ui -ui=react -ui-path=web/dist -open-browser
+
 vscode:
 	cd vscode && npm install && npm run compile

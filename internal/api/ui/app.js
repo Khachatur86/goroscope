@@ -16,8 +16,10 @@ const state = {
   reasonFilter: "",
   minWaitNs: "",
   sortMode: "SUSPICIOUS",
+  resourceFilter: "",
   // "lanes" = classic lane view; "heatmap" = pixel heatmap + GMP strip.
   viewMode: "lanes",
+  minimapAlwaysVisible: false,
 };
 
 // timelineCache stores the last-rendered timeline bounds so the mousemove
@@ -81,6 +83,7 @@ const laneListState = {
 };
 
 const elements = {
+  copyLinkButton: document.getElementById("copy-link-button"),
   refreshButton: document.getElementById("refresh-button"),
   sessionName: document.getElementById("session-name"),
   sessionTarget: document.getElementById("session-target"),
@@ -96,8 +99,11 @@ const elements = {
   searchInput: document.getElementById("search-input"),
   stateFilter: document.getElementById("state-filter"),
   reasonFilter: document.getElementById("reason-filter"),
+  resourceFilter: document.getElementById("resource-filter"),
   minWaitFilter: document.getElementById("min-wait-filter"),
   sortMode: document.getElementById("sort-mode"),
+  clearFiltersButton: document.getElementById("clear-filters-button"),
+  goroutineCountLabel: document.getElementById("goroutine-count-label"),
   lanePriority: document.getElementById("lane-priority"),
   goroutineList: document.getElementById("goroutine-list"),
   timelineCanvas: document.getElementById("timeline-canvas"),
@@ -105,8 +111,12 @@ const elements = {
   timelineCursor: document.getElementById("timeline-cursor"),
   timelineRange: document.getElementById("timeline-range"),
   focusRelatedButton: document.getElementById("focus-related-button"),
+  zoomToSelectionButton: document.getElementById("zoom-to-selection-button"),
   resetZoomButton: document.getElementById("reset-zoom-button"),
+  fullscreenToggle: document.getElementById("fullscreen-toggle"),
   exportPngButton: document.getElementById("export-png-button"),
+  exportJsonButton: document.getElementById("export-json-button"),
+  minimapToggle: document.getElementById("minimap-toggle"),
   inspector: document.getElementById("inspector"),
   resourceList: document.getElementById("resource-list"),
   resourceGraphToggle: document.getElementById("resource-graph-toggle"),
@@ -124,6 +134,17 @@ const minimapContext = elements.minimapCanvas ? elements.minimapCanvas.getContex
 const heatmapContext = elements.heatmapCanvas ? elements.heatmapCanvas.getContext("2d") : null;
 
 // ─── Control event listeners ───────────────────────────────────────────────
+
+if (elements.copyLinkButton) {
+  elements.copyLinkButton.addEventListener("click", () => {
+    const url = buildShareableURL();
+    navigator.clipboard.writeText(url).then(() => {
+      const prev = elements.copyLinkButton.textContent;
+      elements.copyLinkButton.textContent = "Copied!";
+      setTimeout(() => { elements.copyLinkButton.textContent = prev; }, 1500);
+    }).catch(() => {});
+  });
+}
 
 elements.refreshButton.addEventListener("click", () => {
   loadData();
@@ -149,6 +170,13 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA" || event.target.isContentEditable) {
+    return;
+  }
+  if (event.key === "z" || event.key === "Z") {
+    event.preventDefault();
+    if (state.selectedId && state.viewMode === "lanes" && state.timeline.some((s) => s.goroutine_id === state.selectedId)) {
+      elements.zoomToSelectionButton?.click();
+    }
     return;
   }
   const filtered = getFilteredGoroutines();
@@ -192,6 +220,14 @@ if (elements.reasonFilter) {
   });
 }
 
+if (elements.resourceFilter) {
+  elements.resourceFilter.addEventListener("input", (event) => {
+    state.resourceFilter = event.target.value.trim();
+    ensureSelection();
+    render();
+  });
+}
+
 if (elements.minWaitFilter) {
   elements.minWaitFilter.addEventListener("change", (event) => {
     state.minWaitNs = event.target.value;
@@ -231,10 +267,68 @@ if (elements.sortMode) {
   });
 }
 
+if (elements.clearFiltersButton) {
+  elements.clearFiltersButton.addEventListener("click", () => {
+    state.search = "";
+    state.stateFilter = "ALL";
+    state.reasonFilter = "";
+    state.resourceFilter = "";
+    state.minWaitNs = "";
+    if (elements.searchInput) elements.searchInput.value = "";
+    if (elements.stateFilter) elements.stateFilter.value = "ALL";
+    if (elements.reasonFilter) elements.reasonFilter.value = "";
+    if (elements.resourceFilter) elements.resourceFilter.value = "";
+    if (elements.minWaitFilter) elements.minWaitFilter.value = "";
+    loadData();
+  });
+}
+
+if (elements.zoomToSelectionButton) {
+  elements.zoomToSelectionButton.addEventListener("click", () => {
+    if (!state.selectedId || state.viewMode !== "lanes") return;
+    const timeline = state.timeline.filter((seg) => seg.goroutine_id === state.selectedId);
+    if (timeline.length === 0) return;
+    const fullMinStart = Math.min(...state.timeline.map((s) => s.start_ns));
+    const fullMaxEnd = Math.max(...state.timeline.map((s) => s.end_ns));
+    const fullSpan = Math.max(fullMaxEnd - fullMinStart, 1);
+    const minStart = Math.min(...timeline.map((s) => s.start_ns));
+    const maxEnd = Math.max(...timeline.map((s) => s.end_ns));
+    const range = maxEnd - minStart;
+    const targetSpan = Math.max(range * 1.1, fullSpan / 100);
+    const padding = (targetSpan - range) / 2;
+    timelineView.zoomLevel = fullSpan / targetSpan;
+    timelineView.panOffsetNS = Math.max(0, Math.min(fullSpan - targetSpan, minStart - fullMinStart - padding));
+    renderCurrentView();
+  });
+}
+
 if (elements.resetZoomButton) {
   elements.resetZoomButton.addEventListener("click", () => {
     timelineView.zoomLevel = 1;
     timelineView.panOffsetNS = 0;
+    renderCurrentView();
+  });
+}
+
+if (elements.fullscreenToggle) {
+  elements.fullscreenToggle.addEventListener("click", () => {
+    const panel = document.querySelector(".timeline-panel");
+    if (!panel) return;
+    if (!document.fullscreenElement) {
+      panel.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.();
+    }
+  });
+  document.addEventListener("fullscreenchange", () => {
+    elements.fullscreenToggle?.setAttribute("aria-pressed", String(!!document.fullscreenElement));
+  });
+}
+
+if (elements.minimapToggle) {
+  elements.minimapToggle.addEventListener("click", () => {
+    state.minimapAlwaysVisible = !state.minimapAlwaysVisible;
+    elements.minimapToggle.setAttribute("aria-pressed", String(state.minimapAlwaysVisible));
     renderCurrentView();
   });
 }
@@ -250,6 +344,48 @@ if (elements.exportPngButton) {
     a.click();
   });
 }
+
+if (elements.exportJsonButton) {
+  elements.exportJsonButton.addEventListener("click", () => {
+    const goroutines = getFilteredGoroutines();
+    const timeline = state.timeline.filter((seg) => goroutines.some((g) => g.goroutine_id === seg.goroutine_id));
+    const payload = { goroutines: goroutines.length, segments: timeline.length, timeline };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `goroscope-timeline-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+}
+
+document.querySelectorAll(".preset-chip").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const preset = btn.dataset.preset;
+    if (preset === "all") {
+      state.stateFilter = "ALL";
+      state.reasonFilter = "";
+      if (elements.stateFilter) elements.stateFilter.value = "ALL";
+      if (elements.reasonFilter) elements.reasonFilter.value = "";
+    } else if (preset === "blocked") {
+      state.stateFilter = "BLOCKED";
+      state.reasonFilter = "";
+      if (elements.stateFilter) elements.stateFilter.value = "BLOCKED";
+      if (elements.reasonFilter) elements.reasonFilter.value = "";
+    } else if (preset === "channels") {
+      state.stateFilter = "ALL";
+      state.reasonFilter = "chan_send";
+      if (elements.stateFilter) elements.stateFilter.value = "ALL";
+      if (elements.reasonFilter) elements.reasonFilter.value = "chan_send";
+    } else if (preset === "mutex") {
+      state.stateFilter = "ALL";
+      state.reasonFilter = "mutex_lock";
+      if (elements.stateFilter) elements.stateFilter.value = "ALL";
+      if (elements.reasonFilter) elements.reasonFilter.value = "mutex_lock";
+    }
+    loadData();
+  });
+});
 
 if (elements.focusRelatedButton) {
   elements.focusRelatedButton.addEventListener("click", () => {
@@ -487,9 +623,19 @@ function buildGoroutinesURL() {
   return qs ? `/api/v1/goroutines?${qs}` : "/api/v1/goroutines";
 }
 
+function hasGoroutineInURL() {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("goroutine");
+  return id && /^\d+$/.test(id);
+}
+
 async function loadData() {
   try {
-    const goroutinesURL = buildGoroutinesURL();
+    parseGoroutineFromURL();
+    const initialId = state.initialGoroutineFromURL;
+    const goroutinesURL = hasGoroutineInURL() && initialId
+      ? "/api/v1/goroutines"
+      : buildGoroutinesURL();
     const [session, goroutinesResp, timeline, resources, sessions, processorTimeline, insights, deadlockResp] = await Promise.all([
       fetchJSON("/api/v1/session/current"),
       fetchJSON(goroutinesURL),
@@ -515,7 +661,20 @@ async function loadData() {
     state.deadlockHints = deadlockResp?.hints ?? [];
     resetDerivedCaches();
 
-    parseGoroutineFromURL();
+    if (initialId && !state.goroutines.some((g) => g.goroutine_id === initialId)) {
+      try {
+        const g = await fetchJSON(`/api/v1/goroutines/${initialId}`);
+        state.goroutines = [...state.goroutines, g];
+        resetDerivedCaches();
+        state.selectedId = initialId;
+        state.initialGoroutineFromURL = null;
+      } catch {
+        state.initialGoroutineFromURL = null;
+      }
+    } else if (initialId && state.goroutines.some((g) => g.goroutine_id === initialId)) {
+      state.selectedId = initialId;
+      state.initialGoroutineFromURL = null;
+    }
     ensureSelection();
     await hydrateSelectedGoroutine();
     render();
@@ -549,16 +708,51 @@ function parseGoroutineFromURL() {
   }
 }
 
-function updateURLForSelection() {
+function parseFiltersFromURL() {
   const params = new URLSearchParams(window.location.search);
-  if (state.selectedId) {
-    params.set("goroutine", String(state.selectedId));
-  } else {
-    params.delete("goroutine");
+  const stateVal = params.get("state");
+  if (stateVal && ["ALL", "RUNNING", "RUNNABLE", "WAITING", "BLOCKED", "SYSCALL", "DONE"].includes(stateVal)) {
+    state.stateFilter = stateVal;
+    if (elements.stateFilter) elements.stateFilter.value = stateVal;
   }
+  const reasonVal = params.get("reason");
+  if (reasonVal) {
+    state.reasonFilter = reasonVal;
+    if (elements.reasonFilter) elements.reasonFilter.value = reasonVal;
+  }
+  const resourceVal = params.get("resource");
+  if (resourceVal != null) {
+    state.resourceFilter = resourceVal;
+    if (elements.resourceFilter) elements.resourceFilter.value = resourceVal;
+  }
+  const searchVal = params.get("search");
+  if (searchVal != null) {
+    state.search = searchVal.trim().toLowerCase();
+    if (elements.searchInput) elements.searchInput.value = searchVal;
+  }
+}
+
+function updateURLForSelection() {
+  const params = new URLSearchParams();
+  if (state.selectedId) params.set("goroutine", String(state.selectedId));
+  if (state.stateFilter && state.stateFilter !== "ALL") params.set("state", state.stateFilter);
+  if (state.reasonFilter) params.set("reason", state.reasonFilter);
+  if (state.resourceFilter) params.set("resource", state.resourceFilter);
+  if (state.search) params.set("search", state.search);
   const qs = params.toString();
   const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
   window.history.replaceState(null, "", url);
+}
+
+function buildShareableURL() {
+  const params = new URLSearchParams();
+  if (state.selectedId) params.set("goroutine", String(state.selectedId));
+  if (state.stateFilter && state.stateFilter !== "ALL") params.set("state", state.stateFilter);
+  if (state.reasonFilter) params.set("reason", state.reasonFilter);
+  if (state.resourceFilter) params.set("resource", state.resourceFilter);
+  if (state.search) params.set("search", state.search);
+  const qs = params.toString();
+  return qs ? `${window.location.origin}${window.location.pathname}?${qs}` : `${window.location.origin}${window.location.pathname}`;
 }
 
 function ensureSelection() {
@@ -585,7 +779,7 @@ function ensureSelection() {
     return;
   }
 
-  const preferred = state.sortMode === "ID"
+  const preferred = (state.sortMode === "ID" || state.sortMode === "WAIT_TIME")
     ? filtered.find((item) => item.state === "BLOCKED" || item.state === "WAITING") ?? filtered[0]
     : filtered[0];
   state.selectedId = preferred.goroutine_id;
@@ -641,6 +835,7 @@ function getFilteredGoroutines() {
   const filtered = state.goroutines
     .filter((item) => state.stateFilter === "ALL" || item.state === state.stateFilter)
     .filter((item) => !state.reasonFilter || item.reason === state.reasonFilter)
+    .filter((item) => !state.resourceFilter || (item.resource_id ?? "").includes(state.resourceFilter))
     .filter((item) => {
       if (!state.search) {
         return true;
@@ -671,6 +866,8 @@ function compareGoroutinesForSort(left, right) {
       return compareGoroutinesByBlocked(left, right);
     case "SUSPICIOUS":
       return compareGoroutinesBySuspicion(left, right);
+    case "WAIT_TIME":
+      return (right.wait_ns ?? 0) - (left.wait_ns ?? 0) || left.goroutine_id - right.goroutine_id;
     case "ID":
     default:
       return left.goroutine_id - right.goroutine_id;
@@ -1325,6 +1522,14 @@ function renderGoroutineList() {
   const goroutines = getFilteredGoroutines();
   const focus = getRelatedFocus();
 
+  if (elements.goroutineCountLabel) {
+    const total = state.goroutines.length;
+    const filtered = goroutines.length;
+    elements.goroutineCountLabel.textContent = total > 0
+      ? (filtered === total ? `${total} goroutines` : `${filtered} of ${total} goroutines`)
+      : "";
+  }
+
   if (goroutines.length === 0) {
     elements.goroutineList.innerHTML = `<div class="empty-message">No goroutines match the current filters.</div>`;
     return;
@@ -1499,7 +1704,10 @@ function renderInspector() {
     <div class="inspector-section inspector-grid">
       <div>
         <div class="inspector-label">Goroutine</div>
-        <div class="inspector-value">#${goroutine.goroutine_id}</div>
+        <div class="inspector-value inspector-goroutine-id">
+          #${goroutine.goroutine_id}
+          <button type="button" class="inspector-copy-id" data-copy-id="${goroutine.goroutine_id}" title="Copy goroutine ID">⎘</button>
+        </div>
       </div>
       <div>
         <div class="inspector-label">Wait Time</div>
@@ -1528,7 +1736,10 @@ function renderInspector() {
     </div>
     ${renderSpawnTree(goroutine)}
     <div class="inspector-section">
-      <div class="inspector-label">Latest Stack</div>
+      <div class="inspector-stack-header">
+        <span class="inspector-label">Latest Stack</span>
+        ${frames.length > 0 ? `<button type="button" class="inspector-copy-stack" data-copy-stack>Copy</button>` : ""}
+      </div>
       ${stackMarkup}
     </div>
   `;
@@ -1537,6 +1748,26 @@ function renderInspector() {
   elements.inspector.querySelectorAll("[data-select-goroutine]").forEach((button) => {
     button.addEventListener("click", () => {
       selectGoroutine(Number(button.dataset.selectGoroutine));
+    });
+  });
+
+  elements.inspector.querySelectorAll("[data-copy-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.copyId;
+      navigator.clipboard.writeText(String(id)).then(() => {
+        btn.textContent = "✓";
+        setTimeout(() => { btn.textContent = "⎘"; }, 1200);
+      }).catch(() => {});
+    });
+  });
+
+  elements.inspector.querySelectorAll("[data-copy-stack]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const text = frames.map((f) => `${f.func}\n\t${f.file || "?"}:${f.line ?? 0}`).join("\n");
+      navigator.clipboard.writeText(`goroutine #${goroutine.goroutine_id}\n\n${text}`).then(() => {
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+      }).catch(() => {});
     });
   });
 
@@ -1975,10 +2206,14 @@ function drawAxis(visibleStart, visibleEnd, fullMinStart, width, metrics) {
   }
 }
 
-// updateZoomControls shows or hides the reset zoom button.
+// updateZoomControls shows or hides the reset zoom button and updates zoom-to-selection.
 function updateZoomControls() {
   if (elements.resetZoomButton) {
     elements.resetZoomButton.hidden = timelineView.zoomLevel <= 1.05;
+  }
+  if (elements.zoomToSelectionButton) {
+    const hasSegments = state.selectedId && state.timeline.some((s) => s.goroutine_id === state.selectedId);
+    elements.zoomToSelectionButton.disabled = !hasSegments || state.viewMode !== "lanes";
   }
 }
 
@@ -2558,8 +2793,8 @@ function renderMinimap() {
   const { goroutines, timeline, fullMinStart, fullSpan, span: visibleSpan } = timelineCache;
   const focus = getRelatedFocus();
 
-  // Only show the minimap when zoomed in — at zoomLevel=1 it is redundant.
-  if (!timelineCache.metrics || fullSpan <= 1 || timelineView.zoomLevel <= 1.05) {
+  const showMinimap = state.minimapAlwaysVisible || (timelineView.zoomLevel > 1.05 && fullSpan > 1);
+  if (!timelineCache.metrics || !showMinimap) {
     canvas.hidden = true;
     return;
   }
@@ -2662,4 +2897,5 @@ function connectStream() {
   };
 }
 
+parseFiltersFromURL();
 connectStream();

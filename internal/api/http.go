@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,14 +27,17 @@ type Server struct {
 	addr     string
 	engine   *analysis.Engine
 	sessions *session.Manager
+	uiPath   string // if non-empty, serve React UI from this dir instead of embedded vanilla UI
 }
 
 // NewServer returns a Server bound to addr with the given engine and session manager.
-func NewServer(addr string, engine *analysis.Engine, sessions *session.Manager) *Server {
+// If uiPath is non-empty, the server serves the React UI from that directory (e.g. web/dist).
+func NewServer(addr string, engine *analysis.Engine, sessions *session.Manager, uiPath string) *Server {
 	return &Server{
 		addr:     addr,
 		engine:   engine,
 		sessions: sessions,
+		uiPath:   uiPath,
 	}
 }
 
@@ -65,8 +70,12 @@ func (s *Server) Serve(ctx context.Context) error {
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(uiFileSystem()))))
-	mux.HandleFunc("/", s.handleIndex)
+	if s.uiPath != "" {
+		mux.Handle("/", s.handleReactUI())
+	} else {
+		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(uiFileSystem()))))
+		mux.HandleFunc("/", s.handleIndex)
+	}
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/api/v1/sessions", s.handleSessions)
 	mux.HandleFunc("/api/v1/session/current", s.handleSessionCurrent)
@@ -111,6 +120,29 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	serveEmbeddedFile(w, "index.html")
+}
+
+// handleReactUI returns a handler that serves the React SPA from s.uiPath.
+// Serves index.html for unknown paths (SPA client-side routing).
+func (s *Server) handleReactUI() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if path == "/" {
+			path = "/index.html"
+		}
+		cleanPath := filepath.Clean(strings.TrimPrefix(path, "/"))
+		fullPath := filepath.Join(s.uiPath, cleanPath)
+		absRoot, _ := filepath.Abs(s.uiPath)
+		absPath, _ := filepath.Abs(fullPath)
+		if !strings.HasPrefix(absPath, absRoot) {
+			http.NotFound(w, r)
+			return
+		}
+		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+			fullPath = filepath.Join(s.uiPath, "index.html")
+		}
+		http.ServeFile(w, r, fullPath)
+	})
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -109,6 +110,8 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	sessionName := fs.String("session-name", "local-run", "Session name")
 	pollInterval := fs.Duration("poll-interval", time.Second, "How often to re-read the live trace file")
 	savePath := fs.String("save", "", "Save capture to file when session completes (e.g. ./captures/run.gtrace)")
+	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
+	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -122,6 +125,11 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		target = fs.Arg(0)
 	}
 
+	uiPathResolved := resolveUIPath(*ui, *uiPath)
+	if uiPathResolved == "" && *ui == "react" {
+		return fmt.Errorf("React UI not found at %q: run 'make web' first", *uiPath)
+	}
+
 	return serveLiveRunSession(ctx, serveLiveRunInput{
 		Addr:         *addr,
 		OpenBrowser:  *openBrowser,
@@ -129,6 +137,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		Target:       target,
 		PollInterval: *pollInterval,
 		SavePath:     *savePath,
+		UIPath:       uiPathResolved,
 		Stdout:       stdout,
 		Stderr:       stderr,
 	})
@@ -145,6 +154,8 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
+	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
+	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return nil
@@ -157,7 +168,12 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 		return err
 	}
 
-	return serveCaptureSession(ctx, *addr, "collector", "collector", capture, stdout, *openBrowser)
+	uiPathResolved := resolveUIPath(*ui, *uiPath)
+	if uiPathResolved == "" && *ui == "react" {
+		return fmt.Errorf("React UI not found at %q: run 'make web' first", *uiPath)
+	}
+
+	return serveCaptureSession(ctx, *addr, "collector", "collector", capture, stdout, *openBrowser, uiPathResolved)
 }
 
 func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -171,6 +187,8 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
+	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
+	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return nil
@@ -183,7 +201,12 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return err
 	}
 
-	return serveCaptureSession(ctx, *addr, "ui-demo", "demo://ui", capture, stdout, *openBrowser)
+	uiPathResolved := resolveUIPath(*ui, *uiPath)
+	if uiPathResolved == "" && *ui == "react" {
+		return fmt.Errorf("React UI not found at %q: run 'make web' first", *uiPath)
+	}
+
+	return serveCaptureSession(ctx, *addr, "ui-demo", "demo://ui", capture, stdout, *openBrowser, uiPathResolved)
 }
 
 func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -197,6 +220,8 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
+	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
+	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return nil
@@ -214,7 +239,26 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return err
 	}
 
-	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout, *openBrowser)
+	uiPathResolved := resolveUIPath(*ui, *uiPath)
+	if uiPathResolved == "" && *ui == "react" {
+		return fmt.Errorf("React UI not found at %q: run 'make web' first", *uiPath)
+	}
+
+	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout, *openBrowser, uiPathResolved)
+}
+
+func resolveUIPath(ui, uiPath string) string {
+	if ui != "react" {
+		return ""
+	}
+	abs, err := filepath.Abs(uiPath)
+	if err != nil {
+		return ""
+	}
+	if _, err := os.Stat(abs); err != nil {
+		return ""
+	}
+	return abs
 }
 
 // serveLiveRunInput holds parameters for serveLiveRunSession.
@@ -225,17 +269,18 @@ type serveLiveRunInput struct {
 	Target       string
 	PollInterval time.Duration
 	SavePath     string
+	UIPath       string
 	Stdout       io.Writer
 	Stderr       io.Writer
 }
 
-func serveCaptureSession(ctx context.Context, addr, sessionName, target string, capture model.Capture, stdout io.Writer, openBrowser bool) error {
+func serveCaptureSession(ctx context.Context, addr, sessionName, target string, capture model.Capture, stdout io.Writer, openBrowser bool, uiPath string) error {
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
 	current := sessions.StartSession(sessionName, target)
 	engine.LoadCapture(current, tracebridge.BindCaptureSession(capture, current.ID))
 
-	server := api.NewServer(addr, engine, sessions)
+	server := api.NewServer(addr, engine, sessions, uiPath)
 	url := "http://" + addr
 	_, _ = fmt.Fprintf(stdout, "goroscope scaffold serving %q at %s\n", target, url)
 
@@ -272,7 +317,7 @@ func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 		Stderr:       in.Stderr,
 	})
 
-	server := api.NewServer(in.Addr, engine, sessions)
+	server := api.NewServer(in.Addr, engine, sessions, in.UIPath)
 	url := "http://" + in.Addr
 	_, _ = fmt.Fprintf(in.Stdout, "goroscope live run serving %q at %s\n", in.Target, url)
 

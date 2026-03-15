@@ -4,11 +4,22 @@ React + TypeScript + Vite frontend for the Goroscope timeline UI.
 
 ## Development
 
+**Option A — React on port 7070 (same as vanilla UI):**
+
 ```bash
-# Start goroscope with demo data (in one terminal)
+make web
+goroscope ui -ui=react -open-browser
+```
+
+Or use the convenience target: `make ui-react`
+
+**Option B — Vite dev server (hot reload):**
+
+```bash
+# Terminal 1: goroscope with demo data
 goroscope ui
 
-# Start Vite dev server with API proxy (in another terminal)
+# Terminal 2: Vite dev server with API proxy
 cd web && npm run dev
 ```
 

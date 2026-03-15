@@ -27,6 +27,15 @@ goroscope ui --open-browser
 
 Or without the flag: open `http://127.0.0.1:7070` manually.
 
+**React UI** (same port 7070):
+
+```bash
+make web
+goroscope ui -ui=react -open-browser
+```
+
+Or `make ui-react` (builds + web + runs).
+
 ## Current Status
 
 This repository contains a working local MVP built around `runtime/trace`:

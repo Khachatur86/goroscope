@@ -15,6 +15,7 @@
         <p class="subtitle">Inspect goroutines, blocking behavior, and stack snapshots on a live runtime timeline.</p>
       </div>
       <div class="hero-actions">
+        <button id="copy-link-button" class="action-button secondary" type="button" title="Copy shareable link with filters">Copy link</button>
         <button id="refresh-button" class="action-button" type="button">Refresh Data</button>
       </div>
     </header>
@@ -62,6 +63,12 @@
           <h2>Goroutines</h2>
           <p>Filter, sort, and jump to the noisy lanes first.</p>
         </div>
+        <div class="filter-presets">
+          <button type="button" class="preset-chip" data-preset="all">All</button>
+          <button type="button" class="preset-chip" data-preset="blocked">Blocked</button>
+          <button type="button" class="preset-chip" data-preset="channels">Channels</button>
+          <button type="button" class="preset-chip" data-preset="mutex">Mutex</button>
+        </div>
         <div class="filter-stack">
           <label class="field">
             <span>Jump to G</span>
@@ -99,6 +106,10 @@
             </select>
           </label>
           <label class="field">
+            <span>Resource</span>
+            <input id="resource-filter" type="text" placeholder="channel/mutex id">
+          </label>
+          <label class="field">
             <span>Min wait</span>
             <select id="min-wait-filter">
               <option value="">Any</option>
@@ -113,10 +124,13 @@
             <select id="sort-mode">
               <option value="SUSPICIOUS">Most suspicious</option>
               <option value="BLOCKED">Most blocked</option>
+              <option value="WAIT_TIME">Longest wait</option>
               <option value="ID">Goroutine ID</option>
             </select>
           </label>
+          <button id="clear-filters-button" class="filter-clear" type="button" title="Clear all filters">Clear</button>
         </div>
+        <div id="goroutine-count-label" class="goroutine-count-label"></div>
         <div id="lane-priority" class="lane-priority" hidden></div>
         <div id="goroutine-list" class="lane-list" role="listbox" aria-label="Goroutines"></div>
       </aside>
@@ -129,8 +143,12 @@
           </div>
           <div class="timeline-controls">
             <button id="focus-related-button" class="timeline-control-button focus-related-button" type="button" aria-pressed="false">Related focus</button>
+            <button id="zoom-to-selection-button" class="timeline-control-button" type="button" title="Zoom timeline to selected goroutine">Zoom to G</button>
             <button id="reset-zoom-button" class="timeline-control-button reset-zoom-button" type="button" hidden>Reset zoom</button>
+            <button id="fullscreen-toggle" class="timeline-control-button" type="button" title="Fullscreen timeline">⛶</button>
             <button id="export-png-button" class="timeline-control-button" type="button" title="Save timeline as PNG">Save PNG</button>
+            <button id="export-json-button" class="timeline-control-button" type="button" title="Export timeline as JSON">Export JSON</button>
+            <button id="minimap-toggle" class="timeline-control-button" type="button" aria-pressed="false" title="Show minimap">Minimap</button>
             <button id="view-toggle" class="timeline-control-button view-toggle-button" type="button" aria-pressed="false">⊞ Heatmap</button>
             <div id="timeline-range" class="timeline-range"></div>
           </div>

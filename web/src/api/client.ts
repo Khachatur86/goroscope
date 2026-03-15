@@ -73,7 +73,9 @@ export async function fetchGoroutines(params?: {
   if (params?.offset) q.set("offset", String(params.offset));
   const query = q.toString();
   const path = `/api/v1/goroutines${query ? `?${query}` : ""}`;
-  return fetchJson<Goroutine[]>(path);
+  const data = await fetchJson<Goroutine[] | { goroutines?: Goroutine[] }>(path);
+  if (Array.isArray(data)) return data;
+  return data?.goroutines ?? [];
 }
 
 export async function fetchGoroutine(id: number): Promise<Goroutine | null> {
@@ -95,9 +97,22 @@ export async function fetchTimeline(params?: {
   if (params?.search) q.set("search", params.search);
   const query = q.toString();
   const path = `/api/v1/timeline${query ? `?${query}` : ""}`;
-  return fetchJson<TimelineSegment[]>(path);
+  const data = await fetchJson<TimelineSegment[] | null>(path);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function fetchResourceGraph(): Promise<ResourceEdge[]> {
   return fetchJson<ResourceEdge[]>("/api/v1/resources/graph");
+}
+
+export type Insights = { long_blocked_count: number };
+export type DeadlockHint = { goroutine_ids: number[]; resource_ids: string[] };
+
+export async function fetchInsights(minWaitNs?: string): Promise<Insights> {
+  const q = minWaitNs ? `?min_wait_ns=${minWaitNs}` : "";
+  return fetchJson<Insights>(`/api/v1/insights${q}`).catch(() => ({ long_blocked_count: 0 }));
+}
+
+export async function fetchDeadlockHints(): Promise<{ hints: DeadlockHint[] }> {
+  return fetchJson<{ hints: DeadlockHint[] }>("/api/v1/deadlock-hints").catch(() => ({ hints: [] }));
 }

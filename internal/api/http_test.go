@@ -71,7 +71,7 @@ func newTestServer(t *testing.T, goroutines []model.Goroutine) *Server {
 	}
 
 	mgr := session.NewManager()
-	return NewServer("127.0.0.1:0", eng, mgr)
+	return NewServer("127.0.0.1:0", eng, mgr, "")
 }
 
 // newTestServerWithResources is like newTestServer but also sets resource edges.
@@ -91,7 +91,7 @@ func newTestServerWithResources(t *testing.T, goroutines []model.Goroutine, edge
 	eng.ApplyEvents(events)
 	eng.SetResourceGraph(edges)
 	mgr := session.NewManager()
-	return NewServer("127.0.0.1:0", eng, mgr)
+	return NewServer("127.0.0.1:0", eng, mgr, "")
 }
 
 // decodeJSON decodes the response body into dst and fails the test on error.
@@ -303,7 +303,7 @@ func TestParseGoroutineListParams(t *testing.T) {
 func TestHandleHealthz(t *testing.T) {
 	t.Parallel()
 
-	s := NewServer("127.0.0.1:0", analysis.NewEngine(), session.NewManager())
+	s := NewServer("127.0.0.1:0", analysis.NewEngine(), session.NewManager(), "")
 	rec := get(t, s.routes(), "/healthz")
 
 	if rec.Code != http.StatusOK {
@@ -630,7 +630,7 @@ func TestIsLocalhostAddr(t *testing.T) {
 
 func TestPprofOnlyWhenLocalhost(t *testing.T) {
 	t.Parallel()
-	s := NewServer("127.0.0.1:0", nil, nil)
+	s := NewServer("127.0.0.1:0", nil, nil, "")
 	rec := get(t, s.routes(), "/debug/pprof/")
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET /debug/pprof/ on localhost: got %d, want 200", rec.Code)
@@ -639,7 +639,7 @@ func TestPprofOnlyWhenLocalhost(t *testing.T) {
 
 func TestPprofDisabledWhenNotLocalhost(t *testing.T) {
 	t.Parallel()
-	s := NewServer("0.0.0.0:7070", nil, nil)
+	s := NewServer("0.0.0.0:7070", nil, nil, "")
 	rec := get(t, s.routes(), "/debug/pprof/")
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("GET /debug/pprof/ on 0.0.0.0: got %d, want 404", rec.Code)

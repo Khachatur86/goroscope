@@ -2,10 +2,18 @@ import { useEffect, useState } from "react";
 import type { Goroutine, TimelineSegment } from "../api/client";
 import { fetchTimeline } from "../api/client";
 
+type FiltersState = {
+  state: string;
+  reason: string;
+  resource: string;
+  search: string;
+};
+
 type Props = {
   goroutines: Goroutine[];
   selectedId: number | null;
   onSelectGoroutine: (id: number) => void;
+  filters: FiltersState;
 };
 
 const COLORS: Record<string, string> = {
@@ -28,14 +36,25 @@ export function Timeline({
   goroutines,
   selectedId,
   onSelectGoroutine,
+  filters,
 }: Props) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
 
   useEffect(() => {
-    fetchTimeline().then(setSegments);
-  }, [goroutines]);
+    fetchTimeline({
+      state: filters.state !== "ALL" ? filters.state : undefined,
+      reason: filters.reason || undefined,
+      search: filters.search || undefined,
+    })
+      .then((data) => setSegments(Array.isArray(data) ? data : []))
+      .catch(() => setSegments([]));
+  }, [goroutines, filters.state, filters.reason, filters.search]);
 
-  if (segments.length === 0) {
+  const filteredSegments = (segments ?? []).filter((seg) =>
+    (goroutines ?? []).some((g) => g.goroutine_id === seg.goroutine_id)
+  );
+
+  if (filteredSegments.length === 0) {
     return (
       <div className="timeline-placeholder">
         Select a goroutine to see timeline segments.
@@ -43,18 +62,18 @@ export function Timeline({
     );
   }
 
-  const minStart = Math.min(...segments.map((s) => s.start_ns));
-  const maxEnd = Math.max(...segments.map((s) => s.end_ns));
+  const minStart = Math.min(...filteredSegments.map((s) => s.start_ns));
+  const maxEnd = Math.max(...filteredSegments.map((s) => s.end_ns));
   const span = maxEnd - minStart || 1;
 
   const byGoroutine = new Map<number, TimelineSegment[]>();
-  for (const seg of segments) {
+  for (const seg of filteredSegments) {
     const list = byGoroutine.get(seg.goroutine_id) ?? [];
     list.push(seg);
     byGoroutine.set(seg.goroutine_id, list);
   }
 
-  const visibleGoroutines = goroutines.slice(0, 30);
+  const visibleGoroutines = goroutines.slice(0, 50);
 
   return (
     <div className="timeline-simple">

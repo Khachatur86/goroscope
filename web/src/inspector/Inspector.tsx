@@ -2,6 +2,7 @@ import type { Goroutine } from "../api/client";
 
 type Props = {
   goroutine: Goroutine | null;
+  goroutines: Goroutine[];
   onSelectGoroutine?: (id: number) => void;
 };
 
@@ -22,7 +23,7 @@ function formatTimestamp(s?: string): string {
   }
 }
 
-export function Inspector({ goroutine }: Props) {
+export function Inspector({ goroutine, goroutines, onSelectGoroutine }: Props) {
   if (!goroutine) {
     return (
       <div className="inspector empty">Pick a goroutine to inspect.</div>
@@ -31,21 +32,41 @@ export function Inspector({ goroutine }: Props) {
 
   const frames = goroutine.last_stack?.frames ?? [];
 
+  const copyStack = () => {
+    const text = frames
+      .map((f) => `${f.func}\n\t${f.file || "?"}:${f.line ?? 0}`)
+      .join("\n");
+    navigator.clipboard.writeText(`goroutine #${goroutine.goroutine_id}\n\n${text}`);
+  };
+
+  const copyId = () => {
+    navigator.clipboard.writeText(String(goroutine.goroutine_id));
+  };
+
+  const goroutinesList = goroutines ?? [];
+  const parent = goroutine.parent_id
+    ? goroutinesList.find((g) => g.goroutine_id === goroutine.parent_id)
+    : null;
+  const children = goroutinesList.filter((g) => g.parent_id === goroutine.goroutine_id);
+
   return (
     <div className="inspector">
       <div className="inspector-section">
         <div className="state-pill">{goroutine.state}</div>
       </div>
-      <div className="inspector-grid">
+      <div className="inspector-section inspector-grid">
         <div>
           <div className="inspector-label">Goroutine</div>
-          <div className="inspector-value">#{goroutine.goroutine_id}</div>
+          <div className="inspector-value inspector-goroutine-id">
+            #{goroutine.goroutine_id}
+            <button type="button" className="inspector-copy-id" onClick={copyId} title="Copy goroutine ID">
+              ⎘
+            </button>
+          </div>
         </div>
         <div>
           <div className="inspector-label">Wait Time</div>
-          <div className="inspector-value">
-            {formatDuration(goroutine.wait_ns ?? 0)}
-          </div>
+          <div className="inspector-value">{formatDuration(goroutine.wait_ns ?? 0)}</div>
         </div>
         <div>
           <div className="inspector-label">Reason</div>
@@ -57,25 +78,63 @@ export function Inspector({ goroutine }: Props) {
         </div>
         <div>
           <div className="inspector-label">Created</div>
-          <div className="inspector-value">
-            {formatTimestamp(goroutine.created_at)}
-          </div>
+          <div className="inspector-value">{formatTimestamp(goroutine.created_at)}</div>
         </div>
         <div>
           <div className="inspector-label">Last Seen</div>
-          <div className="inspector-value">
-            {formatTimestamp(goroutine.last_seen_at)}
-          </div>
+          <div className="inspector-value">{formatTimestamp(goroutine.last_seen_at)}</div>
         </div>
       </div>
       <div className="inspector-section">
         <div className="inspector-label">Function</div>
-        <div className="inspector-value">
-          {goroutine.labels?.function ?? "—"}
-        </div>
+        <div className="inspector-value">{goroutine.labels?.function ?? "—"}</div>
       </div>
+
+      {(parent || children.length > 0) && (
+        <div className="inspector-section">
+          <div className="inspector-label">Spawn Tree</div>
+          <div className="spawn-tree">
+            {parent && onSelectGoroutine && (
+              <div className="spawn-tree-item">
+                <span className="spawn-tree-role">parent</span>
+                <button
+                  type="button"
+                  className="goroutine-chip"
+                  onClick={() => onSelectGoroutine(parent.goroutine_id)}
+                >
+                  G{parent.goroutine_id}
+                </button>
+              </div>
+            )}
+            {children.map((c) => (
+              <div key={c.goroutine_id} className="spawn-tree-item">
+                <span className="spawn-tree-role">child</span>
+                {onSelectGoroutine ? (
+                  <button
+                    type="button"
+                    className="goroutine-chip"
+                    onClick={() => onSelectGoroutine(c.goroutine_id)}
+                  >
+                    G{c.goroutine_id}
+                  </button>
+                ) : (
+                  <span>G{c.goroutine_id}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="inspector-section">
-        <div className="inspector-label">Latest Stack</div>
+        <div className="inspector-stack-header">
+          <span className="inspector-label">Latest Stack</span>
+          {frames.length > 0 && (
+            <button type="button" className="inspector-copy-stack" onClick={copyStack}>
+              Copy
+            </button>
+          )}
+        </div>
         {frames.length > 0 ? (
           frames.map((frame, i) => (
             <div
