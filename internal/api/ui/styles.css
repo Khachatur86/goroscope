@@ -21,6 +21,12 @@
   box-sizing: border-box;
 }
 
+/* Ensure the [hidden] attribute always wins over any display: block rules,
+   including those on canvas elements with ID selectors. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -486,6 +492,12 @@ select {
   background: rgba(255, 255, 255, 0.58);
   color: var(--muted);
   font-size: 0.88rem;
+  /* Fixed height prevents the canvas below from jumping when the text
+     wraps from 1 line (hover hint) to 2 lines (selected + long function name).
+     overflow: hidden clips any text that doesn't fit — full details are
+     always available in the Inspector panel on the right. */
+  height: 3.2rem;
+  overflow: hidden;
 }
 
 .timeline-context strong {
@@ -584,6 +596,7 @@ select {
 #heatmap-canvas {
   display: block;
   width: 100%;
+  min-height: 220px;
   border-radius: 12px;
   background: #0d1117;
   outline: 1.5px solid rgba(219, 228, 238, 0.10);

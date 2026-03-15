@@ -151,6 +151,10 @@ if (elements.viewToggle) {
     if (elements.timelineCanvas) elements.timelineCanvas.hidden = state.viewMode === "heatmap";
     if (elements.minimapCanvas) elements.minimapCanvas.hidden = true; // minimap only for lane view
     if (elements.heatmapCanvas) elements.heatmapCanvas.hidden = state.viewMode !== "heatmap";
+    // Toggle a class on the stage so CSS can remove the stage dark background
+    // when the heatmap canvas itself provides the dark fill.
+    const stage = elements.heatmapCanvas?.closest(".timeline-stage");
+    if (stage) stage.classList.toggle("heatmap-active", state.viewMode === "heatmap");
     renderCurrentView();
   });
 }
@@ -304,8 +308,20 @@ elements.timelineCanvas.addEventListener("mouseleave", () => {
   hideTooltip();
 });
 
+let _renderBusy = false;
+
+// Only re-render when the actual viewport WIDTH changes (user resizing the
+// browser window). We intentionally do NOT watch for height changes or use
+// ResizeObserver on the stage element — canvas style.height changes trigger
+// those in Chrome, creating a feedback loop. window.innerWidth is unaffected
+// by our own canvas dimension writes, so this never loops.
+let _lastViewportWidth = window.innerWidth;
 window.addEventListener("resize", () => {
-  renderCurrentView();
+  const vw = window.innerWidth;
+  if (vw !== _lastViewportWidth) {
+    _lastViewportWidth = vw;
+    if (!_renderBusy) renderCurrentView();
+  }
 });
 
 // ─── Minimap interaction ───────────────────────────────────────────────────
@@ -982,24 +998,34 @@ function clearTimelineHighlight() {
 // ─── Render ────────────────────────────────────────────────────────────────
 
 function render() {
-  renderSummary();
-  renderFocusControls();
-  renderLanePriority();
-  renderGoroutineList();
-  renderInspector();
-  renderResources();
-  renderCurrentView();
-  renderSessionHistory();
+  _renderBusy = true;
+  try {
+    renderSummary();
+    renderFocusControls();
+    renderLanePriority();
+    renderGoroutineList();
+    renderInspector();
+    renderResources();
+    renderCurrentView();
+    renderSessionHistory();
+  } finally {
+    _renderBusy = false;
+  }
 }
 
 // renderCurrentView dispatches to the lane or heatmap renderer based on
 // state.viewMode.  This is the single call-site to use when the view mode
 // might have changed (resize, data refresh, toggle).
 function renderCurrentView() {
-  if (state.viewMode === "heatmap") {
-    renderHeatmap();
-  } else {
-    renderTimeline();
+  _renderBusy = true;
+  try {
+    if (state.viewMode === "heatmap") {
+      renderHeatmap();
+    } else {
+      renderTimeline();
+    }
+  } finally {
+    _renderBusy = false;
   }
 }
 
@@ -1340,10 +1366,13 @@ function renderTimeline() {
   const height = Math.max(220, metrics.axisHeight + goroutines.length * metrics.rowHeight + 16);
   const dpr = window.devicePixelRatio || 1;
 
-  elements.timelineCanvas.width = Math.floor(width * dpr);
-  elements.timelineCanvas.height = Math.floor(height * dpr);
-  elements.timelineCanvas.style.width = `${width}px`;
-  elements.timelineCanvas.style.height = `${height}px`;
+  const newW = Math.floor(width * dpr);
+  const newH = Math.floor(height * dpr);
+  if (elements.timelineCanvas.width !== newW) elements.timelineCanvas.width = newW;
+  if (elements.timelineCanvas.height !== newH) elements.timelineCanvas.height = newH;
+  const sw = `${width}px`, sh = `${height}px`;
+  if (elements.timelineCanvas.style.width  !== sw) elements.timelineCanvas.style.width  = sw;
+  if (elements.timelineCanvas.style.height !== sh) elements.timelineCanvas.style.height = sh;
 
   canvasContext.setTransform(dpr, 0, 0, dpr, 0, 0);
   canvasContext.clearRect(0, 0, width, height);
@@ -1959,19 +1988,23 @@ function renderHeatmap() {
 
   const axisHeight  = 38;
   const pRowH       = 18;    // height of each P lane
+  const pLabelH     = 14;    // header row above P lanes ("GMP" section label)
   const pGap        = 2;     // gap between P lanes and G heatmap
-  const gmpH        = numPs > 0 ? numPs * pRowH + pGap + 8 : 0;
+  const gmpH        = numPs > 0 ? pLabelH + numPs * pRowH + pGap + 8 : 0;
   const gRowH       = 14;    // height of each goroutine heatmap row
   const labelW      = 58;    // narrow label for heatmap (just "G<id>")
   const rightPad    = 18;
   const plotLeft    = labelW;
   const innerWidth  = Math.max(1, width - plotLeft - rightPad);
-  const totalHeight = axisHeight + gmpH + goroutines.length * gRowH + 16;
+  const totalHeight = Math.max(220, axisHeight + gmpH + goroutines.length * gRowH + 16);
 
-  elements.heatmapCanvas.width  = Math.floor(width * dpr);
-  elements.heatmapCanvas.height = Math.floor(totalHeight * dpr);
-  elements.heatmapCanvas.style.width  = `${width}px`;
-  elements.heatmapCanvas.style.height = `${totalHeight}px`;
+  const hmNewW = Math.floor(width * dpr);
+  const hmNewH = Math.floor(totalHeight * dpr);
+  if (elements.heatmapCanvas.width  !== hmNewW) elements.heatmapCanvas.width  = hmNewW;
+  if (elements.heatmapCanvas.height !== hmNewH) elements.heatmapCanvas.height = hmNewH;
+  const hmSW = `${width}px`, hmSH = `${totalHeight}px`;
+  if (elements.heatmapCanvas.style.width  !== hmSW) elements.heatmapCanvas.style.width  = hmSW;
+  if (elements.heatmapCanvas.style.height !== hmSH) elements.heatmapCanvas.style.height = hmSH;
   heatmapContext.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // ── Background ────────────────────────────────────────────────────────────
@@ -2021,13 +2054,15 @@ function renderHeatmap() {
   if (numPs > 0) {
     const gmpTop = axisHeight + 6;
 
-    // Section label
+    // Section label — drawn in its own header row above the P lanes
     heatmapContext.fillStyle = "rgba(219,228,238,0.38)";
     heatmapContext.font = '10px "IBM Plex Mono", monospace';
     heatmapContext.fillText("GMP", 4, gmpTop + 10);
 
+    const pLanesTop = gmpTop + pLabelH;
+
     processorIDs.forEach((pid, pIdx) => {
-      const py = gmpTop + pIdx * pRowH;
+      const py = pLanesTop + pIdx * pRowH;
 
       // P lane background
       heatmapContext.fillStyle = "rgba(255,255,255,0.025)";
