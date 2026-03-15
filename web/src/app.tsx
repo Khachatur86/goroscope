@@ -230,6 +230,39 @@ export function App() {
   };
 
   const jumpToInputRef = useRef<HTMLInputElement>(null);
+  const timelinePanelRef = useRef<HTMLElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const handleSavePng = async () => {
+    const el = timelinePanelRef.current;
+    if (!el) return;
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const canvas = await html2canvas(el, { backgroundColor: "#1a1d21", scale: 2 });
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = `goroscope-timeline-${Date.now()}.png`;
+      a.click();
+    } catch (err) {
+      console.error("Save PNG failed:", err);
+    }
+  };
+
+  const handleFullscreen = () => {
+    const el = timelinePanelRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const onFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
 
   const handleExportJson = async () => {
     const segs = await fetchTimeline({
@@ -295,6 +328,7 @@ export function App() {
         <div>
           <p className="eyebrow">Local Go Concurrency Debugger</p>
           <h1>Goroscope</h1>
+          <p className="subtitle">Inspect goroutines, blocking behavior, and stack snapshots on a live runtime timeline.</p>
         </div>
         <div className="hero-actions">
           <button id="copy-link-btn" type="button" className="action-button secondary" onClick={handleCopyLink}>
@@ -383,11 +417,23 @@ export function App() {
           </div>
         </aside>
 
-        <section className="panel timeline-panel">
+        <section ref={timelinePanelRef} className="panel timeline-panel">
           <div className="timeline-controls">
             <h2>Timeline</h2>
-            <button type="button" className="timeline-control-button" onClick={handleExportJson}>
+            <button type="button" className="timeline-control-button" onClick={handleSavePng} title="Save timeline as PNG">
+              Save PNG
+            </button>
+            <button type="button" className="timeline-control-button" onClick={handleExportJson} title="Export timeline as JSON">
               Export JSON
+            </button>
+            <button
+              type="button"
+              className="timeline-control-button"
+              onClick={handleFullscreen}
+              title="Fullscreen timeline"
+              aria-pressed={isFullscreen}
+            >
+              ⛶
             </button>
           </div>
           <Timeline

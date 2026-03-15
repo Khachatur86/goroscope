@@ -33,22 +33,22 @@
 ### Фаза 1: Простые фичи (1–2 дня)
 
 #### 1.1 Save PNG
-- [ ] Добавить кнопку "Save PNG" в timeline-controls
-- [ ] Использовать `html2canvas` или `dom-to-image` для рендера текущего timeline в PNG
-- [ ] Альтернатива: если timeline на canvas — `canvas.toDataURL("image/png")`
+- [x] Добавить кнопку "Save PNG" в timeline-controls
+- [x] Использовать `html2canvas` для рендера timeline в PNG
 
 #### 1.2 Fullscreen
-- [ ] Добавить кнопку ⛶ в timeline-controls
-- [ ] Обработчик `document.requestFullscreen()` / `document.exitFullscreen()`
-- [ ] Обернуть timeline-panel в ref для fullscreen
-- [ ] Слушать `fullscreenchange` для обновления состояния кнопки
+- [x] Добавить кнопку ⛶ в timeline-controls
+- [x] Обработчик `requestFullscreen()` / `exitFullscreen()`
+- [x] Обернуть timeline-panel в ref для fullscreen
+- [x] Слушать `fullscreenchange` для обновления состояния кнопки
 
 #### 1.3 Reset zoom
 - [ ] Добавить кнопку "Reset zoom" (показывать только при zoomLevel > 1)
 - [ ] Сброс zoom state в 1
+- [ ] Требует zoom state в Timeline (Фаза 2)
 
 #### 1.4 Subtitle
-- [ ] Добавить подзаголовок под заголовком: "Inspect goroutines, blocking behavior, and stack snapshots on a live runtime timeline."
+- [x] Добавить подзаголовок под заголовком: "Inspect goroutines, blocking behavior, and stack snapshots on a live runtime timeline."
 
 ---
 

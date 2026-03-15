@@ -38,6 +38,12 @@ body {
   font-size: 1.5rem;
 }
 
+.hero .subtitle {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.875rem;
+  color: #94a3b8;
+}
+
 .action-button {
   padding: 0.5rem 1rem;
   background: #3b82f6;
