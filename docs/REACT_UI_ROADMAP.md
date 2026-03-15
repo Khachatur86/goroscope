@@ -43,9 +43,8 @@
 - [x] Слушать `fullscreenchange` для обновления состояния кнопки
 
 #### 1.3 Reset zoom
-- [ ] Добавить кнопку "Reset zoom" (показывать только при zoomLevel > 1)
-- [ ] Сброс zoom state в 1
-- [ ] Требует zoom state в Timeline (Фаза 2)
+- [x] Добавить кнопку "Reset zoom" (показывать при zoomToSelected)
+- [x] Сброс zoom state
 
 #### 1.4 Subtitle
 - [x] Добавить подзаголовок под заголовком: "Inspect goroutines, blocking behavior, and stack snapshots on a live runtime timeline."
@@ -55,10 +54,9 @@
 ### Фаза 2: Zoom и навигация (2–3 дня)
 
 #### 2.1 Zoom to G
-- [ ] Добавить кнопку "Zoom to G"
-- [ ] При клике: вычислить временной диапазон сегментов выбранной горутины
-- [ ] Установить zoom/pan так, чтобы этот диапазон занимал видимую область
-- [ ] Требует: state для zoom/pan в Timeline
+- [x] Добавить кнопку "Zoom to G"
+- [x] При клике: вычислить временной диапазон сегментов выбранной горутины
+- [x] Масштабировать ось времени на этот диапазон (div-based)
 
 #### 2.2 Canvas-based Timeline с zoom/pan
 - [ ] Заменить div-based Timeline на canvas (по аналогии с vanilla `app.js`)

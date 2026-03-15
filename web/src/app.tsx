@@ -66,6 +66,7 @@ export function App() {
   const [insights, setInsights] = useState<{ long_blocked_count: number }>({ long_blocked_count: 0 });
   const [deadlockHints, setDeadlockHints] = useState<DeadlockHint[]>([]);
   const [relatedFocus, setRelatedFocus] = useState(false);
+  const [zoomToSelected, setZoomToSelected] = useState(false);
   const [filters, setFilters] = useState<FiltersState>(() => {
     const fromUrl = parseFiltersFromURL();
     return {
@@ -445,6 +446,25 @@ export function App() {
             >
               Related focus
             </button>
+            <button
+              type="button"
+              className="timeline-control-button"
+              onClick={() => setZoomToSelected(true)}
+              disabled={selectedId === null}
+              title="Zoom timeline to selected goroutine"
+            >
+              Zoom to G
+            </button>
+            {zoomToSelected && (
+              <button
+                type="button"
+                className="timeline-control-button reset-zoom-button"
+                onClick={() => setZoomToSelected(false)}
+                title="Reset zoom"
+              >
+                Reset zoom
+              </button>
+            )}
             <button type="button" className="timeline-control-button" onClick={handleSavePng} title="Save timeline as PNG">
               Save PNG
             </button>
@@ -466,6 +486,7 @@ export function App() {
             selectedId={selectedId}
             onSelectGoroutine={handleSelect}
             filters={filters}
+            zoomToSelected={zoomToSelected}
           />
         </section>
 

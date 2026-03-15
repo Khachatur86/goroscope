@@ -14,6 +14,7 @@ type Props = {
   selectedId: number | null;
   onSelectGoroutine: (id: number) => void;
   filters: FiltersState;
+  zoomToSelected?: boolean;
 };
 
 const COLORS: Record<string, string> = {
@@ -37,6 +38,7 @@ export function Timeline({
   selectedId,
   onSelectGoroutine,
   filters,
+  zoomToSelected = false,
 }: Props) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
 
@@ -62,8 +64,22 @@ export function Timeline({
     );
   }
 
-  const minStart = Math.min(...filteredSegments.map((s) => s.start_ns));
-  const maxEnd = Math.max(...filteredSegments.map((s) => s.end_ns));
+  const fullMinStart = Math.min(...filteredSegments.map((s) => s.start_ns));
+  const fullMaxEnd = Math.max(...filteredSegments.map((s) => s.end_ns));
+
+  let minStart = fullMinStart;
+  let maxEnd = fullMaxEnd;
+  if (zoomToSelected && selectedId) {
+    const selectedSegs = filteredSegments.filter((s) => s.goroutine_id === selectedId);
+    if (selectedSegs.length > 0) {
+      minStart = Math.min(...selectedSegs.map((s) => s.start_ns));
+      maxEnd = Math.max(...selectedSegs.map((s) => s.end_ns));
+      const padding = Math.max((maxEnd - minStart) * 0.1, 1);
+      minStart = Math.max(fullMinStart, minStart - padding);
+      maxEnd = Math.min(fullMaxEnd, maxEnd + padding);
+    }
+  }
+
   const span = maxEnd - minStart || 1;
 
   const byGoroutine = new Map<number, TimelineSegment[]>();
