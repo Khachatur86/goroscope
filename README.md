@@ -37,6 +37,7 @@ This repository contains a working local MVP built around `runtime/trace`:
 - in-memory analysis engine and session manager
 - local REST + SSE API with an embedded browser UI under `internal/api/ui`
 - VS Code extension with Session panel and open-in-editor from stack frames
+- React UI scaffold in `web/` (Vite + TypeScript) — run `make web` to build
 - product specification and architecture notes under `docs/`
 
 ## Runtime Trace Demo

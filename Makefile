@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run ui fmt test test-race vet lint bench vscode
+.PHONY: build run ui fmt test test-race vet lint bench web vscode
 
 build:
 	mkdir -p bin
@@ -30,6 +30,9 @@ lint:
 
 bench:
 	go test -bench=. -benchmem ./internal/tracebridge/... ./internal/analysis/...
+
+web:
+	cd web && npm install && npm run build
 
 vscode:
 	cd vscode && npm install && npm run compile
