@@ -57,6 +57,8 @@ go run ./cmd/goroscope replay ./captures/sample.gtrace
 | `GET /api/v1/insights` | Long-blocked goroutines. Query: `min_wait_ns` (default 1s) |
 | `GET /api/v1/timeline` | Timeline segments. Query: `state`, `reason`, `search` |
 
+Open the UI with `?goroutine=123` to auto-select that goroutine. The URL updates when you select a different one (shareable links).
+
 ## Layout
 
 ```text

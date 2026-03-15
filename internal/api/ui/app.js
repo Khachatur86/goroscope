@@ -8,6 +8,7 @@ const state = {
   insights: null,
   selectedId: null,
   selectedGoroutine: null,
+  initialGoroutineFromURL: null,
   relatedFocus: false,
   search: "",
   stateFilter: "ALL",
@@ -450,9 +451,11 @@ async function loadData() {
     state.insights = insights;
     resetDerivedCaches();
 
+    parseGoroutineFromURL();
     ensureSelection();
     await hydrateSelectedGoroutine();
     render();
+    updateURLForSelection();
   } catch (error) {
     renderError(error instanceof Error ? error.message : String(error));
   }
@@ -471,12 +474,46 @@ async function hydrateSelectedGoroutine() {
   }
 }
 
+function parseGoroutineFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("goroutine");
+  if (id) {
+    const n = parseInt(id, 10);
+    if (Number.isFinite(n) && n > 0) {
+      state.initialGoroutineFromURL = n;
+    }
+  }
+}
+
+function updateURLForSelection() {
+  const params = new URLSearchParams(window.location.search);
+  if (state.selectedId) {
+    params.set("goroutine", String(state.selectedId));
+  } else {
+    params.delete("goroutine");
+  }
+  const qs = params.toString();
+  const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+  window.history.replaceState(null, "", url);
+}
+
 function ensureSelection() {
   const filtered = getFilteredGoroutines();
   if (filtered.length === 0) {
     state.selectedId = null;
     state.selectedGoroutine = null;
+    state.initialGoroutineFromURL = null;
     return;
+  }
+
+  if (state.initialGoroutineFromURL) {
+    const found = filtered.some((item) => item.goroutine_id === state.initialGoroutineFromURL);
+    if (found) {
+      state.selectedId = state.initialGoroutineFromURL;
+      state.initialGoroutineFromURL = null;
+      return;
+    }
+    state.initialGoroutineFromURL = null;
   }
 
   const selectedStillVisible = filtered.some((item) => item.goroutine_id === state.selectedId);
@@ -493,6 +530,7 @@ function ensureSelection() {
 
 async function selectGoroutine(id) {
   state.selectedId = id;
+  updateURLForSelection();
   await hydrateSelectedGoroutine();
   render();
 }
