@@ -593,3 +593,25 @@ body {
   border-radius: 2px;
   min-width: 2px;
 }
+
+.timeline-heatmap .timeline-lanes-heatmap {
+  gap: 0;
+}
+
+.timeline-lane-heatmap {
+  padding: 0.1rem 0;
+}
+
+.timeline-lane-heatmap .lane-label {
+  min-width: 36px;
+  font-size: 0.7rem;
+}
+
+.timeline-lane-heatmap .lane-segments {
+  height: 14px;
+}
+
+.view-toggle-button.active {
+  color: #fff;
+  background: linear-gradient(135deg, #1e3a5f, #0f5f4e);
+}

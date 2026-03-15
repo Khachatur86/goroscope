@@ -67,6 +67,7 @@ export function App() {
   const [deadlockHints, setDeadlockHints] = useState<DeadlockHint[]>([]);
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
+  const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
   const [filters, setFilters] = useState<FiltersState>(() => {
     const fromUrl = parseFiltersFromURL();
     return {
@@ -480,6 +481,15 @@ export function App() {
             >
               ⛶
             </button>
+            <button
+              type="button"
+              className={`timeline-control-button view-toggle-button ${viewMode === "heatmap" ? "active" : ""}`}
+              onClick={() => setViewMode((v) => (v === "lanes" ? "heatmap" : "lanes"))}
+              title="Toggle lanes / heatmap view"
+              aria-pressed={viewMode === "heatmap"}
+            >
+              ⊞ Heatmap
+            </button>
           </div>
           <Timeline
             goroutines={displayGoroutines}
@@ -487,6 +497,7 @@ export function App() {
             onSelectGoroutine={handleSelect}
             filters={filters}
             zoomToSelected={zoomToSelected}
+            viewMode={viewMode}
           />
         </section>
 

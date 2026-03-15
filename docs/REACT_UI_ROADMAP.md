@@ -82,10 +82,10 @@
 - [x] Toggle on/off
 
 #### 3.3 Heatmap view
-- [ ] Кнопка "⊞ Heatmap"
-- [ ] Режим: lanes (по умолчанию) vs heatmap
-- [ ] Heatmap: GMP strip + пиксельная карта состояний горутин по времени
-- [ ] Портировать логику из vanilla `renderHeatmap` / `renderGMPStrip`
+- [x] Кнопка "⊞ Heatmap"
+- [x] Режим: lanes (по умолчанию) vs heatmap
+- [x] Heatmap: компактные строки горутин
+- [ ] GMP strip (требует processor-timeline API)
 
 ---
 

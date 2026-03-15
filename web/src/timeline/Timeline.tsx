@@ -15,6 +15,7 @@ type Props = {
   onSelectGoroutine: (id: number) => void;
   filters: FiltersState;
   zoomToSelected?: boolean;
+  viewMode?: "lanes" | "heatmap";
 };
 
 const COLORS: Record<string, string> = {
@@ -39,6 +40,7 @@ export function Timeline({
   onSelectGoroutine,
   filters,
   zoomToSelected = false,
+  viewMode = "lanes",
 }: Props) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
 
@@ -92,9 +94,10 @@ export function Timeline({
   }
 
   const visibleGoroutines = goroutines.slice(0, 50);
+  const isHeatmap = viewMode === "heatmap";
 
   return (
-    <div className="timeline-simple">
+    <div className={`timeline-simple ${isHeatmap ? "timeline-heatmap" : ""}`}>
       <div className="timeline-legend">
         {Object.entries(COLORS).map(([state, color]) => (
           <span key={state} className="legend-chip" style={{ background: color }}>
@@ -102,7 +105,7 @@ export function Timeline({
           </span>
         ))}
       </div>
-      <div className="timeline-lanes">
+      <div className={`timeline-lanes ${isHeatmap ? "timeline-lanes-heatmap" : ""}`}>
         {visibleGoroutines.map((g) => {
           const segs = byGoroutine.get(g.goroutine_id) ?? [];
           const isSelected = g.goroutine_id === selectedId;
@@ -110,11 +113,11 @@ export function Timeline({
           return (
             <div
               key={g.goroutine_id}
-              className={`timeline-lane ${isSelected ? "selected" : ""}`}
+              className={`timeline-lane ${isSelected ? "selected" : ""} ${isHeatmap ? "timeline-lane-heatmap" : ""}`}
               onClick={() => onSelectGoroutine(g.goroutine_id)}
             >
               <div className="lane-label">
-                G{g.goroutine_id} {g.labels?.function ?? ""}
+                G{g.goroutine_id}{isHeatmap ? "" : ` ${g.labels?.function ?? ""}`}
               </div>
               <div className="lane-segments">
                 {segs.map((seg, i) => (
