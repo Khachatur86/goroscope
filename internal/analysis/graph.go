@@ -85,7 +85,7 @@ func DeriveResourceEdgesFromTimeline(
 
 // DeadlockHint describes a potential deadlock: a cycle of goroutines all blocked.
 type DeadlockHint struct {
-	GoroutineIDs []int64 `json:"goroutine_ids"`
+	GoroutineIDs []int64  `json:"goroutine_ids"`
 	ResourceIDs  []string `json:"resource_ids"`
 }
 

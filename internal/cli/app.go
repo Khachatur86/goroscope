@@ -43,7 +43,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		printUsage(stdout)
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q\n\nRun 'goroscope help' for usage.", args[0])
+		return fmt.Errorf("unknown command %q; run 'goroscope help' for usage", args[0])
 	}
 }
 
@@ -129,7 +129,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	uiPathResolved := resolveUIPath(*ui, *uiPath)
 	if uiPathResolved == "" && *ui == "react" {
-		return fmt.Errorf("React UI not found at %q: run 'make web' first", *uiPath)
+		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
 	return serveLiveRunSession(ctx, serveLiveRunInput{
@@ -172,7 +172,7 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 
 	uiPathResolved := resolveUIPath(*ui, *uiPath)
 	if uiPathResolved == "" && *ui == "react" {
-		return fmt.Errorf("React UI not found at %q: run 'make web' first", *uiPath)
+		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
 	return serveCaptureSession(ctx, *addr, "collector", "collector", capture, stdout, *openBrowser, uiPathResolved)
@@ -205,7 +205,7 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 
 	uiPathResolved := resolveUIPath(*ui, *uiPath)
 	if uiPathResolved == "" && *ui == "react" {
-		return fmt.Errorf("React UI not found at %q: run 'make web' first", *uiPath)
+		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
 	return serveCaptureSession(ctx, *addr, "ui-demo", "demo://ui", capture, stdout, *openBrowser, uiPathResolved)
@@ -243,7 +243,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 	uiPathResolved := resolveUIPath(*ui, *uiPath)
 	if uiPathResolved == "" && *ui == "react" {
-		return fmt.Errorf("React UI not found at %q: run 'make web' first", *uiPath)
+		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
 	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout, *openBrowser, uiPathResolved)

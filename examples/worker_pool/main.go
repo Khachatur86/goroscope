@@ -31,7 +31,7 @@ func main() {
 
 	for w := 0; w < numWorkers; w++ {
 		wg.Add(1)
-		go func(id int) {
+		go func(_ int) {
 			defer wg.Done()
 			for j := range jobs {
 				time.Sleep(10 * time.Millisecond)
