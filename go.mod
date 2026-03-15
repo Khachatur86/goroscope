@@ -1,3 +1,3 @@
 module github.com/Khachatur86/goroscope
 
-go 1.25
+go 1.23
