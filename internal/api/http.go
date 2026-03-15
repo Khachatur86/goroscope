@@ -63,6 +63,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/goroutines", s.handleGoroutines)
 	mux.HandleFunc("/api/v1/goroutines/{id}", s.handleGoroutineByID)
 	mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
+	mux.HandleFunc("/api/v1/processor-timeline", s.handleProcessorTimeline)
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 	return mux
@@ -117,6 +118,10 @@ func (s *Server) handleGoroutineByID(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTimeline(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.engine.Timeline())
+}
+
+func (s *Server) handleProcessorTimeline(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.engine.ProcessorTimeline())
 }
 
 func (s *Server) handleGraph(w http.ResponseWriter, _ *http.Request) {

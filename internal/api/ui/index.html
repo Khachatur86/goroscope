@@ -91,15 +91,19 @@
           <div class="timeline-controls">
             <button id="focus-related-button" class="timeline-control-button focus-related-button" type="button" aria-pressed="false">Related focus</button>
             <button id="reset-zoom-button" class="timeline-control-button reset-zoom-button" type="button" hidden>Reset zoom</button>
+            <button id="view-toggle" class="timeline-control-button view-toggle-button" type="button" aria-pressed="false">⊞ Heatmap</button>
             <div id="timeline-range" class="timeline-range"></div>
           </div>
         </div>
         <div id="timeline-context" class="timeline-context">Select a goroutine to inspect related lanes and timeline segments.</div>
         <div class="timeline-stage">
           <div id="timeline-cursor" class="timeline-cursor" hidden></div>
+          <!-- Lane view (default) -->
           <canvas id="timeline-canvas"></canvas>
           <!-- Minimap: compact full-trace overview, shown only when zoomed in -->
           <canvas id="minimap-canvas" class="minimap-canvas" hidden aria-label="Timeline minimap"></canvas>
+          <!-- Heatmap view: GMP strip + goroutine state heatmap -->
+          <canvas id="heatmap-canvas" hidden aria-label="Goroutine state heatmap"></canvas>
         </div>
       </section>
 

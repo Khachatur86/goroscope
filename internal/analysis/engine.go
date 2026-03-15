@@ -9,13 +9,14 @@ import (
 )
 
 type Engine struct {
-	mu             sync.RWMutex
-	session        *model.Session
-	stateMachine   *StateMachine
-	goroutines     map[int64]model.Goroutine
-	closedSegments []model.TimelineSegment
-	activeSegments map[int64]activeSegment
-	edges          []model.ResourceEdge
+	mu                sync.RWMutex
+	session           *model.Session
+	stateMachine      *StateMachine
+	goroutines        map[int64]model.Goroutine
+	closedSegments    []model.TimelineSegment
+	activeSegments    map[int64]activeSegment
+	edges             []model.ResourceEdge
+	processorSegments []model.ProcessorSegment
 
 	subsMu      sync.Mutex
 	subscribers map[chan struct{}]struct{}
@@ -87,6 +88,7 @@ func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
 			e.applyStackSnapshotLocked(snapshot)
 		}
 		e.edges = append([]model.ResourceEdge(nil), capture.Resources...)
+		e.processorSegments = append([]model.ProcessorSegment(nil), capture.ProcessorSegments...)
 
 		// Apply parent IDs after all events and stacks so every goroutine is
 		// already present in the map.  This handles the common case where the
@@ -200,6 +202,18 @@ func (e *Engine) Timeline() []model.TimelineSegment {
 	return out
 }
 
+// ProcessorTimeline returns a snapshot of the processor-segment log.  Each
+// segment records an interval during which a specific goroutine ran on a
+// specific logical processor (P).
+func (e *Engine) ProcessorTimeline() []model.ProcessorSegment {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	out := make([]model.ProcessorSegment, len(e.processorSegments))
+	copy(out, e.processorSegments)
+	return out
+}
+
 func (e *Engine) ResourceGraph() []model.ResourceEdge {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -215,6 +229,7 @@ func (e *Engine) resetLocked(session *model.Session) {
 	e.closedSegments = nil
 	e.activeSegments = make(map[int64]activeSegment)
 	e.edges = nil
+	e.processorSegments = nil
 }
 
 func (e *Engine) applyEventsLocked(events []model.Event) {

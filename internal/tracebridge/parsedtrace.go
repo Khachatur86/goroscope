@@ -33,13 +33,14 @@ var (
 	// goroutine is running (system context or initial bootstrap).
 	//
 	// Groups:
-	//   [1] G= running goroutine ID, may be -1 (parent on NotExist→* lines)
-	//   [2] monotonic time nanoseconds
-	//   [3] goroutine ID that is changing state
-	//   [4] reason string (may be empty)
-	//   [5] from-state label
-	//   [6] to-state label
-	stateTransitionRE = regexp.MustCompile(`\bG=(-?\d+)\s.*\bTime=(\d+)\s+Resource=Goroutine\((\d+)\)\s+Reason="([^"]*)"(?:\s+GoID=\d+)?\s+([A-Za-z]+)->([A-Za-z]+)$`)
+	//   [1] P= logical processor ID, may be -1 (system context)
+	//   [2] G= running goroutine ID, may be -1 (parent on NotExist→* lines)
+	//   [3] monotonic time nanoseconds
+	//   [4] goroutine ID that is changing state
+	//   [5] reason string (may be empty)
+	//   [6] from-state label
+	//   [7] to-state label
+	stateTransitionRE = regexp.MustCompile(`\bP=(-?\d+)\s+G=(-?\d+)\s.*\bTime=(\d+)\s+Resource=Goroutine\((\d+)\)\s+Reason="([^"]*)"(?:\s+GoID=\d+)?\s+([A-Za-z]+)->([A-Za-z]+)$`)
 	workspaceRoot     = mustGetwd()
 )
 
@@ -48,11 +49,18 @@ type parsedTransition struct {
 	GoID     int64
 	// ParentID is the goroutine captured in the GoID= field on a
 	// NotExist→* transition. Zero means the field was absent or non-create.
-	ParentID int64
-	Reason   string
-	From     string
-	To       string
-	Stack    []model.StackFrame
+	ParentID    int64
+	ProcessorID int // -1 means no P (system/GC context)
+	Reason      string
+	From        string
+	To          string
+	Stack       []model.StackFrame
+}
+
+// activePSlot tracks the start of a goroutine's current run on a P.
+type activePSlot struct {
+	processorID int
+	startNS     int64 // raw trace nanoseconds (before wall-clock conversion)
 }
 
 type LiveTraceRun struct {
@@ -77,6 +85,14 @@ type parsedTraceBuilder struct {
 	// This lets the engine set ParentID on goroutines whose create event had
 	// no stack yet (the common case).
 	parentIDs map[int64]int64
+	// activePSlots tracks open P-slot intervals indexed by goroutine ID.
+	// Populated unconditionally so that goroutines identified as "user" only
+	// after their first Running transition still get correct P segments.
+	activePSlots map[int64]activePSlot
+	// rawPSegments accumulates all closed P-slot intervals.  They are
+	// filtered to kept goroutines and moved to capture.ProcessorSegments
+	// after the full trace is scanned.
+	rawPSegments []model.ProcessorSegment
 }
 
 func BuildCaptureFromRawTrace(ctx context.Context, tracePath string) (model.Capture, error) {
@@ -188,6 +204,7 @@ func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 		},
 		keptGoroutine: make(map[int64]bool),
 		parentIDs:     make(map[int64]int64),
+		activePSlots:  make(map[int64]activePSlot),
 	}
 
 	scanner := bufio.NewScanner(r)
@@ -233,34 +250,40 @@ func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 				return model.Capture{}, err
 			}
 
-			// New group layout after regex rewrite:
-			//   match[1] = G= running goroutine (parent on create events, "-1" = none)
-			//   match[2] = Time nanoseconds
-			//   match[3] = goroutine being transitioned
-			//   match[4] = Reason string
-			//   match[5] = from-state label
-			//   match[6] = to-state label
-			timeNS, err := strconv.ParseInt(match[2], 10, 64)
+			// Group layout (see stateTransitionRE definition):
+			//   match[1] = P= logical processor ID ("-1" = system context)
+			//   match[2] = G= running goroutine (parent on create events, "-1" = none)
+			//   match[3] = Time nanoseconds
+			//   match[4] = goroutine being transitioned
+			//   match[5] = Reason string
+			//   match[6] = from-state label
+			//   match[7] = to-state label
+			timeNS, err := strconv.ParseInt(match[3], 10, 64)
 			if err != nil {
 				return model.Capture{}, fmt.Errorf("parse transition time: %w", err)
 			}
-			goID, err := strconv.ParseInt(match[3], 10, 64)
+			goID, err := strconv.ParseInt(match[4], 10, 64)
 			if err != nil {
 				return model.Capture{}, fmt.Errorf("parse goroutine id: %w", err)
 			}
+			processorID := -1
+			if pid, err := strconv.Atoi(match[1]); err == nil {
+				processorID = pid
+			}
 
 			current = &parsedTransition{
-				TimeNS: timeNS,
-				GoID:   goID,
-				Reason: match[4],
-				From:   match[5],
-				To:     match[6],
+				TimeNS:      timeNS,
+				GoID:        goID,
+				ProcessorID: processorID,
+				Reason:      match[5],
+				From:        match[6],
+				To:          match[7],
 			}
 			// On create transitions the G= prefix field is the running goroutine
 			// that executed the "go" statement — i.e. the parent.
 			// G=-1 means no goroutine (bootstrap/system context), not a real parent.
-			if (match[5] == "NotExist" || match[5] == "Undetermined") && match[1] != "-1" {
-				parentID, err := strconv.ParseInt(match[1], 10, 64)
+			if (match[6] == "NotExist" || match[6] == "Undetermined") && match[2] != "-1" {
+				parentID, err := strconv.ParseInt(match[2], 10, 64)
 				if err == nil && parentID != goID {
 					current.ParentID = parentID
 				}
@@ -324,6 +347,13 @@ func ParseParsedTrace(r io.Reader) (model.Capture, error) {
 		}
 	}
 
+	// Retain P segments only for kept (user) goroutines.
+	for _, seg := range builder.rawPSegments {
+		if builder.keptGoroutine[seg.GoroutineID] {
+			builder.capture.ProcessorSegments = append(builder.capture.ProcessorSegments, seg)
+		}
+	}
+
 	return builder.capture, nil
 }
 
@@ -337,6 +367,30 @@ func (b *parsedTraceBuilder) appendTransition(transition parsedTransition) error
 	// out, losing the parent relationship permanently.
 	if (transition.From == "NotExist" || transition.From == "Undetermined") && transition.ParentID != 0 {
 		b.parentIDs[transition.GoID] = transition.ParentID
+	}
+
+	// Track P-slot intervals unconditionally so goroutines identified as
+	// "user code" only after their first Running transition still get P data.
+	if transition.From == "Running" {
+		if slot, ok := b.activePSlots[transition.GoID]; ok {
+			startWall := b.baseWall.Add(time.Duration(slot.startNS - b.baseTime))
+			endWall := b.baseWall.Add(time.Duration(transition.TimeNS - b.baseTime))
+			if endWall.After(startWall) {
+				b.rawPSegments = append(b.rawPSegments, model.ProcessorSegment{
+					ProcessorID: slot.processorID,
+					GoroutineID: transition.GoID,
+					StartNS:     startWall.UnixNano(),
+					EndNS:       endWall.UnixNano(),
+				})
+			}
+			delete(b.activePSlots, transition.GoID)
+		}
+	}
+	if transition.To == "Running" && transition.ProcessorID >= 0 {
+		b.activePSlots[transition.GoID] = activePSlot{
+			processorID: transition.ProcessorID,
+			startNS:     transition.TimeNS,
+		}
 	}
 
 	keep := b.keptGoroutine[transition.GoID] || hasUserFrame(transition.Stack)

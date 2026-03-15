@@ -4,12 +4,15 @@ const state = {
   goroutines: [],
   timeline: [],
   resources: [],
+  processorTimeline: [],
   selectedId: null,
   selectedGoroutine: null,
   relatedFocus: false,
   search: "",
   stateFilter: "ALL",
   sortMode: "SUSPICIOUS",
+  // "lanes" = classic lane view; "heatmap" = pixel heatmap + GMP strip.
+  viewMode: "lanes",
 };
 
 // timelineCache stores the last-rendered timeline bounds so the mousemove
@@ -88,10 +91,13 @@ const elements = {
   tooltip: document.getElementById("timeline-tooltip"),
   sessionHistory: document.getElementById("session-history"),
   minimapCanvas: document.getElementById("minimap-canvas"),
+  heatmapCanvas: document.getElementById("heatmap-canvas"),
+  viewToggle: document.getElementById("view-toggle"),
 };
 
 const canvasContext = elements.timelineCanvas.getContext("2d");
 const minimapContext = elements.minimapCanvas ? elements.minimapCanvas.getContext("2d") : null;
+const heatmapContext = elements.heatmapCanvas ? elements.heatmapCanvas.getContext("2d") : null;
 
 // ─── Control event listeners ───────────────────────────────────────────────
 
@@ -122,7 +128,7 @@ if (elements.resetZoomButton) {
   elements.resetZoomButton.addEventListener("click", () => {
     timelineView.zoomLevel = 1;
     timelineView.panOffsetNS = 0;
-    renderTimeline();
+    renderCurrentView();
   });
 }
 
@@ -133,6 +139,19 @@ if (elements.focusRelatedButton) {
     }
     state.relatedFocus = !state.relatedFocus;
     render();
+  });
+}
+
+if (elements.viewToggle) {
+  elements.viewToggle.addEventListener("click", () => {
+    state.viewMode = state.viewMode === "lanes" ? "heatmap" : "lanes";
+    elements.viewToggle.textContent = state.viewMode === "heatmap" ? "≡ Lanes" : "⊞ Heatmap";
+    elements.viewToggle.setAttribute("aria-pressed", String(state.viewMode === "heatmap"));
+    // Show the right canvas and hide the other.
+    if (elements.timelineCanvas) elements.timelineCanvas.hidden = state.viewMode === "heatmap";
+    if (elements.minimapCanvas) elements.minimapCanvas.hidden = true; // minimap only for lane view
+    if (elements.heatmapCanvas) elements.heatmapCanvas.hidden = state.viewMode !== "heatmap";
+    renderCurrentView();
   });
 }
 
@@ -286,7 +305,7 @@ elements.timelineCanvas.addEventListener("mouseleave", () => {
 });
 
 window.addEventListener("resize", () => {
-  renderTimeline();
+  renderCurrentView();
 });
 
 // ─── Minimap interaction ───────────────────────────────────────────────────
@@ -320,12 +339,13 @@ window.addEventListener("mouseup", () => {
 
 async function loadData() {
   try {
-    const [session, goroutines, timeline, resources, sessions] = await Promise.all([
+    const [session, goroutines, timeline, resources, sessions, processorTimeline] = await Promise.all([
       fetchJSON("/api/v1/session/current"),
       fetchJSON("/api/v1/goroutines"),
       fetchJSON("/api/v1/timeline"),
       fetchJSON("/api/v1/resources/graph"),
       fetchJSON("/api/v1/sessions"),
+      fetchJSON("/api/v1/processor-timeline").catch(() => []),
     ]);
 
     state.session = session;
@@ -333,6 +353,7 @@ async function loadData() {
     state.timeline = timeline;
     state.resources = resources;
     state.sessions = Array.isArray(sessions) ? sessions : [];
+    state.processorTimeline = Array.isArray(processorTimeline) ? processorTimeline : [];
     resetDerivedCaches();
 
     ensureSelection();
@@ -951,7 +972,7 @@ function setTimelineHighlight(hoveredGoroutineID, hoveredSegmentKey) {
 
   timelineHighlight.hoveredGoroutineID = nextGoroutineID;
   timelineHighlight.hoveredSegmentKey = nextSegmentKey;
-  renderTimeline();
+  renderCurrentView();
 }
 
 function clearTimelineHighlight() {
@@ -967,8 +988,19 @@ function render() {
   renderGoroutineList();
   renderInspector();
   renderResources();
-  renderTimeline();
+  renderCurrentView();
   renderSessionHistory();
+}
+
+// renderCurrentView dispatches to the lane or heatmap renderer based on
+// state.viewMode.  This is the single call-site to use when the view mode
+// might have changed (resize, data refresh, toggle).
+function renderCurrentView() {
+  if (state.viewMode === "heatmap") {
+    renderHeatmap();
+  } else {
+    renderTimeline();
+  }
 }
 
 function renderFocusControls() {
@@ -1879,6 +1911,236 @@ function seekMinimapToEvent(event) {
 
   renderTimeline();
 }
+
+// ─── Heatmap view ─────────────────────────────────────────────────────────
+
+// goroutineHue returns a deterministic hue (0–360) for a goroutine ID so each
+// goroutine has a stable, distinguishable colour in the GMP P-lane strip.
+function goroutineHue(id) {
+  // 12 evenly-spaced hues with good perceptual separation on a dark background.
+  const hues = [195, 30, 270, 140, 355, 60, 310, 170, 80, 230, 15, 330];
+  return hues[Number(id) % hues.length];
+}
+
+// buildSegmentIndex returns a Map<goroutineID → sorted TimelineSegment[]> for
+// the current goroutine set.  Used by both renderHeatmap and hit-testing.
+function buildSegmentIndex(goroutines, timeline) {
+  const byID = new Map();
+  for (const g of goroutines) {
+    byID.set(g.goroutine_id, []);
+  }
+  for (const seg of timeline) {
+    const list = byID.get(seg.goroutine_id);
+    if (list) list.push(seg);
+  }
+  // Segments arrive pre-sorted from the engine but sort defensively.
+  for (const list of byID.values()) {
+    list.sort((a, b) => a.start_ns - b.start_ns);
+  }
+  return byID;
+}
+
+// renderHeatmap draws the pixel-style heatmap with a GMP processor strip above
+// and one row per goroutine below, each coloured by state at every time slice.
+function renderHeatmap() {
+  if (!heatmapContext || !elements.heatmapCanvas) return;
+
+  const goroutines = getFilteredGoroutines();
+  const timeline = state.timeline;
+  const processorSegs = state.processorTimeline;
+
+  // ── Geometry ──────────────────────────────────────────────────────────────
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(320, elements.heatmapCanvas.parentElement.clientWidth);
+
+  // Determine the set of active processors.
+  const processorIDs = [...new Set(processorSegs.map((s) => s.processor_id))].sort((a, b) => a - b);
+  const numPs = processorIDs.length;
+
+  const axisHeight  = 38;
+  const pRowH       = 18;    // height of each P lane
+  const pGap        = 2;     // gap between P lanes and G heatmap
+  const gmpH        = numPs > 0 ? numPs * pRowH + pGap + 8 : 0;
+  const gRowH       = 14;    // height of each goroutine heatmap row
+  const labelW      = 58;    // narrow label for heatmap (just "G<id>")
+  const rightPad    = 18;
+  const plotLeft    = labelW;
+  const innerWidth  = Math.max(1, width - plotLeft - rightPad);
+  const totalHeight = axisHeight + gmpH + goroutines.length * gRowH + 16;
+
+  elements.heatmapCanvas.width  = Math.floor(width * dpr);
+  elements.heatmapCanvas.height = Math.floor(totalHeight * dpr);
+  elements.heatmapCanvas.style.width  = `${width}px`;
+  elements.heatmapCanvas.style.height = `${totalHeight}px`;
+  heatmapContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // ── Background ────────────────────────────────────────────────────────────
+  heatmapContext.fillStyle = "#0d1117";
+  heatmapContext.fillRect(0, 0, width, totalHeight);
+
+  // ── Visible time window (same zoom/pan as lane view) ─────────────────────
+  if (timeline.length === 0) {
+    heatmapContext.fillStyle = "rgba(219,228,238,0.35)";
+    heatmapContext.font = '13px "IBM Plex Mono", monospace';
+    heatmapContext.fillText("No trace data.", plotLeft + 16, axisHeight + 40);
+    return;
+  }
+
+  const allNS    = timeline.flatMap((s) => [s.start_ns, s.end_ns]);
+  const fullMin  = Math.min(...allNS);
+  const fullMax  = Math.max(...allNS);
+  const fullSpan = Math.max(fullMax - fullMin, 1);
+
+  const visibleSpan  = fullSpan / timelineView.zoomLevel;
+  const visibleStart = fullMin + timelineView.panOffsetNS;
+  const visibleEnd   = visibleStart + visibleSpan;
+
+  // ── Time axis ────────────────────────────────────────────────────────────
+  heatmapContext.strokeStyle = "rgba(219,228,238,0.14)";
+  heatmapContext.beginPath();
+  heatmapContext.moveTo(plotLeft, axisHeight - 10);
+  heatmapContext.lineTo(plotLeft + innerWidth, axisHeight - 10);
+  heatmapContext.stroke();
+
+  heatmapContext.fillStyle = "rgba(219,228,238,0.55)";
+  heatmapContext.font = '10px "IBM Plex Mono", monospace';
+  for (let i = 0; i < 5; i++) {
+    const ratio = i / 4;
+    const ns    = visibleStart + ratio * visibleSpan;
+    const x     = plotLeft + ratio * innerWidth;
+    const label = formatDuration(ns - fullMin);
+    heatmapContext.fillText(label, x - (i === 4 ? heatmapContext.measureText(label).width : 0), axisHeight - 14);
+    heatmapContext.strokeStyle = "rgba(219,228,238,0.08)";
+    heatmapContext.beginPath();
+    heatmapContext.moveTo(x, axisHeight - 10);
+    heatmapContext.lineTo(x, totalHeight - 8);
+    heatmapContext.stroke();
+  }
+
+  // ── GMP strip (P lanes) ──────────────────────────────────────────────────
+  if (numPs > 0) {
+    const gmpTop = axisHeight + 6;
+
+    // Section label
+    heatmapContext.fillStyle = "rgba(219,228,238,0.38)";
+    heatmapContext.font = '10px "IBM Plex Mono", monospace';
+    heatmapContext.fillText("GMP", 4, gmpTop + 10);
+
+    processorIDs.forEach((pid, pIdx) => {
+      const py = gmpTop + pIdx * pRowH;
+
+      // P lane background
+      heatmapContext.fillStyle = "rgba(255,255,255,0.025)";
+      heatmapContext.fillRect(plotLeft, py, innerWidth, pRowH - 1);
+
+      // P label
+      heatmapContext.fillStyle = "rgba(219,228,238,0.50)";
+      heatmapContext.font = '10px "IBM Plex Mono", monospace';
+      heatmapContext.fillText(`P${pid}`, plotLeft - 54, py + 11);
+
+      // Draw each processor segment for this P
+      for (const seg of processorSegs) {
+        if (seg.processor_id !== pid) continue;
+
+        const rawX  = plotLeft + ((seg.start_ns - visibleStart) / visibleSpan) * innerWidth;
+        const rawX2 = plotLeft + ((seg.end_ns   - visibleStart) / visibleSpan) * innerWidth;
+        const cx    = Math.max(plotLeft, Math.min(rawX,  plotLeft + innerWidth));
+        const cx2   = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
+        const cw    = Math.max(cx2 - cx, rawX2 > rawX ? 1 : 0);
+        if (cw === 0) continue;
+
+        const hue  = goroutineHue(seg.goroutine_id);
+        heatmapContext.fillStyle = `hsl(${hue}, 70%, 58%)`;
+        heatmapContext.fillRect(cx, py + 1, cw, pRowH - 3);
+
+        // 1 px bright top edge
+        if (cw > 2) {
+          heatmapContext.fillStyle = "rgba(255,255,255,0.20)";
+          heatmapContext.fillRect(cx + 1, py + 1, cw - 2, 1);
+        }
+
+        // Label the goroutine ID if there's room
+        if (cw > 28) {
+          heatmapContext.fillStyle = "rgba(255,255,255,0.90)";
+          heatmapContext.font = '9px "IBM Plex Mono", monospace';
+          heatmapContext.fillText(`G${seg.goroutine_id}`, cx + 3, py + 11);
+        }
+      }
+
+      // Separator
+      heatmapContext.strokeStyle = "rgba(219,228,238,0.06)";
+      heatmapContext.beginPath();
+      heatmapContext.moveTo(plotLeft, py + pRowH - 0.5);
+      heatmapContext.lineTo(plotLeft + innerWidth, py + pRowH - 0.5);
+      heatmapContext.stroke();
+    });
+  }
+
+  // ── Goroutine heatmap rows ────────────────────────────────────────────────
+  const segIndex  = buildSegmentIndex(goroutines, timeline);
+  const gTop      = axisHeight + gmpH;
+
+  // Section label
+  heatmapContext.fillStyle = "rgba(219,228,238,0.38)";
+  heatmapContext.font = '10px "IBM Plex Mono", monospace';
+  heatmapContext.fillText("Goroutines", 2, gTop + 10);
+
+  goroutines.forEach((g, idx) => {
+    const y    = gTop + idx * gRowH;
+    const segs = segIndex.get(g.goroutine_id) || [];
+
+    // Zebra
+    if (idx % 2 === 0) {
+      heatmapContext.fillStyle = "rgba(255,255,255,0.022)";
+      heatmapContext.fillRect(0, y, width, gRowH);
+    }
+
+    // Row label
+    const isSelected = g.goroutine_id === state.selectedId;
+    heatmapContext.fillStyle = isSelected ? "#f8fafc" : "rgba(219,228,238,0.60)";
+    heatmapContext.font = '10px "IBM Plex Mono", monospace';
+    heatmapContext.fillText(`G${g.goroutine_id}`, 4, y + 10);
+
+    // Selected accent bar
+    if (isSelected) {
+      heatmapContext.fillStyle = "rgba(96,165,250,0.12)";
+      heatmapContext.fillRect(0, y, width, gRowH);
+      heatmapContext.fillStyle = "rgba(125,211,252,0.95)";
+      heatmapContext.fillRect(0, y, 3, gRowH);
+    }
+
+    // Draw state segments as coloured strips
+    for (const seg of segs) {
+      const rawX  = plotLeft + ((seg.start_ns - visibleStart) / visibleSpan) * innerWidth;
+      const rawX2 = plotLeft + ((seg.end_ns   - visibleStart) / visibleSpan) * innerWidth;
+      const cx    = Math.max(plotLeft, Math.min(rawX,  plotLeft + innerWidth));
+      const cx2   = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
+      const cw    = Math.max(cx2 - cx, rawX2 > rawX ? 1 : 0);
+      if (cw === 0) continue;
+
+      heatmapContext.fillStyle = colors[seg.state] ?? "#94a3b8";
+      heatmapContext.fillRect(cx, y + 1, cw, gRowH - 2);
+    }
+
+    // Row separator
+    heatmapContext.strokeStyle = "rgba(219,228,238,0.07)";
+    heatmapContext.beginPath();
+    heatmapContext.moveTo(0, y + gRowH - 0.5);
+    heatmapContext.lineTo(width, y + gRowH - 0.5);
+    heatmapContext.stroke();
+  });
+
+  // ── Gutter divider ────────────────────────────────────────────────────────
+  heatmapContext.fillStyle = "rgba(2,6,23,0.45)";
+  heatmapContext.fillRect(0, axisHeight, plotLeft - 2, totalHeight - axisHeight);
+  heatmapContext.strokeStyle = "rgba(219,228,238,0.10)";
+  heatmapContext.beginPath();
+  heatmapContext.moveTo(plotLeft - 0.5, axisHeight - 18);
+  heatmapContext.lineTo(plotLeft - 0.5, totalHeight - 8);
+  heatmapContext.stroke();
+}
+
+// ─── Minimap ──────────────────────────────────────────────────────────────
 
 // renderMinimap draws a compact overview of the full trace and highlights the
 // current visible viewport.  Called at the end of every renderTimeline() call.

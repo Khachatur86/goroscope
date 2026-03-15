@@ -12,4 +12,7 @@ type Capture struct {
 	// arrives before the goroutine has any user-frame stack), yet the
 	// parent-child relationship still needs to reach the engine.
 	ParentIDs map[int64]int64 `json:"parent_ids,omitempty"`
+	// ProcessorSegments records intervals when a goroutine ran on a specific
+	// logical processor (P).  Populated by the trace parser from P= fields.
+	ProcessorSegments []ProcessorSegment `json:"processor_segments,omitempty"`
 }

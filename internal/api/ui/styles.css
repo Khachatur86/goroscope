@@ -575,6 +575,20 @@ select {
   box-shadow: 0 10px 26px rgba(29, 78, 216, 0.20);
 }
 
+.view-toggle-button[aria-pressed="true"] {
+  color: #fff;
+  background: linear-gradient(135deg, #1e3a5f, #0f5f4e);
+  border-color: rgba(16, 207, 184, 0.30);
+}
+
+#heatmap-canvas {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+  background: #0d1117;
+  outline: 1.5px solid rgba(219, 228, 238, 0.10);
+}
+
 .inspector {
   padding: 0 20px 18px;
 }
