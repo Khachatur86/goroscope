@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 import { fetchTimeline, fetchProcessorTimeline } from "../api/client";
+import { TimelineCanvas } from "./TimelineCanvas";
 
 type FiltersState = {
   state: string;
@@ -125,21 +126,23 @@ export function Timeline({
           </span>
         ))}
       </div>
-      <div className={`timeline-axis ${isHeatmap ? "timeline-axis-heatmap" : ""}`}>
-        <div className="timeline-axis-label" />
-        <div className="timeline-axis-track">
-          {axisTicks.map((tick, i) => (
-            <div
-              key={i}
-              className="timeline-axis-tick"
-              style={{ left: `${tick.left}%` }}
-              title={tick.label}
-            >
-              <span className="timeline-axis-tick-label">{tick.label}</span>
-            </div>
-          ))}
+      {isHeatmap && (
+        <div className="timeline-axis timeline-axis-heatmap">
+          <div className="timeline-axis-label" />
+          <div className="timeline-axis-track">
+            {axisTicks.map((tick, i) => (
+              <div
+                key={i}
+                className="timeline-axis-tick"
+                style={{ left: `${tick.left}%` }}
+                title={tick.label}
+              >
+                <span className="timeline-axis-tick-label">{tick.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       {showGmpStrip && (
         <div className="gmp-strip">
           <div className="gmp-strip-label">GMP</div>
@@ -175,38 +178,50 @@ export function Timeline({
           </div>
         </div>
       )}
-      <div className={`timeline-lanes ${isHeatmap ? "timeline-lanes-heatmap" : ""}`}>
-        {visibleGoroutines.map((g) => {
-          const segs = byGoroutine.get(g.goroutine_id) ?? [];
-          const isSelected = g.goroutine_id === selectedId;
+      {isHeatmap ? (
+        <div className="timeline-lanes timeline-lanes-heatmap">
+          {visibleGoroutines.map((g) => {
+            const segs = byGoroutine.get(g.goroutine_id) ?? [];
+            const isSelected = g.goroutine_id === selectedId;
 
-          return (
-            <div
-              key={g.goroutine_id}
-              className={`timeline-lane ${isSelected ? "selected" : ""} ${isHeatmap ? "timeline-lane-heatmap" : ""}`}
-              onClick={() => onSelectGoroutine(g.goroutine_id)}
-            >
-              <div className="lane-label">
-                G{g.goroutine_id}{isHeatmap ? "" : ` ${g.labels?.function ?? ""}`}
+            return (
+              <div
+                key={g.goroutine_id}
+                className={`timeline-lane ${isSelected ? "selected" : ""} timeline-lane-heatmap`}
+                onClick={() => onSelectGoroutine(g.goroutine_id)}
+              >
+                <div className="lane-label">
+                  G{g.goroutine_id}
+                </div>
+                <div className="lane-segments">
+                  {segs.map((seg, i) => (
+                    <div
+                      key={i}
+                      className="lane-segment"
+                      style={{
+                        left: `${((seg.start_ns - minStart) / span) * 100}%`,
+                        width: `${((seg.end_ns - seg.start_ns) / span) * 100}%`,
+                        backgroundColor: COLORS[seg.state] ?? "#666",
+                      }}
+                      title={`${seg.state} ${formatDuration(seg.end_ns - seg.start_ns)}`}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="lane-segments">
-                {segs.map((seg, i) => (
-                  <div
-                    key={i}
-                    className="lane-segment"
-                    style={{
-                      left: `${((seg.start_ns - minStart) / span) * 100}%`,
-                      width: `${((seg.end_ns - seg.start_ns) / span) * 100}%`,
-                      backgroundColor: COLORS[seg.state] ?? "#666",
-                    }}
-                    title={`${seg.state} ${formatDuration(seg.end_ns - seg.start_ns)}`}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="timeline-canvas-wrapper">
+          <TimelineCanvas
+            goroutines={visibleGoroutines}
+            segments={filteredSegments}
+            selectedId={selectedId}
+            onSelectGoroutine={onSelectGoroutine}
+            zoomToSelected={zoomToSelected ?? false}
+          />
+        </div>
+      )}
       {showMinimap && (
         <div className="timeline-minimap" title="Zoomed viewport in full trace">
           <div className="timeline-minimap-track">

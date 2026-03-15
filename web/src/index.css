@@ -587,6 +587,36 @@ body {
   color: #0f172a;
 }
 
+.timeline-canvas-wrapper {
+  min-height: 220px;
+  overflow: hidden;
+}
+
+.timeline-canvas-container {
+  position: relative;
+  width: 100%;
+  min-height: 200px;
+}
+
+.timeline-canvas {
+  display: block;
+  width: 100%;
+}
+
+.timeline-tooltip {
+  position: fixed;
+  z-index: 1000;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-family: "IBM Plex Mono", monospace;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .timeline-lanes {
   display: flex;
   flex-direction: column;
