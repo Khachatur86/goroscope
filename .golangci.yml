@@ -16,7 +16,6 @@ linters:
     - bodyclose       # http.Response.Body not closed
 
     # ── style / naming ────────────────────────────────────────────────────────
-    - gofmt           # standard formatting
     - revive          # fast, configurable replacement for golint
 
     # ── safety ────────────────────────────────────────────────────────────────
@@ -40,6 +39,10 @@ linters-settings:
     excludes:
       # G104: errors unhandled in defer — handled via errcheck already
       - G104
+
+formatters:
+  enable:
+    - gofmt           # standard formatting (v2: formatters are separate from linters)
 
 issues:
   # Do not limit the number of reported issues per linter.
