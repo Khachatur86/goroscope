@@ -21,39 +21,35 @@ linters:
     # ── safety ────────────────────────────────────────────────────────────────
     - gosec           # common security issues (G-series)
 
+  settings:
+    revive:
+      rules:
+        # Catches package-name stutter (CS-2): kv.KVStore → kv.Store
+        - name: exported
+          arguments:
+            - "checkPrivateReceivers"
+            - "sayRepetitiveInsteadOfStutters"
+        # Enforce comment on exported symbols (API-1)
+        - name: comment-spacings
+        # unused-parameter: catch unused func params
+        - name: unused-parameter
+
+    gosec:
+      excludes:
+        # G104: errors unhandled in defer — handled via errcheck already
+        - G104
+
+  exclusions:
+    rules:
+      # Test files: relax errcheck and gosec (test helpers use t.Fatal, not wrapping).
+      - path: "(.+)_test\\.go"
+        linters:
+          - errcheck
+          - gosec
+      # Revive var-naming false positive for "api" package name.
+      - linters: [revive]
+        text: "avoid meaningless package names"
+
 formatters:
   enable:
     - gofmt           # standard formatting
-
-linters-settings:
-  revive:
-    rules:
-      # Catches package-name stutter (CS-2): kv.KVStore → kv.Store
-      - name: exported
-        arguments:
-          - "checkPrivateReceivers"
-          - "sayRepetitiveInsteadOfStutters"
-      # Enforce comment on exported symbols (API-1)
-      - name: comment-spacings
-      # unused-parameter: catch unused func params
-      - name: unused-parameter
-
-  gosec:
-    excludes:
-      # G104: errors unhandled in defer — handled via errcheck already
-      - G104
-
-issues:
-  # Do not limit the number of reported issues per linter.
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
-  exclude-rules:
-    # Test files: relax errcheck and gosec (test helpers use t.Fatal, not wrapping).
-    - path: "_test\\.go"
-      linters:
-        - errcheck
-        - gosec
-    # Revive var-naming false positive for "api" package name.
-    - linters: [revive]
-      text: "avoid meaningless package names"
