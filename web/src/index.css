@@ -543,7 +543,41 @@ body {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.timeline-axis {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.25rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.timeline-axis-label {
+  min-width: 120px;
+}
+
+.timeline-heatmap .timeline-axis-label {
+  min-width: 36px;
+}
+
+.timeline-axis-track {
+  flex: 1;
+  position: relative;
+  height: 18px;
+}
+
+.timeline-axis-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
+.timeline-axis-tick-label {
+  white-space: nowrap;
 }
 
 .legend-chip {

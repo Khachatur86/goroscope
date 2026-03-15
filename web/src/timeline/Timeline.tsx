@@ -111,6 +111,11 @@ export function Timeline({
     return hues[Number(id) % hues.length];
   };
 
+  const axisTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
+    left: ratio * 100,
+    label: formatDuration(Math.round(ratio * span)),
+  }));
+
   return (
     <div className={`timeline-simple ${isHeatmap ? "timeline-heatmap" : ""}`}>
       <div className="timeline-legend">
@@ -119,6 +124,21 @@ export function Timeline({
             {state}
           </span>
         ))}
+      </div>
+      <div className={`timeline-axis ${isHeatmap ? "timeline-axis-heatmap" : ""}`}>
+        <div className="timeline-axis-label" />
+        <div className="timeline-axis-track">
+          {axisTicks.map((tick, i) => (
+            <div
+              key={i}
+              className="timeline-axis-tick"
+              style={{ left: `${tick.left}%` }}
+              title={tick.label}
+            >
+              <span className="timeline-axis-tick-label">{tick.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
       {showGmpStrip && (
         <div className="gmp-strip">
