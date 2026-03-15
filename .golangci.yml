@@ -1,5 +1,3 @@
-version: "2"
-
 run:
   timeout: 5m
   modules-download-mode: readonly
@@ -16,6 +14,7 @@ linters:
     - bodyclose       # http.Response.Body not closed
 
     # ── style / naming ────────────────────────────────────────────────────────
+    - gofmt           # standard formatting
     - revive          # fast, configurable replacement for golint
 
     # ── safety ────────────────────────────────────────────────────────────────
@@ -31,18 +30,13 @@ linters-settings:
           - "sayRepetitiveInsteadOfStutters"
       # Enforce comment on exported symbols (API-1)
       - name: comment-spacings
-      # Discourage naked returns in longer functions
-      - name: naked-return
-        arguments: [5]
+      # unused-parameter: catch unused func params
+      - name: unused-parameter
 
   gosec:
     excludes:
       # G104: errors unhandled in defer — handled via errcheck already
       - G104
-
-formatters:
-  enable:
-    - gofmt           # standard formatting (v2: formatters are separate from linters)
 
 issues:
   # Do not limit the number of reported issues per linter.
