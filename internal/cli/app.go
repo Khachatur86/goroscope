@@ -36,6 +36,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return uiCommand(ctx, args[1:], stdout, stderr)
 	case "replay":
 		return replayCommand(ctx, args[1:], stdout, stderr)
+	case "check":
+		return checkCommand(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return nil
@@ -55,6 +57,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  goroscope collect [flags]")
 	_, _ = fmt.Fprintln(w, "  goroscope ui [flags]")
 	_, _ = fmt.Fprintln(w, "  goroscope replay [flags] <capture-file>")
+	_, _ = fmt.Fprintln(w, "  goroscope check <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope version")
 	_, _ = fmt.Fprintln(w, "  goroscope help")
 	_, _ = fmt.Fprintln(w, "")
@@ -63,6 +66,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  collect   Load demo data and serve UI")
 	_, _ = fmt.Fprintln(w, "  ui        Load demo data and serve UI")
 	_, _ = fmt.Fprintln(w, "  replay    Load a .gtrace capture file and serve UI")
+	_, _ = fmt.Fprintln(w, "  check     Analyze capture for deadlock hints; exit 1 if found (for CI)")
 	_, _ = fmt.Fprintln(w, "  version   Print version")
 	_, _ = fmt.Fprintln(w, "  help      Show this help")
 	_, _ = fmt.Fprintln(w, "")
@@ -248,6 +252,57 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout, *openBrowser, uiPathResolved)
 }
+
+func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope check <capture-file>\n\n")
+		_, _ = fmt.Fprintf(stderr, "Load a .gtrace capture, run deadlock analysis, and exit with code 1 if\n")
+		_, _ = fmt.Fprintf(stderr, "potential deadlocks are found. Use in CI: goroscope run -save out.gtrace ./tests; goroscope check out.gtrace\n\n")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if fs.NArg() == 0 {
+		return fmt.Errorf("missing capture file; usage: goroscope check <capture-file>")
+	}
+	target := fs.Arg(0)
+
+	capture, err := tracebridge.LoadCaptureFile(target)
+	if err != nil {
+		return err
+	}
+
+	engine := analysis.NewEngine()
+	sessions := session.NewManager()
+	current := sessions.StartSession("check", target)
+	engine.LoadCapture(current, tracebridge.BindCaptureSession(capture, current.ID))
+
+	edges := engine.ResourceGraph()
+	if len(edges) == 0 {
+		edges = analysis.DeriveResourceEdgesFromTimeline(engine.Timeline(), engine.ListGoroutines())
+	}
+	goroutines := engine.ListGoroutines()
+	hints := analysis.FindDeadlockHints(edges, goroutines)
+
+	if len(hints) == 0 {
+		_, _ = fmt.Fprintln(stdout, "No deadlock hints found.")
+		return nil
+	}
+
+	_, _ = fmt.Fprintf(stderr, "goroscope check: %d potential deadlock(s) found\n", len(hints))
+	for i, h := range hints {
+		_, _ = fmt.Fprintf(stderr, "  #%d: goroutines %v, resources %v\n", i+1, h.GoroutineIDs, h.ResourceIDs)
+	}
+	return fmt.Errorf("deadlock hints found: %w", errDeadlockHints)
+}
+
+var errDeadlockHints = fmt.Errorf("potential deadlocks detected")
 
 func resolveUIPath(ui, uiPath string) string {
 	if ui != "react" {

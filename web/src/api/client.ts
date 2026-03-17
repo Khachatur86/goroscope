@@ -86,6 +86,18 @@ export async function fetchGoroutine(id: number): Promise<Goroutine | null> {
   }
 }
 
+export type StackAtResponse = {
+  frames: Array<{ func: string; file: string; line: number }>;
+};
+
+export async function fetchStackAt(goroutineId: number, ns: number): Promise<StackAtResponse | null> {
+  try {
+    return await fetchJson<StackAtResponse>(`/api/v1/goroutines/${goroutineId}/stack-at?ns=${ns}`);
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchTimeline(params?: {
   state?: string;
   reason?: string;

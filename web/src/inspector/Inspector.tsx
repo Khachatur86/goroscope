@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import type { Goroutine, TimelineSegment } from "../api/client";
+import { fetchStackAt } from "../api/client";
 
 type Props = {
   goroutine: Goroutine | null;
@@ -25,13 +27,31 @@ function formatTimestamp(s?: string): string {
 }
 
 export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine }: Props) {
+  const [segmentStack, setSegmentStack] = useState<Goroutine["last_stack"] | null>(null);
+
+  useEffect(() => {
+    if (!segmentOverride || !goroutine) {
+      setSegmentStack(null);
+      return;
+    }
+    let cancelled = false;
+    fetchStackAt(goroutine.goroutine_id, segmentOverride.start_ns).then((res) => {
+      if (!cancelled && res?.frames) {
+        setSegmentStack({ frames: res.frames });
+      } else {
+        setSegmentStack(null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [segmentOverride, goroutine?.goroutine_id]);
+
   if (!goroutine) {
     return (
       <div className="inspector empty">Pick a goroutine to inspect.</div>
     );
   }
 
-  const frames = goroutine.last_stack?.frames ?? [];
+  const frames = (segmentOverride && segmentStack ? segmentStack.frames : goroutine.last_stack?.frames) ?? [];
 
   const copyStack = () => {
     const text = frames
@@ -142,7 +162,9 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
 
       <div className="inspector-section">
         <div className="inspector-stack-header">
-          <span className="inspector-label">Latest Stack</span>
+          <span className="inspector-label">
+            {segmentOverride && segmentStack ? "Stack at segment" : "Latest Stack"}
+          </span>
           {frames.length > 0 && (
             <button type="button" className="inspector-copy-stack" onClick={copyStack}>
               Copy

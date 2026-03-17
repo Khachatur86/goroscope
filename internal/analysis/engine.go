@@ -20,6 +20,7 @@ type Engine struct {
 	edges             []model.ResourceEdge
 	processorSegments []model.ProcessorSegment
 	dataVersion       uint64 // incremented on any state change, for ETag
+	stacks            []model.StackSnapshot // historical stacks for stack-at-segment lookup
 
 	subsMu      sync.Mutex
 	subscribers map[chan struct{}]struct{}
@@ -91,8 +92,9 @@ func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
 		e.resetLocked(session)
 		e.applyEventsLocked(capture.Events)
 		for _, snapshot := range capture.Stacks {
-			e.applyStackSnapshotLocked(snapshot)
+			e.applyStackSnapshotLocked(snapshot, false)
 		}
+		e.stacks = append([]model.StackSnapshot(nil), capture.Stacks...)
 		e.edges = append([]model.ResourceEdge(nil), capture.Resources...)
 		e.processorSegments = append([]model.ProcessorSegment(nil), capture.ProcessorSegments...)
 
@@ -133,7 +135,7 @@ func (e *Engine) ApplyStackSnapshot(snapshot model.StackSnapshot) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.applyStackSnapshotLocked(snapshot)
+	e.applyStackSnapshotLocked(snapshot, true)
 }
 
 // SetResourceGraph replaces the current resource edge set.
@@ -237,6 +239,35 @@ func (e *Engine) ProcessorTimeline() []model.ProcessorSegment {
 	return out
 }
 
+// GetStackAt returns the stack snapshot for the given goroutine at or before the
+// given nanosecond timestamp. Returns nil if no such snapshot exists (e.g. live
+// mode with no history, or replay with no stacks for that goroutine at that time).
+func (e *Engine) GetStackAt(goroutineID int64, ns int64) *model.StackSnapshot {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	target := time.Unix(0, ns)
+	var best *model.StackSnapshot
+	for i := range e.stacks {
+		s := &e.stacks[i]
+		if s.GoroutineID != goroutineID {
+			continue
+		}
+		if s.Timestamp.After(target) {
+			continue
+		}
+		if best == nil || s.Timestamp.After(best.Timestamp) {
+			best = s
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	out := *best
+	out.Frames = append([]model.StackFrame(nil), best.Frames...)
+	return &out
+}
+
 // ResourceGraph returns the current set of resource dependency edges.
 func (e *Engine) ResourceGraph() []model.ResourceEdge {
 	e.mu.RLock()
@@ -254,6 +285,7 @@ func (e *Engine) resetLocked(session *model.Session) {
 	e.activeSegments = make(map[int64]activeSegment)
 	e.edges = nil
 	e.processorSegments = nil
+	e.stacks = nil
 	e.dataVersion++
 }
 
@@ -291,7 +323,7 @@ func (e *Engine) applyEventLocked(event model.Event) {
 	e.dataVersion++
 }
 
-func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot) {
+func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot, appendToHistory bool) {
 	if snapshot.GoroutineID == 0 {
 		return
 	}
@@ -313,6 +345,9 @@ func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot) {
 	stackCopy.Frames = append([]model.StackFrame(nil), snapshot.Frames...)
 	goroutine.LastStack = &stackCopy
 	e.goroutines[goroutine.ID] = goroutine
+	if appendToHistory {
+		e.stacks = append(e.stacks, stackCopy)
+	}
 	e.dataVersion++
 }
 

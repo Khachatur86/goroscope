@@ -84,6 +84,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/goroutines", s.handleGoroutines)
 	mux.HandleFunc("/api/v1/goroutines/{id}/children", s.handleGoroutineChildren)
 	mux.HandleFunc("/api/v1/goroutines/{id}", s.handleGoroutineByID)
+	mux.HandleFunc("/api/v1/goroutines/{id}/stack-at", s.handleGoroutineStackAt)
 	mux.HandleFunc("/api/v1/insights", s.handleInsights)
 	mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
 	mux.HandleFunc("/api/v1/processor-timeline", s.handleProcessorTimeline)
@@ -323,6 +324,30 @@ func (s *Server) handleGoroutineByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, goroutine)
+}
+
+func (s *Server) handleGoroutineStackAt(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid goroutine id"})
+		return
+	}
+	nsStr := r.URL.Query().Get("ns")
+	if nsStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing ns query parameter"})
+		return
+	}
+	ns, err := strconv.ParseInt(nsStr, 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ns"})
+		return
+	}
+	snapshot := s.engine.GetStackAt(id, ns)
+	if snapshot == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no stack at that time"})
+		return
+	}
+	writeJSON(w, http.StatusOK, snapshot)
 }
 
 func (s *Server) handleGoroutineChildren(w http.ResponseWriter, r *http.Request) {
