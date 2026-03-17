@@ -105,6 +105,16 @@ goroscope run -h
 
 Open the UI with `?goroutine=123` to auto-select that goroutine. The URL updates when you select a different one (shareable links).
 
+## Development
+
+Before committing, run:
+
+```bash
+make pre-commit
+```
+
+This runs `go fmt`, `go vet`, `go test -race`, and `golangci-lint`. Use `make lint-fix` to auto-fix what lint can fix.
+
 ## Layout
 
 ```text

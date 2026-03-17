@@ -413,6 +413,40 @@ export function App() {
     URL.revokeObjectURL(a.href);
   };
 
+  const handleExportChromeTrace = async () => {
+    const segs = await fetchTimeline({
+      state: filters.state !== "ALL" ? filters.state : undefined,
+      reason: filters.reason || undefined,
+      search: filters.search || undefined,
+    }).catch(() => []);
+    const filteredSegs = (segs ?? []).filter((s) =>
+      filteredGoroutines.some((g) => g.goroutine_id === s.goroutine_id)
+    );
+    const minNs = filteredSegs.length > 0 ? Math.min(...filteredSegs.map((s) => s.start_ns)) : 0;
+    const events = filteredSegs.map((s) => ({
+      name: s.state,
+      cat: "goroutine",
+      ph: "X" as const,
+      ts: (s.start_ns - minNs) / 1000,
+      dur: (s.end_ns - s.start_ns) / 1000,
+      pid: 0,
+      tid: s.goroutine_id,
+      args: {
+        goroutine_id: s.goroutine_id,
+        ...(s.reason && { reason: s.reason }),
+        ...(s.resource_id && { resource_id: s.resource_id }),
+      },
+    }));
+    const blob = new Blob([JSON.stringify(events)], {
+      type: "application/json",
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `goroscope-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement;
@@ -615,6 +649,9 @@ export function App() {
             </button>
             <button type="button" className="timeline-control-button" onClick={handleExportJson} title="Export timeline as JSON">
               Export JSON
+            </button>
+            <button type="button" className="timeline-control-button" onClick={handleExportChromeTrace} title="Export for chrome://tracing">
+              Export Trace
             </button>
             <button
               type="button"

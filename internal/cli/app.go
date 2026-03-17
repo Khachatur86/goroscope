@@ -253,7 +253,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout, *openBrowser, uiPathResolved)
 }
 
-func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+func checkCommand(_ context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {

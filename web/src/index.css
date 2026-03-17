@@ -572,6 +572,19 @@ body {
   color: #94a3b8;
 }
 
+.metrics-chart {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.metrics-chart-legend {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-top: 0.25rem;
+}
+
 .timeline-placeholder {
   color: #94a3b8;
   padding: 2rem;

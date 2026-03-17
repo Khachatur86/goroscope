@@ -4,6 +4,7 @@ import { fetchTimeline, fetchProcessorTimeline } from "../api/client";
 import { TimelineCanvas } from "./TimelineCanvas";
 import { TimelineHeatmapCanvas } from "./TimelineHeatmapCanvas";
 import { MinimapCanvas } from "./MinimapCanvas";
+import { MetricsChart } from "./MetricsChart";
 
 type FiltersState = {
   state: string;
@@ -128,6 +129,7 @@ export function Timeline({
           </span>
         ))}
       </div>
+      <MetricsChart segments={filteredSegments} />
       {isHeatmap ? (
         <div className="timeline-canvas-wrapper">
           <TimelineHeatmapCanvas

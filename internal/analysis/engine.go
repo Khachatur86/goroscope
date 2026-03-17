@@ -19,7 +19,7 @@ type Engine struct {
 	activeSegments    map[int64]activeSegment
 	edges             []model.ResourceEdge
 	processorSegments []model.ProcessorSegment
-	dataVersion       uint64 // incremented on any state change, for ETag
+	dataVersion       uint64                // incremented on any state change, for ETag
 	stacks            []model.StackSnapshot // historical stacks for stack-at-segment lookup
 
 	subsMu      sync.Mutex

@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run run-react ui fmt test test-race vet lint bench web vscode
+.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit
 
 build:
 	mkdir -p bin
@@ -29,7 +29,15 @@ vet:
 	go vet ./...
 
 lint:
-	golangci-lint run
+	golangci-lint run --timeout=5m
+
+lint-fix:
+	gofmt -w .
+	golangci-lint run --fix --timeout=5m
+
+# Run before commit: fmt, vet, test, lint
+pre-commit: fmt vet test-race lint
+	@echo "All checks passed. Safe to commit."
 
 bench:
 	go test -bench=. -benchmem ./internal/tracebridge/... ./internal/analysis/...
