@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Timeline webview includes **Compare** button — compare two .gtrace captures (baseline vs compare, diff overlay, filter by status, sync scroll, keyboard nav)
+
 ## [0.1.0] - 2026-03-18
 
 ### Added

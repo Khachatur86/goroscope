@@ -113,9 +113,12 @@ goroscope export --format=json capture.gtrace  # JSON with segments
 | `GET /api/v1/deadlock-hints` | Deadlock analysis hints |
 | `GET /api/v1/processor-timeline` | GMP processor timeline (for scheduler view) |
 | `POST /api/v1/replay/load` | Load .gtrace file (multipart form field `file`) |
+| `POST /api/v1/compare` | Compare two .gtrace files (multipart `file_a`, `file_b`); returns baseline, compare, and diff |
 | `GET /api/v1/stream` | Server-Sent Events for live updates |
 
 Open the UI with `?goroutine=123` to auto-select that goroutine. The URL updates when you select a different one (shareable links).
+
+**Compare captures**: Click "Compare" in the header, select two .gtrace files (baseline and compare), then view the split-panel diff (improved / regressed / unchanged).
 
 ## Development
 
@@ -134,6 +137,7 @@ agent/                  Opt-in trace bootstrap for target programs
 cmd/goroscope           CLI entrypoint
 examples/trace_demo     Example: channels + mutex
 examples/worker_pool    Example: worker pool pattern
+examples/http_demo      Example: agent.WithRequestID for HTTP handlers
 internal/api            Local REST API, SSE stream, and embedded UI assets
 internal/analysis       Goroutine state engine and timeline construction
 internal/model          Core domain types

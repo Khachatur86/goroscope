@@ -37,3 +37,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`goroscope export`**: Export timeline segments to CSV or JSON for analysis (pandas, Perfetto)
+- **Compare captures**: `POST /api/v1/compare` — compare two .gtrace files; UI split-panel (baseline vs compare) with diff overlay (improved/regressed/unchanged), unified goroutine rows, sync scroll, filter by status

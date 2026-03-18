@@ -707,6 +707,73 @@ func TestHandleReplayLoad(t *testing.T) {
 	}
 }
 
+// ─── POST /api/v1/compare ──────────────────────────────────────────────────────
+
+func TestHandleCompare(t *testing.T) {
+	t.Parallel()
+
+	eng := analysis.NewEngine()
+	mgr := session.NewManager()
+	s := NewServer("127.0.0.1:0", eng, mgr, "")
+	handler := s.routes()
+
+	// Baseline: G2 blocked 100ms (T0+1ms → T0+101ms)
+	baseline := `{"name":"baseline","events":[
+		{"seq":1,"timestamp":"2026-01-01T00:00:00Z","kind":"goroutine.create","goroutine_id":1},
+		{"seq":2,"timestamp":"2026-01-01T00:00:01Z","kind":"goroutine.state","goroutine_id":1,"state":"RUNNING"},
+		{"seq":3,"timestamp":"2026-01-01T00:00:00Z","kind":"goroutine.create","goroutine_id":2},
+		{"seq":4,"timestamp":"2026-01-01T00:00:01Z","kind":"goroutine.state","goroutine_id":2,"state":"BLOCKED"},
+		{"seq":5,"timestamp":"2026-01-01T00:00:01.1Z","kind":"goroutine.state","goroutine_id":2,"state":"BLOCKED"}
+	]}`
+	// Compare: G2 blocked 30ms (T0+1ms → T0+31ms)
+	compare := `{"name":"compare","events":[
+		{"seq":1,"timestamp":"2026-01-01T00:00:00Z","kind":"goroutine.create","goroutine_id":1},
+		{"seq":2,"timestamp":"2026-01-01T00:00:01Z","kind":"goroutine.state","goroutine_id":1,"state":"RUNNING"},
+		{"seq":3,"timestamp":"2026-01-01T00:00:00Z","kind":"goroutine.create","goroutine_id":2},
+		{"seq":4,"timestamp":"2026-01-01T00:00:01Z","kind":"goroutine.state","goroutine_id":2,"state":"BLOCKED"},
+		{"seq":5,"timestamp":"2026-01-01T00:00:01.03Z","kind":"goroutine.state","goroutine_id":2,"state":"BLOCKED"}
+	]}`
+
+	var body bytes.Buffer
+	mpw := multipart.NewWriter(&body)
+	partA, _ := mpw.CreateFormFile("file_a", "baseline.gtrace")
+	_, _ = partA.Write([]byte(baseline))
+	partB, _ := mpw.CreateFormFile("file_b", "compare.gtrace")
+	_, _ = partB.Write([]byte(compare))
+	_ = mpw.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/compare", &body)
+	req.Header.Set("Content-Type", mpw.FormDataContentType())
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	diff, ok := resp["diff"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diff object, got %T", resp["diff"])
+	}
+	deltas, ok := diff["goroutine_deltas"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected goroutine_deltas map, got %T", diff["goroutine_deltas"])
+	}
+	g2Delta, ok := deltas["2"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected delta for G2, got %v", deltas)
+	}
+	if g2Delta["status"] != "improved" {
+		t.Errorf("G2 status = %v, want improved", g2Delta["status"])
+	}
+	// G2: compare 30ms - baseline 100ms = -70ms
+	waitDelta, _ := g2Delta["wait_delta_ns"].(float64)
+	if waitDelta >= 0 {
+		t.Errorf("G2 wait_delta_ns = %v, want negative", waitDelta)
+	}
+}
+
 // ─── GET /api/v1/goroutines/{id}/stack-at ──────────────────────────────────────
 
 func TestHandleGoroutineStackAt(t *testing.T) {

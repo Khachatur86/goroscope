@@ -190,3 +190,37 @@ export async function uploadReplayCapture(file: File): Promise<{ status: string;
   }
   return res.json();
 }
+
+export type GoroutineDelta = {
+  wait_delta_ns: number;
+  blocked_delta_ns: number;
+  status: "improved" | "regressed" | "unchanged";
+};
+
+export type CaptureDiff = {
+  goroutine_deltas: Record<string, GoroutineDelta>;
+  only_in_baseline: number[];
+  only_in_compare: number[];
+};
+
+export type CompareResponse = {
+  baseline: { goroutines: Goroutine[]; timeline: TimelineSegment[] };
+  compare: { goroutines: Goroutine[]; timeline: TimelineSegment[] };
+  diff: CaptureDiff;
+};
+
+/** Compare two .gtrace captures. Returns baseline, compare, and diff. */
+export async function fetchCompare(fileA: File, fileB: File): Promise<CompareResponse> {
+  const form = new FormData();
+  form.append("file_a", fileA);
+  form.append("file_b", fileB);
+  const res = await fetch("/api/v1/compare", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `compare failed: ${res.status}`);
+  }
+  return res.json();
+}

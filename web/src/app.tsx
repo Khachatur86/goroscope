@@ -17,6 +17,7 @@ import { Inspector } from "./inspector/Inspector";
 import { Hotspots, computeSpawnHotspots } from "./inspector/Hotspots";
 import { DeadlockHints } from "./inspector/DeadlockHints";
 import { Timeline } from "./timeline/Timeline";
+import { CompareView } from "./compare/CompareView";
 import { ResourceGraph } from "./resource-graph/ResourceGraph";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
@@ -393,6 +394,7 @@ export function App() {
   const [streamStatus, setStreamStatus] = useState<"connecting" | "live" | "disconnected">("connecting");
   const [replayUploading, setReplayUploading] = useState(false);
   const [replayError, setReplayError] = useState<string | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const handleSavePng = async () => {
     const el = timelinePanelRef.current;
@@ -424,6 +426,15 @@ export function App() {
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
+
+  useEffect(() => {
+    if (!compareOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCompareOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [compareOpen]);
 
   const handleExportJson = async () => {
     const segs = await fetchTimeline({
@@ -488,6 +499,7 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (compareOpen) return;
       const active = document.activeElement;
       const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
       if ((e.ctrlKey || e.metaKey) && e.key === "g") {
@@ -525,7 +537,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, displayGoroutines]);
+  }, [selectedId, displayGoroutines, compareOpen]);
 
   return (
     <div
@@ -570,8 +582,21 @@ export function App() {
           >
             {replayUploading ? "Loading…" : "Open capture"}
           </button>
+          <button
+            type="button"
+            className="action-button secondary"
+            onClick={() => setCompareOpen(true)}
+            title="Compare two .gtrace captures"
+          >
+            Compare
+          </button>
         </div>
       </header>
+      {compareOpen && (
+        <div className="compare-overlay">
+          <CompareView onClose={() => setCompareOpen(false)} />
+        </div>
+      )}
       {replayError && (
         <div className="replay-error" role="alert">
           {replayError}

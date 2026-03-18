@@ -30,6 +30,12 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	srv := &http.Server{
+		Addr:         ":8080",
+		Handler:      nil,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	log.Println("http_demo listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(srv.ListenAndServe())
 }

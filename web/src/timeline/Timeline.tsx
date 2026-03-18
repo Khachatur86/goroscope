@@ -21,6 +21,8 @@ type Props = {
   filters: FiltersState;
   zoomToSelected?: boolean;
   viewMode?: "lanes" | "heatmap";
+  /** When provided, use these segments instead of fetching from API (e.g. for Compare mode). */
+  segmentsOverride?: TimelineSegment[] | null;
 };
 
 const COLORS: Record<string, string> = {
@@ -39,6 +41,7 @@ export function Timeline({
   filters,
   zoomToSelected = false,
   viewMode = "lanes",
+  segmentsOverride,
 }: Props) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [processorSegments, setProcessorSegments] = useState<ProcessorSegment[]>([]);
@@ -46,6 +49,10 @@ export function Timeline({
   const [canvasPanOffsetNS, setCanvasPanOffsetNS] = useState(0);
 
   useEffect(() => {
+    if (segmentsOverride !== undefined) {
+      setSegments(segmentsOverride ?? []);
+      return;
+    }
     fetchTimeline({
       state: filters.state !== "ALL" ? filters.state : undefined,
       reason: filters.reason || undefined,
@@ -54,7 +61,7 @@ export function Timeline({
     })
       .then((data) => setSegments(Array.isArray(data) ? data : []))
       .catch(() => setSegments([]));
-  }, [goroutines, filters.state, filters.reason, filters.search]);
+  }, [goroutines, filters.state, filters.reason, filters.search, segmentsOverride]);
 
   useEffect(() => {
     fetchProcessorTimeline()

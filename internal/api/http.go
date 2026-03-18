@@ -92,6 +92,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/deadlock-hints", s.handleDeadlockHints)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 	mux.HandleFunc("/api/v1/replay/load", s.handleReplayLoad)
+	mux.HandleFunc("/api/v1/compare", s.handleCompare)
 
 	if isLocalhostAddr(s.addr) {
 		mux.Handle("/debug/pprof/", http.StripPrefix("/debug/pprof", http.HandlerFunc(pprof.Index)))
@@ -584,6 +585,82 @@ func (s *Server) handleReplayLoad(w http.ResponseWriter, r *http.Request) {
 	s.engine.LoadCapture(current, capture)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "session_id": current.ID})
+}
+
+// handleCompare accepts two .gtrace files and returns baseline/compare data plus diff.
+// POST /api/v1/compare with multipart form fields "file_a" (baseline) and "file_b" (compare).
+func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	const maxUploadSize = 100 << 20 // 100 MiB
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		http.Error(w, fmt.Sprintf("parse multipart: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	fileA, _, err := r.FormFile("file_a")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("missing or invalid file_a field: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer func() { _ = fileA.Close() }()
+	dataA, err := io.ReadAll(fileA)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read file_a: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	fileB, _, err := r.FormFile("file_b")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("missing or invalid file_b field: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer func() { _ = fileB.Close() }()
+	dataB, err := io.ReadAll(fileB)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read file_b: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	captureA, err := tracebridge.LoadCaptureFromBytes(dataA)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid capture file_a: %v", err), http.StatusBadRequest)
+		return
+	}
+	captureB, err := tracebridge.LoadCaptureFromBytes(dataB)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid capture file_b: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	sess := &model.Session{ID: "compare", Name: "compare", Status: model.SessionStatusRunning, StartedAt: time.Now()}
+	engA := analysis.NewEngine()
+	engB := analysis.NewEngine()
+	engA.LoadCapture(sess, tracebridge.BindCaptureSession(captureA, "baseline"))
+	engB.LoadCapture(sess, tracebridge.BindCaptureSession(captureB, "compare"))
+
+	goroutinesA := engA.ListGoroutines()
+	goroutinesB := engB.ListGoroutines()
+	timelineA := engA.Timeline()
+	timelineB := engB.Timeline()
+
+	diff := analysis.ComputeCaptureDiff(goroutinesA, timelineA, goroutinesB, timelineB)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"baseline": map[string]any{
+			"goroutines": goroutinesA,
+			"timeline":   timelineA,
+		},
+		"compare": map[string]any{
+			"goroutines": goroutinesB,
+			"timeline":   timelineB,
+		},
+		"diff": diff,
+	})
 }
 
 // handleStream implements a Server-Sent Events (SSE) endpoint.
