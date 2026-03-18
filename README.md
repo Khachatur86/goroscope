@@ -8,6 +8,8 @@ Goroscope is a local Go concurrency debugger that captures runtime trace events 
 go install github.com/Khachatur86/goroscope/cmd/goroscope@latest
 ```
 
+Or download a pre-built binary from [Releases](https://github.com/Khachatur86/goroscope/releases) (includes React UI).
+
 Or build from source:
 
 ```bash

@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web
+        run: make web
+
+      - name: Build binaries
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          GOOS=linux GOARCH=amd64 go build -ldflags "-X github.com/Khachatur86/goroscope/internal/version.Version=$VERSION" -trimpath -o bin/goroscope-linux-amd64 ./cmd/goroscope
+          GOOS=darwin GOARCH=amd64 go build -ldflags "-X github.com/Khachatur86/goroscope/internal/version.Version=$VERSION" -trimpath -o bin/goroscope-darwin-amd64 ./cmd/goroscope
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-X github.com/Khachatur86/goroscope/internal/version.Version=$VERSION" -trimpath -o bin/goroscope-darwin-arm64 ./cmd/goroscope
+          GOOS=windows GOARCH=amd64 go build -ldflags "-X github.com/Khachatur86/goroscope/internal/version.Version=$VERSION" -trimpath -o bin/goroscope-windows-amd64.exe ./cmd/goroscope
+
+      - name: Package releases
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          mkdir -p dist
+          for os_arch in linux-amd64 darwin-amd64 darwin-arm64; do
+            dir="goroscope-${VERSION}-${os_arch}"
+            mkdir -p "dist/$dir/web"
+            cp "bin/goroscope-${os_arch}" "dist/$dir/goroscope"
+            chmod +x "dist/$dir/goroscope"
+            cp -r web/dist "dist/$dir/web/"
+            (cd dist && tar czf "${dir}.tar.gz" "$dir")
+          done
+          dir="goroscope-${VERSION}-windows-amd64"
+          mkdir -p "dist/$dir/web"
+          cp bin/goroscope-windows-amd64.exe "dist/$dir/goroscope.exe"
+          cp -r web/dist "dist/$dir/web/"
+          (cd dist && zip -rq "${dir}.zip" "$dir")
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
