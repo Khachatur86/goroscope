@@ -82,12 +82,15 @@ This starts the local UI immediately, runs the target, and refreshes the timelin
 | `ui`      | Load demo data and serve UI                      |
 | `replay`  | Load a .gtrace capture file and serve UI         |
 | `check`   | Analyze capture for deadlock hints; exit 1 if found (for CI) |
+| `export`  | Export timeline segments to CSV or JSON (for pandas, analysis) |
 | `version` | Print version                                    |
 | `help`    | Show usage                                       |
 
 ```bash
 goroscope help
 goroscope run -h
+goroscope export --format=csv capture.gtrace   # CSV for pandas
+goroscope export --format=json capture.gtrace  # JSON with segments
 ```
 
 ## Troubleshooting

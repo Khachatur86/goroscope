@@ -3,6 +3,8 @@ package cli
 
 import (
 	"context"
+	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
@@ -38,6 +41,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return replayCommand(ctx, args[1:], stdout, stderr)
 	case "check":
 		return checkCommand(ctx, args[1:], stdout, stderr)
+	case "export":
+		return exportCommand(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return nil
@@ -58,6 +63,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  goroscope ui [flags]")
 	_, _ = fmt.Fprintln(w, "  goroscope replay [flags] <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope check <capture-file>")
+	_, _ = fmt.Fprintln(w, "  goroscope export [flags] <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope version")
 	_, _ = fmt.Fprintln(w, "  goroscope help")
 	_, _ = fmt.Fprintln(w, "")
@@ -67,6 +73,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  ui        Load demo data and serve UI")
 	_, _ = fmt.Fprintln(w, "  replay    Load a .gtrace capture file and serve UI")
 	_, _ = fmt.Fprintln(w, "  check     Analyze capture for deadlock hints; exit 1 if found (for CI)")
+	_, _ = fmt.Fprintln(w, "  export    Export timeline segments to CSV or JSON (for pandas, analysis)")
 	_, _ = fmt.Fprintln(w, "  version   Print version")
 	_, _ = fmt.Fprintln(w, "  help      Show this help")
 	_, _ = fmt.Fprintln(w, "")
@@ -303,6 +310,74 @@ func checkCommand(_ context.Context, args []string, stdout, stderr io.Writer) er
 }
 
 var errDeadlockHints = fmt.Errorf("potential deadlocks detected")
+
+func exportCommand(_ context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("export", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	format := fs.String("format", "csv", "Output format: csv or json")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope export [flags] <capture-file>\n\n")
+		_, _ = fmt.Fprintf(stderr, "Export timeline segments for analysis (e.g. pandas).\n\n")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if fs.NArg() == 0 {
+		return fmt.Errorf("missing capture file; usage: goroscope export [flags] <capture-file>")
+	}
+
+	capture, err := tracebridge.LoadCaptureFile(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+
+	engine := analysis.NewEngine()
+	sessions := session.NewManager()
+	current := sessions.StartSession("export", fs.Arg(0))
+	engine.LoadCapture(current, tracebridge.BindCaptureSession(capture, current.ID))
+	segments := engine.Timeline()
+
+	switch *format {
+	case "csv":
+		return writeExportCSV(stdout, segments)
+	case "json":
+		return writeExportJSON(stdout, segments)
+	default:
+		return fmt.Errorf("unsupported format %q; use csv or json", *format)
+	}
+}
+
+func writeExportCSV(w io.Writer, segments []model.TimelineSegment) error {
+	cw := csv.NewWriter(w)
+	if err := cw.Write([]string{"goroutine_id", "state", "start_ns", "end_ns", "reason", "resource_id"}); err != nil {
+		return err
+	}
+	for _, s := range segments {
+		row := []string{
+			strconv.FormatInt(s.GoroutineID, 10),
+			string(s.State),
+			strconv.FormatInt(s.StartNS, 10),
+			strconv.FormatInt(s.EndNS, 10),
+			string(s.Reason),
+			s.ResourceID,
+		}
+		if err := cw.Write(row); err != nil {
+			return err
+		}
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
+func writeExportJSON(w io.Writer, segments []model.TimelineSegment) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(map[string]any{"segments": segments})
+}
 
 func resolveUIPath(ui, uiPath string) string {
 	if ui != "react" {

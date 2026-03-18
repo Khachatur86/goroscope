@@ -55,6 +55,7 @@ build:
   script:
     - make build VERSION=ci
     - make web
+    - cd web && npm run test
   artifacts:
     paths:
       - bin/

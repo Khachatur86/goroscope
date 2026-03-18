@@ -48,42 +48,38 @@
 ## Фаза 4: Export CSV/JSON (TDD)
 
 ### Task 4.1: goroscope export — тесты первыми
-- [ ] **Red**: Написать тест `TestExportCommand_CSV` — запуск `goroscope export --format=csv capture.gtrace`, проверка stdout содержит заголовок и строки
-- [ ] **Red**: Написать тест `TestExportCommand_JSON` — аналогично для json
-- [ ] **Green**: Реализовать `export` command в cli
-- [ ] **Refactor**: Вынести логику экспорта в пакет
+- [x] **Red**: Написать тест `TestExportCommand_CSV` — запуск `goroscope export --format=csv capture.gtrace`, проверка stdout содержит заголовок и строки
+- [x] **Red**: Написать тест `TestExportCommand_JSON` — аналогично для json
+- [x] **Green**: Реализовать `export` command в cli
+- [x] **Refactor**: writeExportCSV, writeExportJSON
 
 ### Task 4.2: Формат CSV
-- [ ] Тест: колонки `goroutine_id,state,start_ns,end_ns,reason,resource_id`
-- [ ] Реализация: итерация по сегментам, запись CSV
+- [x] Тест: колонки `goroutine_id,state,start_ns,end_ns,reason,resource_id`
+- [x] Реализация: итерация по сегментам, запись CSV
 
 ### Task 4.3: Формат JSON
-- [ ] Тест: валидный JSON, структура `{ "segments": [...] }`
-- [ ] Реализация: сериализация сегментов
+- [x] Тест: валидный JSON, структура `{ "segments": [...] }`
+- [x] Реализация: сериализация сегментов
 
 ### Task 4.4: Документация export
-- [ ] README: секция `goroscope export`
-- [ ] Пример: Python/pandas анализ CSV
+- [x] README: секция `goroscope export`
+- [x] docs/EXPORT.md: пример Python/pandas
 
 ---
 
 ## Фаза 5: Frontend-тесты (TDD)
 
 ### Task 5.1: Настроить Vitest
-- [ ] `npm install -D vitest @testing-library/react @testing-library/dom jsdom`
-- [ ] `web/vitest.config.ts`
-- [ ] Обновить `package.json`: `"test": "vitest run"`
+- [x] `npm install -D vitest @testing-library/react @testing-library/dom jsdom`
+- [x] `web/vitest.config.ts`
+- [x] Обновить `package.json`: `"test": "vitest run"`
 
 ### Task 5.2: Smoke-тесты компонентов
-- [ ] **Red**: Тест `Filters` — рендер без падения
-- [ ] **Green**: Мок данных, `render(<Filters ... />)`
-- [ ] **Red**: Тест `Inspector` — рендер с goroutine
-- [ ] **Green**: Реализация
-- [ ] **Red**: Тест `Timeline` — рендер с segments
-- [ ] **Green**: Реализация
+- [ ] **Блокировано**: html2canvas ESM deps (ERR_REQUIRE_ESM) конфликтуют с Vitest worker
+- [x] Smoke test в `web/tests/smoke.test.ts` (проходит)
 
 ### Task 5.3: CI для frontend-тестов
-- [ ] В CI после `make web` добавить `cd web && npm run test`
+- [x] В CI после `make web` добавить `cd web && npm run test`
 
 ---
 

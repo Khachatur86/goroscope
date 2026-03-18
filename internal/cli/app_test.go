@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,5 +96,86 @@ func TestRun_Check_MissingFile(t *testing.T) {
 	err := Run(context.Background(), []string{"check", "/nonexistent/path.gtrace"}, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("expected error for missing file")
+	}
+}
+
+func TestRun_Export_CSV(t *testing.T) {
+	t.Parallel()
+
+	capture, err := tracebridge.LoadDemoCapture()
+	if err != nil {
+		t.Fatalf("load demo capture: %v", err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demo.gtrace")
+	if err := tracebridge.SaveCaptureFile(path, capture); err != nil {
+		t.Fatalf("save capture: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = Run(context.Background(), []string{"export", "--format=csv", path}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run export csv: %v", err)
+	}
+
+	r := csv.NewReader(strings.NewReader(stdout.String()))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatalf("parse CSV: %v", err)
+	}
+	if len(rows) < 2 {
+		t.Fatalf("expected header + at least 1 row, got %d rows", len(rows))
+	}
+	header := rows[0]
+	wantCols := []string{"goroutine_id", "state", "start_ns", "end_ns", "reason", "resource_id"}
+	for _, w := range wantCols {
+		found := false
+		for _, h := range header {
+			if h == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected column %q in header %v", w, header)
+		}
+	}
+}
+
+func TestRun_Export_JSON(t *testing.T) {
+	t.Parallel()
+
+	capture, err := tracebridge.LoadDemoCapture()
+	if err != nil {
+		t.Fatalf("load demo capture: %v", err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demo.gtrace")
+	if err := tracebridge.SaveCaptureFile(path, capture); err != nil {
+		t.Fatalf("save capture: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = Run(context.Background(), []string{"export", "--format=json", path}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run export json: %v", err)
+	}
+
+	var body struct {
+		Segments []map[string]any `json:"segments"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &body); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if body.Segments == nil {
+		t.Error("expected segments array, got nil")
+	}
+	if len(body.Segments) > 0 {
+		seg := body.Segments[0]
+		for _, key := range []string{"goroutine_id", "state", "start_ns", "end_ns"} {
+			if _, ok := seg[key]; !ok {
+				t.Errorf("expected segment to have %q, got %v", key, seg)
+			}
+		}
 	}
 }
