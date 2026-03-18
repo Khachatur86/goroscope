@@ -8,3 +8,4 @@ web/dist/
 web/node_modules/
 vscode/out/
 vscode/node_modules/
+*.vsix

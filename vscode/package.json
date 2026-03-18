@@ -4,6 +4,30 @@
   "description": "Local Go concurrency debugger - inspect goroutines, blocking behavior, and stack snapshots",
   "version": "0.1.0",
   "publisher": "goroscope",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Khachatur86/goroscope.git"
+  },
+  "homepage": "https://github.com/Khachatur86/goroscope/blob/main/README.md",
+  "bugs": {
+    "url": "https://github.com/Khachatur86/goroscope/issues"
+  },
+  "keywords": [
+    "go",
+    "golang",
+    "goroutine",
+    "concurrency",
+    "debugger",
+    "trace",
+    "profiling"
+  ],
+  "galleryBanner": {
+    "color": "#0f172a",
+    "theme": "dark"
+  },
+  "pricing": "Free",
+  "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -92,7 +116,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "npx --yes @vscode/vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
