@@ -133,17 +133,9 @@
 
 ---
 
-### C-2. Улучшенная визуализация parent-child иерархии (P1) ⚠️ Partial
+### ~~C-2. Улучшенная визуализация parent-child иерархии~~ — ✅ РЕАЛИЗОВАНО (2026-03-19)
 
-**Уже есть:** `Inspector.tsx` показывает parent и direct children в секции «spawn tree» при клике на goroutine. CSS-стили `.spawn-tree` присутствуют.
-
-**Gap:** Только Inspector-панель, только прямые parent/children (не вся цепочка). Нет отдельного collapsible tree-view. Нет подсветки потомков в самом timeline при клике.
-
-**Потребность гоферов:** Неясные task-иерархии в конкурентных сценариях — прямая цитата из pain points.
-
-**Задача:** Расширить существующий spawn-tree: добавить рекурсивный collapsible tree (не только 1 уровень), кнопку «highlight in timeline» для всей ветки, и «trace to root» — цепочку до goroutine 1.
-
-**Критерий готовности:** Клик по goroutine подсвечивает всех children/ancestors (не только прямых) в timeline. Spawn-tree рекурсивный и collapsible.
+> **Реализовано:** `SpawnTree.tsx` — полностью рекурсивное collapsible дерево (auto-expand первые 2 уровня, child count badge, state-dot на каждом чипе). Секция «Ancestors» показывает цепочку root → … → parent → selected. «Highlight branch» собирает все ancestor + descendant IDs, передаёт в app.tsx → Timeline → TimelineCanvas, где goroutines вне ветки получают dark overlay + globalAlpha 0.28. «Clear highlight» снимает подсветку. Highlight автоматически сбрасывается при смене goroutine.
 
 ---
 
@@ -300,7 +292,7 @@
 | A-2 | Масштабирование UI до 100k goroutines | P1 | Масштабируемость | L | Открыта |
 | A-3 | Benchmark regression tracking в CI | P1 | Масштабируемость | S | ✅ Done |
 | B-2 | Flight Recorder интеграция (Go 1.25+) | P1 | Интеграция | L | Открыта |
-| C-2 | Визуализация parent-child иерархии | P1 | UX | M | ⚠️ Partial |
+| C-2 | Визуализация parent-child иерархии | P1 | UX | M | ✅ Done |
 | C-3 | Smart Insights (автоматические рекомендации) | P1 | UX | M | ✅ Done |
 | C-4 | Time Range Selection | P1 | UX | M | ⚠️ Partial |
 | C-5 | Документация для пользователей | P1 | UX | M | Открыта |
