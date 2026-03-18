@@ -44,9 +44,18 @@ govulncheck:
 
 build:
   stage: build
+  before_script:
+    - mkdir -p .go .cache/go-build
+    - export GOFLAGS="-mod=readonly"
+    - export GOCACHE="$CI_PROJECT_DIR/.cache/go-build"
+    - apt-get update -qq && apt-get install -y -qq ca-certificates curl
+    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    - apt-get install -y -qq nodejs
   script:
     - make build VERSION=ci
+    - make web
   artifacts:
     paths:
       - bin/
+      - web/dist
     expire_in: 1 week
