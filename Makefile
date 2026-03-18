@@ -35,7 +35,7 @@ lint-fix:
 	gofmt -w .
 	golangci-lint run --fix --timeout=5m
 
-# Run before commit: fmt, vet, test, lint
+# Run before commit: fmt, vet, test-race, lint
 pre-commit: fmt vet test-race lint
 	@echo "All checks passed. Safe to commit."
 

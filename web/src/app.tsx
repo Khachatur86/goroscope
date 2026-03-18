@@ -437,12 +437,13 @@ export function App() {
         ...(s.resource_id && { resource_id: s.resource_id }),
       },
     }));
-    const blob = new Blob([JSON.stringify(events)], {
+    const payload = { traceEvents: events };
+    const blob = new Blob([JSON.stringify(payload)], {
       type: "application/json",
     });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `goroscope-${Date.now()}.json`;
+    a.download = `goroscope-trace-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
