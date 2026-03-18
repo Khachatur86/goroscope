@@ -23,6 +23,8 @@ type Props = {
   viewMode?: "lanes" | "heatmap";
   /** When provided, use these segments instead of fetching from API (e.g. for Compare mode). */
   segmentsOverride?: TimelineSegment[] | null;
+  /** When set, goroutines NOT in this set are dimmed in the timeline. */
+  highlightedIds?: Set<number> | null;
 };
 
 const COLORS: Record<string, string> = {
@@ -42,6 +44,7 @@ export function Timeline({
   zoomToSelected = false,
   viewMode = "lanes",
   segmentsOverride,
+  highlightedIds,
 }: Props) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [processorSegments, setProcessorSegments] = useState<ProcessorSegment[]>([]);
@@ -170,6 +173,7 @@ export function Timeline({
               setCanvasZoomLevel(zl);
               setCanvasPanOffsetNS(pan);
             }}
+            highlightedIds={highlightedIds}
           />
         </div>
       )}

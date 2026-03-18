@@ -84,6 +84,8 @@ type Props = {
   zoomLevel?: number;
   panOffsetNS?: number;
   onZoomPanChange?: (zoomLevel: number, panOffsetNS: number) => void;
+  /** When set, goroutines NOT in this set are dimmed. */
+  highlightedIds?: Set<number> | null;
 };
 
 export function TimelineCanvas({
@@ -97,6 +99,7 @@ export function TimelineCanvas({
   zoomLevel: controlledZoom,
   panOffsetNS: controlledPan,
   onZoomPanChange,
+  highlightedIds,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -329,6 +332,7 @@ export function TimelineCanvas({
       const g = goroutines[index];
       const drawY = index * METRICS.rowHeight - rowScrollTop;
       const isSelected = g.goroutine_id === selectedId;
+      const isDimmed = highlightedIds !== null && highlightedIds !== undefined && !highlightedIds.has(g.goroutine_id);
 
       if (index % 2 === 0) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.028)";
@@ -340,12 +344,17 @@ export function TimelineCanvas({
         ctx.fillStyle = "rgba(125, 211, 252, 0.95)";
         ctx.fillRect(0, drawY + 2, 4, METRICS.rowHeight - 4);
       }
+      if (isDimmed) {
+        ctx.fillStyle = "rgba(13, 17, 23, 0.68)";
+        ctx.fillRect(0, drawY, width, METRICS.rowHeight);
+      }
       ctx.strokeStyle = "rgba(219, 228, 238, 0.13)";
       ctx.beginPath();
       ctx.moveTo(0, drawY + METRICS.rowHeight - 0.5);
       ctx.lineTo(width - METRICS.rightPadding, drawY + METRICS.rowHeight - 0.5);
       ctx.stroke();
 
+      ctx.globalAlpha = isDimmed ? 0.28 : 1;
       ctx.fillStyle = isSelected ? "#f8fafc" : "#9fb3c8";
       ctx.font = '12px "IBM Plex Mono", monospace';
       ctx.fillText(`G${g.goroutine_id}`, 14, drawY + 12);
@@ -383,11 +392,13 @@ export function TimelineCanvas({
             ctx.strokeRect(cx, barY, cw, barHeight);
           }
         });
+      ctx.globalAlpha = 1;
     }
   }, [
     goroutines,
     segments,
     selectedId,
+    highlightedIds,
     visibleStart,
     visibleSpan,
     hoveredSegment,

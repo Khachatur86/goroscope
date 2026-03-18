@@ -307,6 +307,7 @@ export function App() {
   const handleSelect = (id: number) => {
     setSelectedId(id);
     setSelectedSegment(null);
+    setHighlightedIds(null);
   };
 
   const handleSelectFromTimeline = (id: number, segment?: TimelineSegment) => {
@@ -399,6 +400,7 @@ export function App() {
   const [replayUploading, setReplayUploading] = useState(false);
   const [replayError, setReplayError] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [highlightedIds, setHighlightedIds] = useState<Set<number> | null>(null);
 
   const handleSavePng = async () => {
     const el = timelinePanelRef.current;
@@ -766,6 +768,7 @@ export function App() {
             filters={filters}
             zoomToSelected={zoomToSelected}
             viewMode={viewMode}
+            highlightedIds={highlightedIds}
           />
         </section>
 
@@ -816,6 +819,8 @@ export function App() {
               goroutines={goroutines}
               segmentOverride={selectedSegment}
               onSelectGoroutine={handleSelect}
+              onHighlightBranch={setHighlightedIds}
+              highlightActive={highlightedIds !== null}
             />
           )}
           {inspectorTab === "hotspots" && (

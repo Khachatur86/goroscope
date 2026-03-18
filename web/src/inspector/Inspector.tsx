@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import type { Goroutine, TimelineSegment } from "../api/client";
 import { fetchStackAt } from "../api/client";
+import { SpawnTree } from "./SpawnTree";
 
 type Props = {
   goroutine: Goroutine | null;
   goroutines: Goroutine[];
   segmentOverride?: TimelineSegment | null;
   onSelectGoroutine?: (id: number) => void;
+  onHighlightBranch?: (ids: Set<number> | null) => void;
+  highlightActive?: boolean;
 };
 
 function formatDuration(ns: number): string {
@@ -26,7 +29,7 @@ function formatTimestamp(s?: string): string {
   }
 }
 
-export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine }: Props) {
+export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive }: Props) {
   const [segmentStack, setSegmentStack] = useState<Goroutine["last_stack"] | null>(null);
 
   useEffect(() => {
@@ -65,10 +68,6 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
   };
 
   const goroutinesList = goroutines ?? [];
-  const parent = goroutine.parent_id
-    ? goroutinesList.find((g) => g.goroutine_id === goroutine.parent_id)
-    : null;
-  const children = goroutinesList.filter((g) => g.parent_id === goroutine.goroutine_id);
 
   const state = segmentOverride?.state ?? goroutine.state;
   const reason = segmentOverride?.reason ?? goroutine.reason;
@@ -138,41 +137,16 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
         </div>
       )}
 
-      {(parent || children.length > 0) && (
-        <div className="inspector-section">
-          <div className="inspector-label">Spawn Tree</div>
-          <div className="spawn-tree">
-            {parent && onSelectGoroutine && (
-              <div className="spawn-tree-item">
-                <span className="spawn-tree-role">parent</span>
-                <button
-                  type="button"
-                  className="goroutine-chip"
-                  onClick={() => onSelectGoroutine(parent.goroutine_id)}
-                >
-                  G{parent.goroutine_id}
-                </button>
-              </div>
-            )}
-            {children.map((c) => (
-              <div key={c.goroutine_id} className="spawn-tree-item">
-                <span className="spawn-tree-role">child</span>
-                {onSelectGoroutine ? (
-                  <button
-                    type="button"
-                    className="goroutine-chip"
-                    onClick={() => onSelectGoroutine(c.goroutine_id)}
-                  >
-                    G{c.goroutine_id}
-                  </button>
-                ) : (
-                  <span>G{c.goroutine_id}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="inspector-section">
+        <div className="inspector-label">Spawn Tree</div>
+        <SpawnTree
+          goroutine={goroutine}
+          allGoroutines={goroutinesList}
+          onSelectGoroutine={onSelectGoroutine}
+          onHighlightBranch={onHighlightBranch}
+          highlightActive={highlightActive}
+        />
+      </div>
 
       <div className="inspector-section">
         <div className="inspector-stack-header">
