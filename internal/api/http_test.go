@@ -128,13 +128,14 @@ func TestFilterGoroutines(t *testing.T) {
 		{
 			ID:     5,
 			State:  model.StateRunning,
-			Labels: map[string]string{"function": "main.workerPool"},
+			Labels: map[string]string{"function": "main.workerPool", "worker": "true"},
 			LastStack: &model.StackSnapshot{
 				Frames: []model.StackFrame{
 					{Func: "main.workerPool", File: "/app/worker.go", Line: 42},
 				},
 			},
 		},
+		{ID: 6, State: model.StateRunning, Labels: map[string]string{"worker": "true"}},
 	}
 
 	tests := []struct {
@@ -145,12 +146,12 @@ func TestFilterGoroutines(t *testing.T) {
 		{
 			name:    "no filter returns all",
 			params:  goroutineListParams{},
-			wantIDs: []int64{1, 2, 3, 4, 5},
+			wantIDs: []int64{1, 2, 3, 4, 5, 6},
 		},
 		{
 			name:    "filter by state running",
 			params:  goroutineListParams{State: model.StateRunning},
-			wantIDs: []int64{1, 5},
+			wantIDs: []int64{1, 5, 6},
 		},
 		{
 			name:    "filter by state blocked",
@@ -191,6 +192,21 @@ func TestFilterGoroutines(t *testing.T) {
 		{
 			name:    "search with no match",
 			params:  goroutineListParams{Search: "zzznomatch"},
+			wantIDs: nil,
+		},
+		{
+			name:    "filter by label worker=true",
+			params:  goroutineListParams{Label: "worker=true"},
+			wantIDs: []int64{5, 6},
+		},
+		{
+			name:    "filter by label function=main.workerPool",
+			params:  goroutineListParams{Label: "function=main.workerPool"},
+			wantIDs: []int64{5},
+		},
+		{
+			name:    "filter by label no match",
+			params:  goroutineListParams{Label: "nonexistent=value"},
 			wantIDs: nil,
 		},
 	}
@@ -270,6 +286,11 @@ func TestParseGoroutineListParams(t *testing.T) {
 			name:  "min_wait_ns parsed",
 			query: "?min_wait_ns=1000000000",
 			want:  goroutineListParams{MinWaitNS: int64(time.Second), Limit: -1},
+		},
+		{
+			name:  "label param parsed",
+			query: "?label=worker%3Dtrue",
+			want:  goroutineListParams{Label: "worker=true", Limit: -1},
 		},
 		{
 			name:  "negative min_wait_ns is ignored",

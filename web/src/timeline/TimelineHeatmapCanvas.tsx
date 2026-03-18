@@ -27,6 +27,9 @@ const METRICS = {
   rightPad: 18,
 };
 
+/** Viewport height for the scrollable goroutine rows area (px). */
+const ROW_AREA_VIEWPORT_HEIGHT = 420;
+
 function goroutineHue(id: number): number {
   const hues = [195, 30, 270, 140, 355, 60, 310, 170, 80, 230, 15, 330];
   return hues[Number(id) % hues.length];
@@ -58,8 +61,11 @@ export function TimelineHeatmapCanvas({
   onZoomPanChange,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rowsCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [rowScrollTop, setRowScrollTop] = useState(0);
   const dragStartX = useRef(0);
   const dragStartPan = useRef(0);
 
@@ -83,32 +89,47 @@ export function TimelineHeatmapCanvas({
     byGoroutine.set(seg.goroutine_id, list);
   }
 
-  const render = useCallback(() => {
+  const totalRowsHeight = goroutines.length * METRICS.gRowH;
+  const rowAreaHeight = Math.min(ROW_AREA_VIEWPORT_HEIGHT, totalRowsHeight + 16);
+  const firstVisibleIndex = Math.max(
+    0,
+    Math.floor(rowScrollTop / METRICS.gRowH)
+  );
+  const lastVisibleIndex = Math.min(
+    goroutines.length - 1,
+    Math.floor((rowScrollTop + rowAreaHeight) / METRICS.gRowH)
+  );
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onScroll = () => setRowScrollTop(el.scrollTop);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const renderAxis = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
 
     const width = Math.max(320, container.clientWidth);
-    const totalHeight = Math.max(
-      220,
-      METRICS.axisHeight + gmpH + goroutines.length * METRICS.gRowH + 16
-    );
+    const height = gTop;
     const innerWidth = getInnerWidth(width);
     const dpr = window.devicePixelRatio || 1;
 
     if (canvas.width !== Math.floor(width * dpr)) canvas.width = Math.floor(width * dpr);
-    if (canvas.height !== Math.floor(totalHeight * dpr)) canvas.height = Math.floor(totalHeight * dpr);
+    if (canvas.height !== Math.floor(height * dpr)) canvas.height = Math.floor(height * dpr);
     canvas.style.width = `${width}px`;
-    canvas.style.height = `${totalHeight}px`;
+    canvas.style.height = `${height}px`;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, totalHeight);
+    ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = "#0d1117";
-    ctx.fillRect(0, 0, width, totalHeight);
+    ctx.fillRect(0, 0, width, height);
 
-    // Time axis
     ctx.strokeStyle = "rgba(219,228,238,0.14)";
     ctx.beginPath();
     ctx.moveTo(plotLeft, METRICS.axisHeight - 10);
@@ -130,11 +151,10 @@ export function TimelineHeatmapCanvas({
       ctx.strokeStyle = "rgba(219,228,238,0.08)";
       ctx.beginPath();
       ctx.moveTo(x, METRICS.axisHeight - 10);
-      ctx.lineTo(x, totalHeight - 8);
+      ctx.lineTo(x, height);
       ctx.stroke();
     }
 
-    // GMP strip
     if (numPs > 0) {
       const gmpTop = METRICS.axisHeight + 6;
       ctx.fillStyle = "rgba(219,228,238,0.38)";
@@ -180,28 +200,75 @@ export function TimelineHeatmapCanvas({
       });
     }
 
-    // Goroutine heatmap rows
     ctx.fillStyle = "rgba(219,228,238,0.38)";
     ctx.font = '10px "IBM Plex Mono", monospace';
-    ctx.fillText("Goroutines", 2, gTop + 10);
+    ctx.fillText("Goroutines", 2, gTop - 4);
 
-    goroutines.forEach((g, idx) => {
-      const y = gTop + idx * METRICS.gRowH;
+    ctx.fillStyle = "rgba(2,6,23,0.45)";
+    ctx.fillRect(0, METRICS.axisHeight, plotLeft - 2, height - METRICS.axisHeight);
+    ctx.strokeStyle = "rgba(219,228,238,0.10)";
+    ctx.beginPath();
+    ctx.moveTo(plotLeft - 0.5, METRICS.axisHeight - 18);
+    ctx.lineTo(plotLeft - 0.5, height);
+    ctx.stroke();
+  }, [
+    visibleStart,
+    visibleSpan,
+    fullMinStart,
+    processorSegments,
+    processorIds,
+    numPs,
+    gTop,
+  ]);
+
+  const renderRows = useCallback(() => {
+    const canvas = rowsCanvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const width = Math.max(320, container.clientWidth);
+    const height = rowAreaHeight;
+    const innerWidth = getInnerWidth(width);
+    const dpr = window.devicePixelRatio || 1;
+
+    if (canvas.width !== Math.floor(width * dpr)) canvas.width = Math.floor(width * dpr);
+    if (canvas.height !== Math.floor(height * dpr)) canvas.height = Math.floor(height * dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#0d1117";
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = "rgba(2,6,23,0.45)";
+    ctx.fillRect(0, 0, plotLeft - 2, height);
+    ctx.strokeStyle = "rgba(219,228,238,0.10)";
+    ctx.beginPath();
+    ctx.moveTo(plotLeft - 0.5, 0);
+    ctx.lineTo(plotLeft - 0.5, height);
+    ctx.stroke();
+
+    for (let idx = firstVisibleIndex; idx <= lastVisibleIndex; idx++) {
+      const g = goroutines[idx];
+      const drawY = idx * METRICS.gRowH - rowScrollTop;
       const segs = byGoroutine.get(g.goroutine_id) ?? [];
       const isSelected = g.goroutine_id === selectedId;
 
       if (idx % 2 === 0) {
         ctx.fillStyle = "rgba(255,255,255,0.022)";
-        ctx.fillRect(0, y, width, METRICS.gRowH);
+        ctx.fillRect(0, drawY, width, METRICS.gRowH);
       }
       ctx.fillStyle = isSelected ? "#f8fafc" : "rgba(219,228,238,0.60)";
       ctx.font = '10px "IBM Plex Mono", monospace';
-      ctx.fillText(`G${g.goroutine_id}`, 4, y + 10);
+      ctx.fillText(`G${g.goroutine_id}`, 4, drawY + 10);
       if (isSelected) {
         ctx.fillStyle = "rgba(96,165,250,0.12)";
-        ctx.fillRect(0, y, width, METRICS.gRowH);
+        ctx.fillRect(0, drawY, width, METRICS.gRowH);
         ctx.fillStyle = "rgba(125,211,252,0.95)";
-        ctx.fillRect(0, y, 3, METRICS.gRowH);
+        ctx.fillRect(0, drawY, 3, METRICS.gRowH);
       }
 
       segs.forEach((seg) => {
@@ -212,63 +279,59 @@ export function TimelineHeatmapCanvas({
         const cw = Math.max(cx2 - cx, rawX2 > rawX ? 1 : 0);
         if (cw === 0) return;
         ctx.fillStyle = COLORS[seg.state] ?? "#94a3b8";
-        ctx.fillRect(cx, y + 1, cw, METRICS.gRowH - 2);
+        ctx.fillRect(cx, drawY + 1, cw, METRICS.gRowH - 2);
       });
 
       ctx.strokeStyle = "rgba(219,228,238,0.07)";
       ctx.beginPath();
-      ctx.moveTo(0, y + METRICS.gRowH - 0.5);
-      ctx.lineTo(width, y + METRICS.gRowH - 0.5);
+      ctx.moveTo(0, drawY + METRICS.gRowH - 0.5);
+      ctx.lineTo(width, drawY + METRICS.gRowH - 0.5);
       ctx.stroke();
-    });
-
-    // Gutter
-    ctx.fillStyle = "rgba(2,6,23,0.45)";
-    ctx.fillRect(0, METRICS.axisHeight, plotLeft - 2, totalHeight - METRICS.axisHeight);
-    ctx.strokeStyle = "rgba(219,228,238,0.10)";
-    ctx.beginPath();
-    ctx.moveTo(plotLeft - 0.5, METRICS.axisHeight - 18);
-    ctx.lineTo(plotLeft - 0.5, totalHeight - 8);
-    ctx.stroke();
+    }
   }, [
     goroutines,
     segments,
-    processorSegments,
-    processorIds,
-    numPs,
     selectedId,
     visibleStart,
     visibleSpan,
-    fullMinStart,
-    gTop,
+    firstVisibleIndex,
+    lastVisibleIndex,
+    rowScrollTop,
+    rowAreaHeight,
     byGoroutine,
   ]);
 
   useEffect(() => {
-    render();
-  }, [render]);
+    renderAxis();
+  }, [renderAxis]);
 
   useEffect(() => {
-    const ro = new ResizeObserver(() => render());
+    renderRows();
+  }, [renderRows]);
+
+  useEffect(() => {
+    const ro = new ResizeObserver(() => {
+      renderAxis();
+      renderRows();
+    });
     const el = containerRef.current;
     if (el) ro.observe(el);
     return () => ro.disconnect();
-  }, [render]);
+  }, [renderAxis, renderRows]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (isDragging) return;
-      const canvas = canvasRef.current;
+      const canvas = rowsCanvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const y = e.clientY - rect.top;
-      if (y < gTop) return;
-      const rowIndex = Math.floor((y - gTop) / METRICS.gRowH);
+      const rowIndex = Math.floor((y + rowScrollTop) / METRICS.gRowH);
       if (rowIndex >= 0 && rowIndex < goroutines.length) {
         onSelectGoroutine(goroutines[rowIndex].goroutine_id, undefined);
       }
     },
-    [goroutines, gTop, onSelectGoroutine, isDragging]
+    [goroutines, onSelectGoroutine, isDragging, rowScrollTop]
   );
 
   const handleWheel = useCallback(
@@ -326,15 +389,33 @@ export function TimelineHeatmapCanvas({
     <div ref={containerRef} className="timeline-canvas-container timeline-heatmap-canvas">
       <canvas
         ref={canvasRef}
-        className="timeline-canvas"
-        onClick={handleClick}
+        className="timeline-canvas timeline-canvas-axis"
         onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseLeave={handleMouseLeave}
-        style={{
-          cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "pointer",
-        }}
+        style={{ cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "default" }}
       />
+      <div
+        ref={scrollContainerRef}
+        className="timeline-canvas-rows-scroll"
+        style={{
+          height: rowAreaHeight,
+          overflowY: totalRowsHeight > rowAreaHeight ? "auto" : "hidden",
+        }}
+      >
+        <div style={{ height: totalRowsHeight }}>
+          <canvas
+            ref={rowsCanvasRef}
+            className="timeline-canvas timeline-canvas-rows"
+            style={{
+              position: "sticky",
+              top: 0,
+              cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "pointer",
+            }}
+            onClick={handleClick}
+            onMouseDown={handleMouseDown}
+            onMouseLeave={handleMouseLeave}
+          />
+        </div>
+      </div>
     </div>
   );
 }

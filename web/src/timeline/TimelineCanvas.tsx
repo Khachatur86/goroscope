@@ -64,6 +64,9 @@ const METRICS = {
   pGap: 2,
 };
 
+/** Viewport height for the scrollable goroutine rows area (px). */
+const ROW_AREA_VIEWPORT_HEIGHT = 420;
+
 function goroutineHue(id: number): number {
   const hues = [195, 30, 270, 140, 355, 60, 310, 170, 80, 230, 15, 330];
   return hues[Number(id) % hues.length];
@@ -123,6 +126,8 @@ export function TimelineCanvas({
   const dragStartPanNS = useRef(0);
   const [hoveredSegment, setHoveredSegment] = useState<TimelineSegment | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [rowScrollTop, setRowScrollTop] = useState(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const fullMinStart = Math.min(...segments.map((s) => s.start_ns));
   const fullMaxEnd = Math.max(...segments.map((s) => s.end_ns));
@@ -163,17 +168,26 @@ export function TimelineCanvas({
       ? METRICS.pLabelH + numPs * METRICS.pRowH + METRICS.pGap + 8
       : 0;
   const gTop = METRICS.axisHeight + gmpH;
+  const totalRowsHeight = goroutines.length * METRICS.rowHeight;
+  const rowAreaHeight = Math.min(ROW_AREA_VIEWPORT_HEIGHT, totalRowsHeight + 16);
 
-  const render = useCallback(() => {
+  // Virtual row range: only draw goroutines whose Y range is within the visible viewport
+  const firstVisibleIndex = Math.max(
+    0,
+    Math.floor(rowScrollTop / METRICS.rowHeight)
+  );
+  const lastVisibleIndex = Math.min(
+    goroutines.length - 1,
+    Math.floor((rowScrollTop + rowAreaHeight) / METRICS.rowHeight)
+  );
+
+  const renderAxis = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
 
     const width = Math.max(320, container.clientWidth);
-    const height = Math.max(
-      220,
-      gTop + goroutines.length * METRICS.rowHeight + 16
-    );
+    const height = gTop;
     const dpr = window.devicePixelRatio || 1;
     const innerWidth = getInnerWidth(width);
 
@@ -196,7 +210,6 @@ export function TimelineCanvas({
     ctx.lineTo(width - METRICS.rightPadding, METRICS.axisHeight - 10);
     ctx.stroke();
 
-    // Time axis ticks — use nice-number algorithm so labels are always round values
     const targetTickCount = Math.max(4, Math.floor(innerWidth / 90));
     const ticks = computeNiceTicks(visibleStart, visibleSpan, targetTickCount);
     ctx.font = '11px "IBM Plex Mono", monospace';
@@ -207,11 +220,10 @@ export function TimelineCanvas({
       ctx.strokeStyle = "rgba(219, 228, 238, 0.12)";
       ctx.beginPath();
       ctx.moveTo(x, METRICS.axisHeight - 18);
-      ctx.lineTo(x, height - 16);
+      ctx.lineTo(x, height);
       ctx.stroke();
       const label = formatAxisLabel(tick - fullMinStart);
       const labelWidth = ctx.measureText(label).width;
-      // Clamp label so it doesn't overflow right edge
       const labelX = Math.min(x + 4, width - METRICS.rightPadding - labelWidth - 2);
       ctx.fillStyle = "#dbe4ee";
       ctx.fillText(label, labelX, 20);
@@ -263,44 +275,84 @@ export function TimelineCanvas({
       });
     }
 
-    // Gutter
     ctx.fillStyle = "rgba(2, 6, 23, 0.48)";
     ctx.fillRect(0, METRICS.axisHeight, plotLeft - 8, height - METRICS.axisHeight);
-    const goroutineRowsTop = gTop;
     ctx.strokeStyle = "rgba(219, 228, 238, 0.10)";
     ctx.beginPath();
     ctx.moveTo(plotLeft - 0.5, METRICS.axisHeight - 18);
-    ctx.lineTo(plotLeft - 0.5, height - 16);
+    ctx.lineTo(plotLeft - 0.5, height);
+    ctx.stroke();
+  }, [
+    visibleStart,
+    visibleSpan,
+    fullMinStart,
+    processorSegments,
+    processorIds,
+    numPs,
+    gTop,
+  ]);
+
+  const rowsCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const renderRows = useCallback(() => {
+    const canvas = rowsCanvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const width = Math.max(320, container.clientWidth);
+    const height = rowAreaHeight;
+    const dpr = window.devicePixelRatio || 1;
+    const innerWidth = getInnerWidth(width);
+
+    if (canvas.width !== Math.floor(width * dpr)) canvas.width = Math.floor(width * dpr);
+    if (canvas.height !== Math.floor(height * dpr)) canvas.height = Math.floor(height * dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#0d1117";
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = "rgba(2, 6, 23, 0.48)";
+    ctx.fillRect(0, 0, plotLeft - 8, height);
+    ctx.strokeStyle = "rgba(219, 228, 238, 0.10)";
+    ctx.beginPath();
+    ctx.moveTo(plotLeft - 0.5, 0);
+    ctx.lineTo(plotLeft - 0.5, height);
     ctx.stroke();
 
-    // Goroutine rows and segments
-    goroutines.forEach((g, index) => {
-      const y = goroutineRowsTop + index * METRICS.rowHeight;
+    // Virtual rows: only draw goroutines in the visible viewport range
+    for (let index = firstVisibleIndex; index <= lastVisibleIndex; index++) {
+      const g = goroutines[index];
+      const drawY = index * METRICS.rowHeight - rowScrollTop;
       const isSelected = g.goroutine_id === selectedId;
 
       if (index % 2 === 0) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.028)";
-        ctx.fillRect(0, y, width, METRICS.rowHeight);
+        ctx.fillRect(0, drawY, width, METRICS.rowHeight);
       }
       if (isSelected) {
         ctx.fillStyle = "rgba(96, 165, 250, 0.10)";
-        ctx.fillRect(0, y, width, METRICS.rowHeight);
+        ctx.fillRect(0, drawY, width, METRICS.rowHeight);
         ctx.fillStyle = "rgba(125, 211, 252, 0.95)";
-        ctx.fillRect(0, y + 2, 4, METRICS.rowHeight - 4);
+        ctx.fillRect(0, drawY + 2, 4, METRICS.rowHeight - 4);
       }
       ctx.strokeStyle = "rgba(219, 228, 238, 0.13)";
       ctx.beginPath();
-      ctx.moveTo(0, y + METRICS.rowHeight - 0.5);
-      ctx.lineTo(width - METRICS.rightPadding, y + METRICS.rowHeight - 0.5);
+      ctx.moveTo(0, drawY + METRICS.rowHeight - 0.5);
+      ctx.lineTo(width - METRICS.rightPadding, drawY + METRICS.rowHeight - 0.5);
       ctx.stroke();
 
       ctx.fillStyle = isSelected ? "#f8fafc" : "#9fb3c8";
       ctx.font = '12px "IBM Plex Mono", monospace';
-      ctx.fillText(`G${g.goroutine_id}`, 14, y + 12);
+      ctx.fillText(`G${g.goroutine_id}`, 14, drawY + 12);
       ctx.fillStyle = isSelected ? "rgba(219, 228, 238, 0.74)" : "rgba(159, 179, 200, 0.46)";
       ctx.font = '11px "IBM Plex Mono", monospace';
       const fn = (g.labels?.function || "unknown").slice(0, 20);
-      ctx.fillText(fn, 14, y + 23);
+      ctx.fillText(fn, 14, drawY + 23);
 
       segments
         .filter((s) => s.goroutine_id === g.goroutine_id)
@@ -313,7 +365,7 @@ export function TimelineCanvas({
           if (cw === 0) return;
 
           const barHeight = 20;
-          const barY = y + 4;
+          const barY = drawY + 4;
           const isHovered =
             hoveredSegment?.goroutine_id === seg.goroutine_id &&
             hoveredSegment?.start_ns === seg.start_ns &&
@@ -331,35 +383,51 @@ export function TimelineCanvas({
             ctx.strokeRect(cx, barY, cw, barHeight);
           }
         });
-    });
+    }
   }, [
     goroutines,
     segments,
-    processorSegments,
-    processorIds,
-    numPs,
     selectedId,
     visibleStart,
     visibleSpan,
-    fullMinStart,
     hoveredSegment,
-    gTop,
+    firstVisibleIndex,
+    lastVisibleIndex,
+    rowScrollTop,
+    rowAreaHeight,
   ]);
 
   useEffect(() => {
-    render();
-  }, [render]);
+    renderAxis();
+  }, [renderAxis]);
 
   useEffect(() => {
-    const resizeObserver = new ResizeObserver(() => render());
+    renderRows();
+  }, [renderRows]);
+
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver(() => {
+      renderAxis();
+      renderRows();
+    });
     const el = containerRef.current;
     if (el) resizeObserver.observe(el);
     return () => resizeObserver.disconnect();
-  }, [render]);
+  }, [renderAxis, renderRows]);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      setRowScrollTop(el.scrollTop);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   const hitTest = useCallback(
     (clientX: number, clientY: number): TimelineSegment | null => {
-      const canvas = canvasRef.current;
+      const canvas = rowsCanvasRef.current;
       const container = containerRef.current;
       if (!canvas || !container) return null;
 
@@ -369,22 +437,23 @@ export function TimelineCanvas({
       const width = container.clientWidth;
       const innerWidth = getInnerWidth(width);
 
-      const rowIndex = Math.floor((y - gTop) / METRICS.rowHeight);
+      const rowIndex = Math.floor((y + rowScrollTop) / METRICS.rowHeight);
       if (rowIndex < 0 || rowIndex >= goroutines.length) return null;
       const g = goroutines[rowIndex];
 
       const segs = segments.filter((s) => s.goroutine_id === g.goroutine_id);
+      const drawY = rowIndex * METRICS.rowHeight - rowScrollTop;
+      const barY = drawY + 4;
       for (const seg of segs) {
         const rawX = plotLeft + ((seg.start_ns - visibleStart) / visibleSpan) * innerWidth;
         const rawX2 = plotLeft + ((seg.end_ns - visibleStart) / visibleSpan) * innerWidth;
         const cx = Math.max(plotLeft, Math.min(rawX, plotLeft + innerWidth));
         const cx2 = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
-        const barY = gTop + rowIndex * METRICS.rowHeight + 4;
         if (x >= cx && x <= cx2 && y >= barY && y <= barY + 20) return seg;
       }
       return null;
     },
-    [goroutines, segments, visibleStart, visibleSpan, gTop]
+    [goroutines, segments, visibleStart, visibleSpan, rowScrollTop]
   );
 
   const handleWheel = useCallback(
@@ -455,19 +524,21 @@ export function TimelineCanvas({
         if (seg) {
           onSelectGoroutine(seg.goroutine_id, seg);
         } else {
-          const rowIndex = Math.floor(
-            (e.clientY - (canvasRef.current?.getBoundingClientRect().top ?? 0) - gTop) /
-              METRICS.rowHeight
-          );
-          if (rowIndex >= 0 && rowIndex < goroutines.length) {
-            onSelectGoroutine(goroutines[rowIndex].goroutine_id, undefined);
+          const canvas = rowsCanvasRef.current;
+          const rect = canvas?.getBoundingClientRect();
+          if (rect) {
+            const y = e.clientY - rect.top;
+            const rowIndex = Math.floor((y + rowScrollTop) / METRICS.rowHeight);
+            if (rowIndex >= 0 && rowIndex < goroutines.length) {
+              onSelectGoroutine(goroutines[rowIndex].goroutine_id, undefined);
+            }
           }
         }
       }
       setIsDragging(false);
       setHasDragged(false);
     },
-    [isDragging, hasDragged, hitTest, goroutines, onSelectGoroutine, gTop]
+    [isDragging, hasDragged, hitTest, goroutines, onSelectGoroutine, rowScrollTop]
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -480,14 +551,34 @@ export function TimelineCanvas({
     <div ref={containerRef} className="timeline-canvas-container">
       <canvas
         ref={canvasRef}
-        className="timeline-canvas"
+        className="timeline-canvas timeline-canvas-axis"
         onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        style={{ cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "pointer" }}
+        style={{ cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "default" }}
       />
+      <div
+        ref={scrollContainerRef}
+        className="timeline-canvas-rows-scroll"
+        style={{
+          height: rowAreaHeight,
+          overflowY: totalRowsHeight > rowAreaHeight ? "auto" : "hidden",
+        }}
+      >
+        <div style={{ height: totalRowsHeight }}>
+          <canvas
+            ref={rowsCanvasRef}
+            className="timeline-canvas timeline-canvas-rows"
+            style={{
+              position: "sticky",
+              top: 0,
+              cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "pointer",
+            }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
+          />
+        </div>
+      </div>
       {hoveredSegment && (
         <div
           className="timeline-tooltip"

@@ -268,6 +268,36 @@ func (e *Engine) GetStackAt(goroutineID int64, ns int64) *model.StackSnapshot {
 	return &out
 }
 
+// LeakCandidates returns goroutines that have been in WAITING or BLOCKED
+// state for longer than thresholdNS. These may indicate goroutine leaks.
+func (e *Engine) LeakCandidates(thresholdNS int64) []model.Goroutine {
+	e.mu.RLock()
+	goroutines := make([]model.Goroutine, 0, len(e.goroutines))
+	for _, g := range e.goroutines {
+		goroutines = append(goroutines, cloneGoroutine(g))
+	}
+	e.mu.RUnlock()
+	return LeakCandidates(goroutines, thresholdNS)
+}
+
+// ResourceContention returns contention metrics per resource from the timeline.
+func (e *Engine) ResourceContention() []ResourceContention {
+	e.mu.RLock()
+	segments := make([]model.TimelineSegment, 0, len(e.closedSegments)+len(e.activeSegments))
+	segments = append(segments, e.closedSegments...)
+	for goroutineID, segment := range e.activeSegments {
+		goroutine, ok := e.goroutines[goroutineID]
+		if !ok {
+			continue
+		}
+		if derived, ok := buildTimelineSegment(goroutineID, segment, goroutine.LastSeenAt); ok {
+			segments = append(segments, derived)
+		}
+	}
+	e.mu.RUnlock()
+	return ComputeResourceContention(segments)
+}
+
 // ResourceGraph returns the current set of resource dependency edges.
 func (e *Engine) ResourceGraph() []model.ResourceEdge {
 	e.mu.RLock()

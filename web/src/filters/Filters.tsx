@@ -5,6 +5,10 @@ type FiltersState = {
   search: string;
   minWaitNs: string;
   sortMode: string;
+  showLeakOnly?: boolean;
+  hideRuntime?: boolean;
+  hotspotIds?: number[] | null;
+  labelFilter?: string;
 };
 
 type Props = {
@@ -12,9 +16,11 @@ type Props = {
   onFiltersChange: (f: FiltersState) => void;
   onJumpTo: (id: number) => void;
   jumpToInputRef?: React.RefObject<HTMLInputElement>;
+  /** Distinct label key=value pairs for the Label dropdown (from goroutines). */
+  distinctLabelPairs?: string[];
 };
 
-export function Filters({ filters, onFiltersChange, onJumpTo, jumpToInputRef }: Props) {
+export function Filters({ filters, onFiltersChange, onJumpTo, jumpToInputRef, distinctLabelPairs = [] }: Props) {
   const handleJump = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       const id = parseInt((e.target as HTMLInputElement).value, 10);
@@ -25,16 +31,22 @@ export function Filters({ filters, onFiltersChange, onJumpTo, jumpToInputRef }: 
     }
   };
 
-  const applyPreset = (preset: "all" | "blocked" | "channels" | "mutex") => {
+  const applyPreset = (preset: "all" | "blocked" | "channels" | "mutex" | "leaking") => {
     if (preset === "all") {
-      onFiltersChange({ ...filters, state: "ALL", reason: "" });
+      onFiltersChange({ ...filters, state: "ALL", reason: "", showLeakOnly: false });
     } else if (preset === "blocked") {
-      onFiltersChange({ ...filters, state: "BLOCKED", reason: "" });
+      onFiltersChange({ ...filters, state: "BLOCKED", reason: "", showLeakOnly: false });
     } else if (preset === "channels") {
-      onFiltersChange({ ...filters, state: "ALL", reason: "chan_send" });
+      onFiltersChange({ ...filters, state: "ALL", reason: "chan_send", showLeakOnly: false });
     } else if (preset === "mutex") {
-      onFiltersChange({ ...filters, state: "ALL", reason: "mutex_lock" });
+      onFiltersChange({ ...filters, state: "ALL", reason: "mutex_lock", showLeakOnly: false });
+    } else if (preset === "leaking") {
+      onFiltersChange({ ...filters, state: "ALL", reason: "", showLeakOnly: true });
     }
+  };
+
+  const toggleHideRuntime = () => {
+    onFiltersChange({ ...filters, hideRuntime: !filters.hideRuntime });
   };
 
   const clearFilters = () => {
@@ -45,6 +57,10 @@ export function Filters({ filters, onFiltersChange, onJumpTo, jumpToInputRef }: 
       search: "",
       minWaitNs: "",
       sortMode: filters.sortMode,
+      showLeakOnly: false,
+      hideRuntime: false,
+      hotspotIds: null,
+      labelFilter: "",
     });
   };
 
@@ -63,6 +79,23 @@ export function Filters({ filters, onFiltersChange, onJumpTo, jumpToInputRef }: 
         <button type="button" className="preset-chip" onClick={() => applyPreset("mutex")}>
           Mutex
         </button>
+        <button
+          type="button"
+          className={`preset-chip ${filters.showLeakOnly ? "active" : ""}`}
+          onClick={() => applyPreset("leaking")}
+          title="Goroutines in WAITING/BLOCKED ≥30s (potential leaks)"
+        >
+          Leaking
+        </button>
+        <label className="preset-chip preset-chip-toggle">
+          <input
+            type="checkbox"
+            checked={filters.hideRuntime ?? false}
+            onChange={toggleHideRuntime}
+            title="Filter out runtime.* and internal/* goroutines"
+          />
+          <span>Hide runtime</span>
+        </label>
       </div>
       <div className="filter-stack">
         <label className="field">
@@ -133,6 +166,23 @@ export function Filters({ filters, onFiltersChange, onJumpTo, jumpToInputRef }: 
               onFiltersChange({ ...filters, resource: e.target.value })
             }
           />
+        </label>
+        <label className="field">
+          <span>Label</span>
+          <select
+            value={filters.labelFilter ?? ""}
+            onChange={(e) =>
+              onFiltersChange({ ...filters, labelFilter: e.target.value })
+            }
+            title="Filter by pprof label (key=value)"
+          >
+            <option value="">Any</option>
+            {distinctLabelPairs.map((pair) => (
+              <option key={pair} value={pair}>
+                {pair}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="field">
           <span>Min wait</span>

@@ -176,6 +176,7 @@ type goroutineListParams struct {
 	Reason    model.BlockingReason
 	Search    string
 	MinWaitNS int64 // filter goroutines in wait state with WaitNS >= MinWaitNS
+	Label     string // key=value for pprof label filter
 	Limit     int
 	Offset    int
 }
@@ -200,6 +201,9 @@ func parseGoroutineListParams(r *http.Request) goroutineListParams {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
 			params.MinWaitNS = n
 		}
+	}
+	if v := q.Get("label"); v != "" {
+		params.Label = strings.TrimSpace(v)
 	}
 	if v := q.Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -241,6 +245,15 @@ func filterGoroutines(goroutines []model.Goroutine, params goroutineListParams) 
 		if params.MinWaitNS > 0 {
 			if !isWaitState(g.State) || g.WaitNS < params.MinWaitNS {
 				continue
+			}
+		}
+		if params.Label != "" {
+			if eq := strings.Index(params.Label, "="); eq > 0 {
+				key := params.Label[:eq]
+				value := params.Label[eq+1:]
+				if g.Labels == nil || g.Labels[key] != value {
+					continue
+				}
 			}
 		}
 		out = append(out, g)
@@ -370,18 +383,27 @@ func (s *Server) handleGoroutineChildren(w http.ResponseWriter, r *http.Request)
 
 // insightsResponse is the response for /api/v1/insights.
 type insightsResponse struct {
-	LongBlockedCount int64             `json:"long_blocked_count"`
-	LongBlocked      []model.Goroutine `json:"long_blocked"`
-	MinWaitNS        int64             `json:"min_wait_ns"`
+	LongBlockedCount    int64             `json:"long_blocked_count"`
+	LongBlocked         []model.Goroutine `json:"long_blocked"`
+	MinWaitNS           int64             `json:"min_wait_ns"`
+	LeakCandidatesCount int64             `json:"leak_candidates_count"`
 }
 
 func (s *Server) handleInsights(w http.ResponseWriter, r *http.Request) {
 	const defaultMinWaitNS = int64(time.Second)
+	const defaultLeakThresholdNS = 30 * int64(time.Second)
 
 	minWaitNS := defaultMinWaitNS
 	if v := r.URL.Query().Get("min_wait_ns"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
 			minWaitNS = n
+		}
+	}
+
+	leakThresholdNS := defaultLeakThresholdNS
+	if v := r.URL.Query().Get("leak_threshold_ns"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			leakThresholdNS = n
 		}
 	}
 
@@ -405,10 +427,13 @@ func (s *Server) handleInsights(w http.ResponseWriter, r *http.Request) {
 		longBlocked = longBlocked[:topN]
 	}
 
+	leakCandidates := analysis.LeakCandidates(all, leakThresholdNS)
+
 	writeJSON(w, http.StatusOK, insightsResponse{
-		LongBlockedCount: int64(totalCount),
-		LongBlocked:      longBlocked,
-		MinWaitNS:        minWaitNS,
+		LongBlockedCount:    int64(totalCount),
+		LongBlocked:         longBlocked,
+		MinWaitNS:           minWaitNS,
+		LeakCandidatesCount: int64(len(leakCandidates)),
 	})
 }
 
@@ -417,6 +442,7 @@ type timelineListParams struct {
 	State  model.GoroutineState
 	Reason model.BlockingReason
 	Search string
+	Label  string
 }
 
 func parseTimelineListParams(r *http.Request) timelineListParams {
@@ -430,6 +456,9 @@ func parseTimelineListParams(r *http.Request) timelineListParams {
 	}
 	if v := q.Get("search"); v != "" {
 		params.Search = strings.TrimSpace(strings.ToLower(v))
+	}
+	if v := q.Get("label"); v != "" {
+		params.Label = strings.TrimSpace(v)
 	}
 	return params
 }
@@ -446,7 +475,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	all := s.engine.Timeline()
 	goroutines := s.engine.ListGoroutines()
 
-	if params.State == "" && params.Reason == "" && params.Search == "" {
+	if params.State == "" && params.Reason == "" && params.Search == "" && params.Label == "" {
 		writeJSON(w, http.StatusOK, all)
 		return
 	}
@@ -462,6 +491,15 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		}
 		if params.Search != "" && !goroutineMatchesSearch(g, params.Search) {
 			continue
+		}
+		if params.Label != "" {
+			if eq := strings.Index(params.Label, "="); eq > 0 {
+				key := params.Label[:eq]
+				value := params.Label[eq+1:]
+				if g.Labels == nil || g.Labels[key] != value {
+					continue
+				}
+			}
 		}
 		matchIDs[g.ID] = true
 	}
@@ -480,7 +518,16 @@ func (s *Server) handleProcessorTimeline(w http.ResponseWriter, _ *http.Request)
 	writeJSON(w, http.StatusOK, s.engine.ProcessorTimeline())
 }
 
-func (s *Server) handleGraph(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("view") == "contention" {
+		contention := s.engine.ResourceContention()
+		// Sort by peak waiters descending
+		sort.Slice(contention, func(i, j int) bool {
+			return contention[i].PeakWaiters > contention[j].PeakWaiters
+		})
+		writeJSON(w, http.StatusOK, map[string]any{"contention": contention})
+		return
+	}
 	writeJSON(w, http.StatusOK, s.engine.ResourceGraph())
 }
 

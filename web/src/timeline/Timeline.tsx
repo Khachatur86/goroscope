@@ -11,6 +11,7 @@ type FiltersState = {
   reason: string;
   resource: string;
   search: string;
+  labelFilter?: string;
 };
 
 type Props = {
@@ -49,6 +50,7 @@ export function Timeline({
       state: filters.state !== "ALL" ? filters.state : undefined,
       reason: filters.reason || undefined,
       search: filters.search || undefined,
+      label: filters.labelFilter || undefined,
     })
       .then((data) => setSegments(Array.isArray(data) ? data : []))
       .catch(() => setSegments([]));
@@ -118,8 +120,6 @@ export function Timeline({
   const canvasVisibleSpan = fullSpan / canvasZoomLevel;
   const showMinimapCanvas = true;
 
-  const visibleGoroutines = goroutines.slice(0, 50);
-
   return (
     <div className={`timeline-simple ${isHeatmap ? "timeline-heatmap" : ""}`}>
       <div className="timeline-legend">
@@ -133,7 +133,7 @@ export function Timeline({
       {isHeatmap ? (
         <div className="timeline-canvas-wrapper">
           <TimelineHeatmapCanvas
-            goroutines={visibleGoroutines}
+            goroutines={goroutines}
             segments={filteredSegments}
             processorSegments={processorSegments}
             selectedId={selectedId}
@@ -151,7 +151,7 @@ export function Timeline({
       ) : (
         <div className="timeline-canvas-wrapper">
           <TimelineCanvas
-            goroutines={visibleGoroutines}
+            goroutines={goroutines}
             segments={filteredSegments}
             processorSegments={processorSegments}
             selectedId={selectedId}

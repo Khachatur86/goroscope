@@ -7,15 +7,18 @@ import {
   fetchGoroutine,
   fetchTimeline,
   fetchResourceGraph,
+  fetchResourceContention,
   fetchInsights,
   fetchDeadlockHints,
   uploadReplayCapture,
 } from "./api/client";
 import { Filters } from "./filters/Filters";
 import { Inspector } from "./inspector/Inspector";
+import { Hotspots, computeSpawnHotspots } from "./inspector/Hotspots";
+import { DeadlockHints } from "./inspector/DeadlockHints";
 import { Timeline } from "./timeline/Timeline";
 import { ResourceGraph } from "./resource-graph/ResourceGraph";
-import { filterAndSortGoroutines } from "./utils/goroutines";
+import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
 /** Height of one row in the virtualised goroutine list (px). */
 const GOROUTINE_ITEM_HEIGHT = 44;
@@ -54,6 +57,10 @@ type FiltersState = {
   search: string;
   minWaitNs: string;
   sortMode: string;
+  showLeakOnly?: boolean;
+  hideRuntime?: boolean;
+  hotspotIds?: number[] | null;
+  labelFilter?: string;
 };
 
 function buildShareableURL(filters: FiltersState, selectedId: number | null): string {
@@ -63,6 +70,9 @@ function buildShareableURL(filters: FiltersState, selectedId: number | null): st
   if (filters.reason) params.set("reason", filters.reason);
   if (filters.resource) params.set("resource", filters.resource);
   if (filters.search) params.set("search", filters.search);
+  if (filters.labelFilter) params.set("label", filters.labelFilter);
+  if (filters.showLeakOnly) params.set("leak", "1");
+  if (filters.hideRuntime) params.set("hide_runtime", "1");
   const qs = params.toString();
   return qs ? `${window.location.origin}${window.location.pathname}?${qs}` : window.location.origin + window.location.pathname;
 }
@@ -78,6 +88,10 @@ function parseFiltersFromURL(): Partial<FiltersState> {
   if (resource) out.resource = resource;
   const search = params.get("search");
   if (search) out.search = search;
+  const label = params.get("label");
+  if (label) out.labelFilter = label;
+  if (params.get("leak") === "1") out.showLeakOnly = true;
+  if (params.get("hide_runtime") === "1") out.hideRuntime = true;
   return out;
 }
 
@@ -96,11 +110,16 @@ export function App() {
   const [selectedGoroutine, setSelectedGoroutine] = useState<Goroutine | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<TimelineSegment | null>(null);
   const [resources, setResources] = useState<{ from_goroutine_id: number; to_goroutine_id: number; resource_id?: string }[]>([]);
-  const [insights, setInsights] = useState<{ long_blocked_count: number }>({ long_blocked_count: 0 });
+  const [contention, setContention] = useState<{ resource_id: string; peak_waiters: number; segment_count: number; total_wait_ns: number; avg_wait_ns: number }[]>([]);
+  const [insights, setInsights] = useState<{
+    long_blocked_count: number;
+    leak_candidates_count?: number;
+  }>({ long_blocked_count: 0, leak_candidates_count: 0 });
   const [deadlockHints, setDeadlockHints] = useState<DeadlockHint[]>([]);
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
+  const [inspectorTab, setInspectorTab] = useState<"inspector" | "hotspots" | "resources" | "deadlock">("inspector");
   const [filters, setFilters] = useState<FiltersState>(() => {
     const fromUrl = parseFiltersFromURL();
     return {
@@ -110,10 +129,15 @@ export function App() {
       search: fromUrl.search ?? "",
       minWaitNs: "",
       sortMode: "SUSPICIOUS",
+      showLeakOnly: fromUrl.showLeakOnly ?? false,
+      hideRuntime: fromUrl.hideRuntime ?? false,
+      hotspotIds: null,
+      labelFilter: fromUrl.labelFilter ?? "",
     };
   });
 
   const filteredGoroutines = filterAndSortGoroutines(goroutines, filters);
+  const hotspots = computeSpawnHotspots(goroutines);
   let displayGoroutines =
     selectedId && !filteredGoroutines.some((g) => g.goroutine_id === selectedId)
       ? (() => {
@@ -163,12 +187,17 @@ export function App() {
             reason: filters.reason || undefined,
             search: filters.search || undefined,
             min_wait_ns: filters.minWaitNs || undefined,
+            label: filters.labelFilter || undefined,
           };
-    const [sess, gs, res, ins, deadlock] = await Promise.all([
+    const [sess, gs, res, contentionData, ins, deadlock] = await Promise.all([
       fetchCurrentSession(),
       fetchGoroutines(goroutineParams),
       fetchResourceGraph(),
-      fetchInsights(filters.minWaitNs || undefined),
+      fetchResourceContention(),
+      fetchInsights(
+        filters.minWaitNs || undefined,
+        "30000000000"
+      ),
       fetchDeadlockHints(),
     ]);
     setSession(sess ?? null);
@@ -179,9 +208,10 @@ export function App() {
       setSelectedId(urlId);
     }
     setResources(Array.isArray(res) ? res : []);
-    setInsights(ins ?? { long_blocked_count: 0 });
+    setContention(Array.isArray(contentionData) ? contentionData : []);
+    setInsights(ins ?? { long_blocked_count: 0, leak_candidates_count: 0 });
     setDeadlockHints(deadlock?.hints ?? []);
-  }, [hasGoroutineInURL, filters.state, filters.reason, filters.search, filters.minWaitNs]);
+  }, [hasGoroutineInURL, filters.state, filters.reason, filters.search, filters.minWaitNs, filters.labelFilter]);
 
   useEffect(() => {
     loadData();
@@ -263,10 +293,12 @@ export function App() {
     if (filters.reason) params.set("reason", filters.reason);
     if (filters.resource) params.set("resource", filters.resource);
     if (filters.search) params.set("search", filters.search);
+    if (filters.showLeakOnly) params.set("leak", "1");
+    if (filters.hideRuntime) params.set("hide_runtime", "1");
     const qs = params.toString();
     const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
     window.history.replaceState(null, "", url);
-  }, [selectedId, filters.state, filters.reason, filters.resource, filters.search]);
+  }, [selectedId, filters.state, filters.reason, filters.resource, filters.search, filters.showLeakOnly, filters.hideRuntime]);
 
   const handleSelect = (id: number) => {
     setSelectedId(id);
@@ -309,6 +341,10 @@ export function App() {
 
   const handleLongBlockedClick = () => {
     setFilters((f) => ({ ...f, minWaitNs: "1000000000" }));
+  };
+
+  const handleLeakClick = () => {
+    setFilters((f) => ({ ...f, showLeakOnly: true }));
   };
 
   const processReplayFile = useCallback(
@@ -394,6 +430,7 @@ export function App() {
       state: filters.state !== "ALL" ? filters.state : undefined,
       reason: filters.reason || undefined,
       search: filters.search || undefined,
+      label: filters.labelFilter || undefined,
     }).catch(() => []);
     const filteredSegs = (segs ?? []).filter((s) =>
       filteredGoroutines.some((g) => g.goroutine_id === s.goroutine_id)
@@ -418,6 +455,7 @@ export function App() {
       state: filters.state !== "ALL" ? filters.state : undefined,
       reason: filters.reason || undefined,
       search: filters.search || undefined,
+      label: filters.labelFilter || undefined,
     }).catch(() => []);
     const filteredSegs = (segs ?? []).filter((s) =>
       filteredGoroutines.some((g) => g.goroutine_id === s.goroutine_id)
@@ -576,6 +614,17 @@ export function App() {
           <strong>{insights.long_blocked_count}</strong>
           <span className="summary-meta">≥1s wait</span>
         </div>
+        <div
+          className={`summary-card summary-card-action ${filters.showLeakOnly ? "active" : ""}`}
+          role="button"
+          tabIndex={0}
+          onClick={handleLeakClick}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleLeakClick()}
+        >
+          <span className="summary-label">Leak candidates</span>
+          <strong>{insights.leak_candidates_count ?? 0}</strong>
+          <span className="summary-meta">≥30s stuck</span>
+        </div>
         <div className="summary-card">
           <span className="summary-label">Deadlock hints</span>
           <strong>{deadlockHints.length}</strong>
@@ -595,7 +644,13 @@ export function App() {
                 : ""}
             </p>
           </div>
-          <Filters filters={filters} onFiltersChange={setFilters} onJumpTo={handleJumpTo} jumpToInputRef={jumpToInputRef} />
+          <Filters
+            filters={filters}
+            onFiltersChange={setFilters}
+            onJumpTo={handleJumpTo}
+            jumpToInputRef={jumpToInputRef}
+            distinctLabelPairs={distinctLabelPairs(goroutines)}
+          />
           <div className="goroutine-list">
             {displayGoroutines.length === 0 ? (
               <p className="empty-message">No goroutines match the current filters.</p>
@@ -684,18 +739,70 @@ export function App() {
         </section>
 
         <aside className="panel inspector-panel">
-          <h2>Inspector</h2>
-          <Inspector
-            goroutine={selectedGoroutine}
-            goroutines={goroutines}
-            segmentOverride={selectedSegment}
-            onSelectGoroutine={handleSelect}
-          />
-          <ResourceGraph
-            resources={resources}
-            selectedId={selectedId}
-            onSelectGoroutine={handleSelect}
-          />
+          <div className="inspector-panel-header">
+            <h2>Inspector</h2>
+            <div className="inspector-tabs">
+              <button
+                type="button"
+                className={`inspector-tab ${inspectorTab === "inspector" ? "active" : ""}`}
+                onClick={() => setInspectorTab("inspector")}
+              >
+                Details
+              </button>
+              <button
+                type="button"
+                className={`inspector-tab ${inspectorTab === "hotspots" ? "active" : ""}`}
+                onClick={() => setInspectorTab("hotspots")}
+              >
+                Hotspots
+              </button>
+              <button
+                type="button"
+                className={`inspector-tab ${inspectorTab === "resources" ? "active" : ""}`}
+                onClick={() => setInspectorTab("resources")}
+              >
+                Resources
+              </button>
+              <button
+                type="button"
+                className={`inspector-tab ${inspectorTab === "deadlock" ? "active" : ""}`}
+                onClick={() => setInspectorTab("deadlock")}
+              >
+                Deadlock
+              </button>
+            </div>
+          </div>
+          {inspectorTab === "inspector" && (
+            <Inspector
+              goroutine={selectedGoroutine}
+              goroutines={goroutines}
+              segmentOverride={selectedSegment}
+              onSelectGoroutine={handleSelect}
+            />
+          )}
+          {inspectorTab === "hotspots" && (
+            <Hotspots
+              hotspots={hotspots}
+              activeHotspotIds={filters.hotspotIds ?? null}
+              onFilterByHotspot={(ids) =>
+                setFilters((f) => ({ ...f, hotspotIds: ids }))
+              }
+              onClearHotspotFilter={() =>
+                setFilters((f) => ({ ...f, hotspotIds: null }))
+              }
+            />
+          )}
+          {inspectorTab === "resources" && (
+            <ResourceGraph
+              resources={resources}
+              contention={contention}
+              selectedId={selectedId}
+              onSelectGoroutine={handleSelect}
+            />
+          )}
+          {inspectorTab === "deadlock" && (
+            <DeadlockHints hints={deadlockHints} onSelectGoroutine={handleSelect} />
+          )}
         </aside>
       </main>
     </div>

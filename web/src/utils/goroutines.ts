@@ -1,5 +1,23 @@
 import type { Goroutine } from "../api/client";
 
+const LEAK_THRESHOLD_NS = 30 * 1e9; // 30 seconds
+
+function isRuntimeGoroutine(g: Goroutine): boolean {
+  const fn = g.labels?.function ?? "";
+  return fn.startsWith("runtime.") || fn.startsWith("internal/");
+}
+
+/** Extracts distinct label key=value pairs from goroutines for filter dropdown. */
+export function distinctLabelPairs(goroutines: Goroutine[]): string[] {
+  const seen = new Set<string>();
+  for (const g of goroutines ?? []) {
+    for (const [k, v] of Object.entries(g.labels ?? {})) {
+      if (k && v != null) seen.add(`${k}=${v}`);
+    }
+  }
+  return [...seen].sort();
+}
+
 export function filterAndSortGoroutines(
   goroutines: Goroutine[],
   filters: {
@@ -9,10 +27,22 @@ export function filterAndSortGoroutines(
     search: string;
     minWaitNs: string;
     sortMode: string;
+    showLeakOnly?: boolean;
+    hideRuntime?: boolean;
+    hotspotIds?: number[] | null;
+    labelFilter?: string;
   }
 ): Goroutine[] {
   if (!goroutines || !Array.isArray(goroutines)) return [];
   let filtered = goroutines.filter((g) => {
+    if (filters.hotspotIds && filters.hotspotIds.length > 0 && !filters.hotspotIds.includes(g.goroutine_id))
+      return false;
+    if (filters.hideRuntime && isRuntimeGoroutine(g)) return false;
+    if (filters.showLeakOnly) {
+      const isLeakState = g.state === "WAITING" || g.state === "BLOCKED";
+      const waitLongEnough = (g.wait_ns ?? 0) >= LEAK_THRESHOLD_NS;
+      if (!isLeakState || !waitLongEnough) return false;
+    }
     if (filters.state !== "ALL" && g.state !== filters.state) return false;
     if (filters.reason && g.reason !== filters.reason) return false;
     if (filters.resource && !(g.resource_id ?? "").includes(filters.resource))
@@ -32,6 +62,14 @@ export function filterAndSortGoroutines(
         .join(" ")
         .toLowerCase();
       if (!haystack.includes(filters.search.toLowerCase())) return false;
+    }
+    if (filters.labelFilter) {
+      const eq = filters.labelFilter.indexOf("=");
+      if (eq > 0) {
+        const key = filters.labelFilter.slice(0, eq);
+        const value = filters.labelFilter.slice(eq + 1);
+        if ((g.labels?.[key] ?? "") !== value) return false;
+      }
     }
     return true;
   });

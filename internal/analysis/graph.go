@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Khachatur86/goroscope/internal/model"
 )
@@ -87,6 +88,8 @@ func DeriveResourceEdgesFromTimeline(
 type DeadlockHint struct {
 	GoroutineIDs []int64  `json:"goroutine_ids"`
 	ResourceIDs  []string `json:"resource_ids"`
+	// BlameChain is a human-readable chain, e.g. "G17 holds chan:0x1 waiting for G42; G42 holds mutex:0x2 waiting for G17"
+	BlameChain string `json:"blame_chain,omitempty"`
 }
 
 // FindDeadlockHints returns cycles in the resource graph where all goroutines
@@ -124,7 +127,12 @@ func FindDeadlockHints(edges []model.ResourceEdge, goroutines []model.Goroutine)
 			}
 			if allBlocked {
 				resources := resourcesInCycle(cycle, edges)
-				hints = append(hints, DeadlockHint{GoroutineIDs: cycle, ResourceIDs: resources})
+				chain := buildBlameChain(cycle, edges, goroutines)
+				hints = append(hints, DeadlockHint{
+					GoroutineIDs: cycle,
+					ResourceIDs:  resources,
+					BlameChain:   chain,
+				})
 			}
 		}
 	}
@@ -194,6 +202,38 @@ func cycleKey(cycle []int64) string {
 		b = append(b, fmt.Sprintf(",%d", id)...)
 	}
 	return string(b)
+}
+
+// buildBlameChain produces a human-readable chain for a deadlock cycle.
+// Example: "G17 holds chan:0x1 waiting for G42; G42 holds mutex:0x2 waiting for G17"
+func buildBlameChain(cycle []int64, edges []model.ResourceEdge, goroutines []model.Goroutine) string {
+	blockedOn := make(map[int64]string)
+	for _, g := range goroutines {
+		if g.ResourceID != "" && isBlockedState(g.State) {
+			blockedOn[g.ID] = g.ResourceID
+		}
+	}
+	// Build resource between consecutive pairs in cycle
+	resourceBetween := func(a, b int64) string {
+		for _, e := range edges {
+			if ((e.FromGoroutineID == a && e.ToGoroutineID == b) || (e.FromGoroutineID == b && e.ToGoroutineID == a)) && e.ResourceID != "" {
+				return e.ResourceID
+			}
+		}
+		if r := blockedOn[a]; r != "" {
+			return r
+		}
+		return "?"
+	}
+
+	var parts []string
+	for i := 0; i < len(cycle); i++ {
+		curr := cycle[i]
+		next := cycle[(i+1)%len(cycle)]
+		res := resourceBetween(curr, next)
+		parts = append(parts, fmt.Sprintf("G%d holds %s waiting for G%d", curr, res, next))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func resourcesInCycle(cycle []int64, edges []model.ResourceEdge) []string {

@@ -61,6 +61,7 @@ export async function fetchGoroutines(params?: {
   reason?: string;
   search?: string;
   min_wait_ns?: string;
+  label?: string;
   limit?: number;
   offset?: number;
 }): Promise<Goroutine[]> {
@@ -69,6 +70,7 @@ export async function fetchGoroutines(params?: {
   if (params?.reason) q.set("reason", params.reason);
   if (params?.search) q.set("search", params.search);
   if (params?.min_wait_ns) q.set("min_wait_ns", params.min_wait_ns);
+  if (params?.label) q.set("label", params.label);
   if (params?.limit) q.set("limit", String(params.limit));
   if (params?.offset) q.set("offset", String(params.offset));
   const query = q.toString();
@@ -102,11 +104,13 @@ export async function fetchTimeline(params?: {
   state?: string;
   reason?: string;
   search?: string;
+  label?: string;
 }): Promise<TimelineSegment[]> {
   const q = new URLSearchParams();
   if (params?.state && params.state !== "ALL") q.set("state", params.state);
   if (params?.reason) q.set("reason", params.reason);
   if (params?.search) q.set("search", params.search);
+  if (params?.label) q.set("label", params.label);
   const query = q.toString();
   const path = `/api/v1/timeline${query ? `?${query}` : ""}`;
   const data = await fetchJson<TimelineSegment[] | null>(path);
@@ -115,6 +119,21 @@ export async function fetchTimeline(params?: {
 
 export async function fetchResourceGraph(): Promise<ResourceEdge[]> {
   return fetchJson<ResourceEdge[]>("/api/v1/resources/graph");
+}
+
+export type ResourceContention = {
+  resource_id: string;
+  peak_waiters: number;
+  segment_count: number;
+  total_wait_ns: number;
+  avg_wait_ns: number;
+};
+
+export async function fetchResourceContention(): Promise<ResourceContention[]> {
+  const data = await fetchJson<{ contention: ResourceContention[] }>(
+    "/api/v1/resources/graph?view=contention"
+  );
+  return data?.contention ?? [];
 }
 
 export type ProcessorSegment = {
@@ -129,12 +148,28 @@ export async function fetchProcessorTimeline(): Promise<ProcessorSegment[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export type Insights = { long_blocked_count: number };
-export type DeadlockHint = { goroutine_ids: number[]; resource_ids: string[] };
+export type Insights = {
+  long_blocked_count: number;
+  leak_candidates_count?: number;
+};
+export type DeadlockHint = {
+  goroutine_ids: number[];
+  resource_ids: string[];
+  blame_chain?: string;
+};
 
-export async function fetchInsights(minWaitNs?: string): Promise<Insights> {
-  const q = minWaitNs ? `?min_wait_ns=${minWaitNs}` : "";
-  return fetchJson<Insights>(`/api/v1/insights${q}`).catch(() => ({ long_blocked_count: 0 }));
+export async function fetchInsights(
+  minWaitNs?: string,
+  leakThresholdNs?: string
+): Promise<Insights> {
+  const params = new URLSearchParams();
+  if (minWaitNs) params.set("min_wait_ns", minWaitNs);
+  if (leakThresholdNs) params.set("leak_threshold_ns", leakThresholdNs);
+  const q = params.toString() ? `?${params.toString()}` : "";
+  return fetchJson<Insights>(`/api/v1/insights${q}`).catch(() => ({
+    long_blocked_count: 0,
+    leak_candidates_count: 0,
+  }));
 }
 
 export async function fetchDeadlockHints(): Promise<{ hints: DeadlockHint[] }> {
