@@ -191,6 +191,42 @@ export async function uploadReplayCapture(file: File): Promise<{ status: string;
   return res.json();
 }
 
+export type GoroutineGroup = {
+  key: string;
+  by: string;
+  count: number;
+  states: Record<string, number>;
+  avg_wait_ns: number;
+  max_wait_ns: number;
+  total_wait_ns: number;
+  total_cpu_ns: number;
+  goroutine_ids: number[];
+};
+
+export type GoroutineGroupsResponse = {
+  groups: GoroutineGroup[];
+  by: string;
+  total: number;
+};
+
+export type GroupByField = "function" | "package" | "parent_id" | "label";
+
+export async function fetchGoroutineGroups(params?: {
+  by?: GroupByField;
+  label_key?: string;
+}): Promise<GoroutineGroupsResponse> {
+  const q = new URLSearchParams();
+  if (params?.by) q.set("by", params.by);
+  if (params?.label_key) q.set("label_key", params.label_key);
+  const query = q.toString();
+  const path = `/api/v1/goroutines/groups${query ? `?${query}` : ""}`;
+  return fetchJson<GoroutineGroupsResponse>(path).catch(() => ({
+    groups: [],
+    by: params?.by ?? "function",
+    total: 0,
+  }));
+}
+
 export type GoroutineDelta = {
   wait_delta_ns: number;
   blocked_delta_ns: number;

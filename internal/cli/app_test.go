@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Khachatur86/goroscope/internal/tracebridge"
@@ -170,6 +172,117 @@ func TestRun_Export_CSV(t *testing.T) {
 		if !found {
 			t.Errorf("expected column %q in header %v", w, header)
 		}
+	}
+}
+
+// onMatchWriter forwards writes to buf and calls fn (at most once) when
+// the written bytes contain pattern. Used to cancel a context as soon as
+// the HTTP server announces it is ready.
+type onMatchWriter struct {
+	mu      sync.Mutex
+	buf     bytes.Buffer
+	pattern string
+	fn      func()
+	once    sync.Once
+}
+
+func (w *onMatchWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	n, err := w.buf.Write(p)
+	w.mu.Unlock()
+	if strings.Contains(string(p), w.pattern) {
+		w.once.Do(w.fn)
+	}
+	return n, err
+}
+
+func (w *onMatchWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
+}
+
+// TestRun_Test_Basic verifies that "goroscope test" runs go test with tracing,
+// loads the resulting trace, and starts the HTTP server. The context is
+// cancelled as soon as the server is ready so the test does not block.
+func TestRun_Test_Basic(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go binary not in PATH")
+	}
+
+	// Resolve the module root so that the relative package path ./testdata/tracepkg works.
+	modRootBytes, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}").Output()
+	if err != nil {
+		t.Skipf("cannot determine module root: %v", err)
+	}
+	modRoot := strings.TrimSpace(string(modRootBytes))
+	if modRoot == "" {
+		t.Skip("module root is empty")
+	}
+
+	// os.Chdir affects the whole process; do not run in parallel.
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(modRoot); err != nil {
+		t.Fatalf("chdir to module root %q: %v", modRoot, err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	out := &onMatchWriter{pattern: "serving", fn: cancel}
+	var stderr bytes.Buffer
+
+	err = Run(ctx, []string{
+		"test",
+		"-addr=127.0.0.1:17070",
+		"./testdata/tracepkg",
+		"-count=1",
+	}, out, &stderr)
+
+	// context.Canceled is expected: we cancel as soon as the server is ready.
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("unexpected error: %v\nstdout: %s\nstderr: %s", err, out.String(), stderr.String())
+	}
+	if !strings.Contains(out.String(), "loading trace") {
+		t.Errorf("expected 'loading trace' in output, got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "serving") {
+		t.Errorf("expected 'serving' in output, got:\n%s", out.String())
+	}
+}
+
+// TestRun_Test_Help verifies the -help flag prints usage without error.
+func TestRun_Test_Help(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	err := Run(context.Background(), []string{"test", "-help"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("expected nil error for -help, got: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "go test") {
+		t.Errorf("expected usage mentioning 'go test' in stderr, got:\n%s", stderr.String())
+	}
+}
+
+// TestRun_Test_UnknownPackage verifies that "goroscope test" propagates go test
+// failures when the package does not exist.
+func TestRun_Test_UnknownPackage(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go binary not in PATH")
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := Run(context.Background(), []string{
+		"test",
+		"./nonexistent/pkg/that/does/not/exist",
+	}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected error for nonexistent package, got nil")
 	}
 }
 

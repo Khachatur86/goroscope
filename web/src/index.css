@@ -1271,3 +1271,190 @@ body {
   background: #475569 !important;
   color: #94a3b8;
 }
+
+/* ── Goroutine Groups panel ──────────────────────────────────────── */
+
+.groups-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.groups-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0 0.25rem;
+}
+
+.groups-control-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.groups-by-select {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.groups-label-key-input {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  width: 160px;
+}
+
+.groups-label-key-input::placeholder {
+  color: #64748b;
+}
+
+.groups-refresh-btn {
+  padding: 0.25rem 0.6rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.groups-status {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  padding: 0 0.25rem;
+  margin: 0;
+}
+
+.groups-error {
+  color: #f87171;
+}
+
+.groups-summary {
+  font-size: 0.75rem;
+  color: #64748b;
+  padding: 0 0.25rem;
+  margin: 0;
+}
+
+.groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groups-row {
+  background: #1e293b;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.groups-row-header {
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  color: #e2e8f0;
+  transition: background 0.1s;
+}
+
+.groups-row-header:hover {
+  background: #273549;
+}
+
+.groups-expand-icon {
+  font-size: 0.65rem;
+  color: #64748b;
+  flex-shrink: 0;
+  width: 12px;
+}
+
+.groups-key {
+  flex: 1;
+  font-size: 0.8rem;
+  font-family: ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groups-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #334155;
+  color: #94a3b8;
+  border-radius: 10px;
+  padding: 0.1rem 0.45rem;
+  flex-shrink: 0;
+}
+
+.groups-state-pills {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.groups-metric {
+  font-size: 0.7rem;
+  color: #64748b;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.groups-row-body {
+  padding: 0.5rem 0.75rem 0.6rem;
+  border-top: 1px solid #1a2537;
+}
+
+.groups-metrics-table {
+  width: 100%;
+  font-size: 0.75rem;
+  border-collapse: collapse;
+  margin-bottom: 0.5rem;
+  color: #cbd5e1;
+}
+
+.groups-metrics-table td {
+  padding: 0.15rem 0.4rem;
+}
+
+.groups-metrics-table td:nth-child(odd) {
+  color: #64748b;
+  width: 30%;
+}
+
+.groups-goroutine-ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.groups-goroutine-id-badge {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #4da6ff;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+  transition: background 0.1s;
+}
+
+.groups-goroutine-id-badge:hover {
+  background: #1e3a5f;
+  border-color: #4da6ff;
+}

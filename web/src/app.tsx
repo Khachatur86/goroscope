@@ -19,6 +19,7 @@ import { DeadlockHints } from "./inspector/DeadlockHints";
 import { Timeline } from "./timeline/Timeline";
 import { CompareView } from "./compare/CompareView";
 import { ResourceGraph } from "./resource-graph/ResourceGraph";
+import { GoroutineGroups } from "./groups/GoroutineGroups";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
 /** Height of one row in the virtualised goroutine list (px). */
@@ -120,7 +121,7 @@ export function App() {
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
-  const [inspectorTab, setInspectorTab] = useState<"inspector" | "hotspots" | "resources" | "deadlock">("inspector");
+  const [inspectorTab, setInspectorTab] = useState<"inspector" | "hotspots" | "resources" | "deadlock" | "groups">("inspector");
   const [filters, setFilters] = useState<FiltersState>(() => {
     const fromUrl = parseFiltersFromURL();
     return {
@@ -795,6 +796,13 @@ export function App() {
               >
                 Deadlock
               </button>
+              <button
+                type="button"
+                className={`inspector-tab ${inspectorTab === "groups" ? "active" : ""}`}
+                onClick={() => setInspectorTab("groups")}
+              >
+                Groups
+              </button>
             </div>
           </div>
           {inspectorTab === "inspector" && (
@@ -827,6 +835,9 @@ export function App() {
           )}
           {inspectorTab === "deadlock" && (
             <DeadlockHints hints={deadlockHints} onSelectGoroutine={handleSelect} />
+          )}
+          {inspectorTab === "groups" && (
+            <GoroutineGroups onSelectGoroutine={handleSelect} />
           )}
         </aside>
       </main>

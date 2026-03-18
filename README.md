@@ -42,7 +42,7 @@ Or `make ui-react` (builds + web + runs).
 
 This repository contains a working local MVP built around `runtime/trace`:
 
-- Go CLI with `run`, `collect`, `ui`, `replay`, `check`, and `version` commands
+- Go CLI with `run`, `test`, `collect`, `ui`, `replay`, `check`, `export`, and `version` commands
 - cooperative trace capture via the `agent` package
 - trace parsing and normalization in `internal/tracebridge`
 - in-memory analysis engine and session manager
@@ -78,6 +78,7 @@ This starts the local UI immediately, runs the target, and refreshes the timelin
 | Command   | Description                                      |
 |-----------|--------------------------------------------------|
 | `run`     | Run a Go program with live trace capture         |
+| `test`    | Run `go test` with tracing, open UI with result  |
 | `collect` | Load demo data and serve UI                      |
 | `ui`      | Load demo data and serve UI                      |
 | `replay`  | Load .gtrace or raw Go trace (e.g. go test -trace) and serve UI |
@@ -97,7 +98,28 @@ goroscope export --format=json capture.gtrace  # JSON with segments
 
 **"target did not emit a runtime trace"** — The target must import `github.com/Khachatur86/goroscope/agent` and call `agent.StartFromEnv()` in `main`. See `examples/trace_demo` and `examples/worker_pool`.
 
-**Without agent** — Use `go test -trace=out ./pkg` to produce a raw trace, then `goroscope replay out` or `goroscope export --format=csv out` to inspect it.
+**Without agent** — Use `goroscope test ./pkg/...` to produce and visualize a trace in one command. Or manually: `go test -trace=out ./pkg` then `goroscope replay out`.
+
+## Test Command
+
+`goroscope test` runs `go test` with runtime tracing injected, then opens the UI with the resulting trace — no agent instrumentation required.
+
+```bash
+# Trace a single package
+goroscope test ./pkg/worker -open-browser
+
+# Filter to one test and save the capture
+goroscope test ./pkg/worker -run TestWorkerPool -save=debug.gtrace -open-browser
+
+# Trace all packages (may produce a large trace)
+goroscope test ./... -count=1
+
+# Use the React UI
+make web
+goroscope test ./pkg/worker -ui=react -open-browser
+```
+
+All arguments after goroscope's own flags (`-addr`, `-open-browser`, `-ui`, `-ui-path`, `-save`) are forwarded verbatim to `go test`. If tests fail, goroscope still loads and serves the trace so you can inspect goroutine state at the time of failure.
 
 **"Cannot connect to Goroscope"** (VS Code) — Ensure goroscope is running (`goroscope run ...` or `goroscope ui`). Check `goroscope.addr` in VS Code settings.
 

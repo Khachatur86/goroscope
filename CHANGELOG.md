@@ -36,5 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`goroscope test`**: Run `go test` with runtime tracing in a single command — no agent instrumentation required. All `go test` flags and packages are forwarded verbatim. If tests fail, the trace is still loaded for post-mortem inspection. Flags: `-addr`, `-open-browser`, `-ui`, `-ui-path`, `-save`.
 - **`goroscope export`**: Export timeline segments to CSV or JSON for analysis (pandas, Perfetto)
 - **Compare captures**: `POST /api/v1/compare` — compare two .gtrace files; UI split-panel (baseline vs compare) with diff overlay (improved/regressed/unchanged), unified goroutine rows, sync scroll, filter by status
+- **Goroutine groups view**: `GET /api/v1/goroutines/groups?by=function|package|parent_id|label[&label_key=<key>]` — aggregates goroutines by shared dimension with per-group state counts, avg/max/total wait time, and accumulated CPU time. New "Groups" inspector tab in the UI with collapsible rows, group-by switcher, and goroutine ID badges that jump to the inspector.

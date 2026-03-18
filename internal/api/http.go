@@ -82,6 +82,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/sessions", s.handleSessions)
 	mux.HandleFunc("/api/v1/session/current", s.handleSessionCurrent)
 	mux.HandleFunc("/api/v1/goroutines", s.handleGoroutines)
+	mux.HandleFunc("/api/v1/goroutines/groups", s.handleGoroutineGroups)
 	mux.HandleFunc("/api/v1/goroutines/{id}/children", s.handleGoroutineChildren)
 	mux.HandleFunc("/api/v1/goroutines/{id}", s.handleGoroutineByID)
 	mux.HandleFunc("/api/v1/goroutines/{id}/stack-at", s.handleGoroutineStackAt)
@@ -380,6 +381,40 @@ func (s *Server) handleGoroutineChildren(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, children)
+}
+
+// handleGoroutineGroups aggregates goroutines by a shared dimension.
+//
+// GET /api/v1/goroutines/groups?by=function|package|parent_id|label[&label_key=<key>]
+//
+// Returns goroutine groups sorted by count descending. Each group carries
+// per-state counts, wait-time metrics, and accumulated CPU time.
+func (s *Server) handleGoroutineGroups(w http.ResponseWriter, r *http.Request) {
+	byStr := r.URL.Query().Get("by")
+	if byStr == "" {
+		byStr = "function"
+	}
+	labelKey := strings.TrimSpace(r.URL.Query().Get("label_key"))
+
+	goroutines := s.engine.ListGoroutines()
+	segments := s.engine.Timeline()
+
+	groups, err := analysis.GroupGoroutines(analysis.GroupGoroutinesInput{
+		Goroutines: goroutines,
+		Segments:   segments,
+		By:         analysis.GroupByField(byStr),
+		LabelKey:   labelKey,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"groups": groups,
+		"by":     byStr,
+		"total":  len(groups),
+	})
 }
 
 // insightsResponse is the response for /api/v1/insights.

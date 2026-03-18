@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
@@ -43,6 +44,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return checkCommand(ctx, args[1:], stdout, stderr)
 	case "export":
 		return exportCommand(ctx, args[1:], stdout, stderr)
+	case "test":
+		return testCommand(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return nil
@@ -59,6 +62,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Usage:")
 	_, _ = fmt.Fprintln(w, "  goroscope run [flags] <package-or-binary>")
+	_, _ = fmt.Fprintln(w, "  goroscope test [flags] [packages] [go-test-flags]")
 	_, _ = fmt.Fprintln(w, "  goroscope collect [flags]")
 	_, _ = fmt.Fprintln(w, "  goroscope ui [flags]")
 	_, _ = fmt.Fprintln(w, "  goroscope replay [flags] <capture-file>")
@@ -69,6 +73,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Commands:")
 	_, _ = fmt.Fprintln(w, "  run       Run a Go program with live trace capture (target must use agent)")
+	_, _ = fmt.Fprintln(w, "  test      Run 'go test' with tracing, then open the UI with the result")
 	_, _ = fmt.Fprintln(w, "  collect   Load demo data and serve UI")
 	_, _ = fmt.Fprintln(w, "  ui        Load demo data and serve UI")
 	_, _ = fmt.Fprintln(w, "  replay    Load a .gtrace capture file and serve UI")
@@ -77,7 +82,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  version   Print version")
 	_, _ = fmt.Fprintln(w, "  help      Show this help")
 	_, _ = fmt.Fprintln(w, "")
-	_, _ = fmt.Fprintln(w, "Common flags (run, collect, ui, replay):")
+	_, _ = fmt.Fprintln(w, "Common flags (run, test, collect, ui, replay):")
 	_, _ = fmt.Fprintln(w, "  -addr string       HTTP bind address (default \"127.0.0.1:7070\")")
 	_, _ = fmt.Fprintln(w, "  -open-browser      Open the default browser to the UI")
 	_, _ = fmt.Fprintln(w, "")
@@ -86,8 +91,12 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  -poll-interval     How often to re-read the trace file (default 1s)")
 	_, _ = fmt.Fprintln(w, "  -save path         Save capture to .gtrace file when session completes")
 	_, _ = fmt.Fprintln(w, "")
-	_, _ = fmt.Fprintln(w, "Example:")
+	_, _ = fmt.Fprintln(w, "Test-specific flags:")
+	_, _ = fmt.Fprintln(w, "  -save path         Save capture to .gtrace file after tests complete")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Examples:")
 	_, _ = fmt.Fprintln(w, "  goroscope run ./examples/trace_demo --open-browser")
+	_, _ = fmt.Fprintln(w, "  goroscope test ./pkg/worker -run TestWorkerPool -open-browser")
 	_, _ = fmt.Fprintln(w, "  goroscope ui --open-browser")
 }
 
@@ -311,6 +320,122 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 }
 
 var errDeadlockHints = fmt.Errorf("potential deadlocks detected")
+
+// testCaptureInput holds all parameters for runTestCapture.
+type testCaptureInput struct {
+	Addr        string
+	OpenBrowser bool
+	SavePath    string
+	UIPath      string
+	GoTestArgs  []string
+	Stdout      io.Writer
+	Stderr      io.Writer
+}
+
+func testCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope test [flags] [packages] [go-test-flags]\n\n")
+		_, _ = fmt.Fprintf(stderr, "Run 'go test' with runtime tracing enabled, then open the goroscope\n")
+		_, _ = fmt.Fprintf(stderr, "UI with the resulting trace. All arguments after goroscope flags are\n")
+		_, _ = fmt.Fprintf(stderr, "forwarded verbatim to 'go test -trace=<tmpfile>'.\n\n")
+		_, _ = fmt.Fprintf(stderr, "If tests fail, goroscope still attempts to load and serve the trace\n")
+		_, _ = fmt.Fprintf(stderr, "so you can inspect the goroutine state at the time of failure.\n\n")
+		_, _ = fmt.Fprintf(stderr, "Examples:\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope test ./pkg/worker -run TestWorkerPool -open-browser\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope test ./... -count=1 -save=debug.gtrace\n\n")
+		fs.PrintDefaults()
+	}
+
+	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
+	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
+	savePath := fs.String("save", "", "Save capture to .gtrace file after tests complete")
+	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
+	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+
+	uiPathResolved := resolveUIPath(*ui, *uiPath)
+	if uiPathResolved == "" && *ui == "react" {
+		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
+	}
+
+	return runTestCapture(ctx, testCaptureInput{
+		Addr:        *addr,
+		OpenBrowser: *openBrowser,
+		SavePath:    *savePath,
+		UIPath:      uiPathResolved,
+		GoTestArgs:  fs.Args(),
+		Stdout:      stdout,
+		Stderr:      stderr,
+	})
+}
+
+// runTestCapture runs 'go test -trace=<tmpfile>' with the provided arguments,
+// loads the resulting trace, and serves the goroscope UI.
+// If go test exits with a non-zero status, the error is logged but the trace
+// is still loaded (if present) so the goroutine state at failure is visible.
+func runTestCapture(ctx context.Context, in testCaptureInput) error {
+	// Create a temp file to receive the runtime trace.
+	traceFile, err := os.CreateTemp("", "goroscope-test-*.trace")
+	if err != nil {
+		return fmt.Errorf("create temp trace file: %w", err)
+	}
+	tracePath := traceFile.Name()
+	_ = traceFile.Close()
+	defer func() { _ = os.Remove(tracePath) }()
+
+	// Inject -trace=<path> and forward all remaining args to go test.
+	goArgs := append([]string{"test", "-trace=" + tracePath}, in.GoTestArgs...)
+	_, _ = fmt.Fprintf(in.Stdout, "goroscope test: go %s\n", strings.Join(goArgs, " "))
+
+	//nolint:gosec // args originate from the CLI user
+	cmd := exec.CommandContext(ctx, "go", goArgs...)
+	cmd.Stdout = in.Stdout
+	cmd.Stderr = in.Stderr
+	testErr := cmd.Run()
+
+	if testErr != nil {
+		_, _ = fmt.Fprintf(in.Stderr, "goroscope test: go test exited: %v\n", testErr)
+	}
+
+	// Check whether the trace file was written at all.
+	info, statErr := os.Stat(tracePath)
+	if statErr != nil || info.Size() == 0 {
+		if testErr != nil {
+			return fmt.Errorf("go test: %w", testErr)
+		}
+		return fmt.Errorf("go test did not emit a trace file")
+	}
+
+	_, _ = fmt.Fprintf(in.Stdout, "goroscope test: loading trace %s\n", tracePath)
+	capture, err := tracebridge.LoadCaptureFromPath(ctx, tracePath)
+	if err != nil {
+		return fmt.Errorf("load test trace: %w", err)
+	}
+
+	if in.SavePath != "" {
+		if err := tracebridge.SaveCaptureFile(in.SavePath, capture); err != nil {
+			_, _ = fmt.Fprintf(in.Stderr, "goroscope test: save capture: %v\n", err)
+		} else {
+			_, _ = fmt.Fprintf(in.Stderr, "goroscope test: saved capture to %s\n", in.SavePath)
+		}
+	}
+
+	// Derive a session name from the go test arguments for display.
+	sessionName := "test"
+	if len(in.GoTestArgs) > 0 {
+		sessionName = "test " + strings.Join(in.GoTestArgs, " ")
+	}
+
+	return serveCaptureSession(ctx, in.Addr, sessionName, tracePath, capture, in.Stdout, in.OpenBrowser, in.UIPath)
+}
 
 func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("export", flag.ContinueOnError)
