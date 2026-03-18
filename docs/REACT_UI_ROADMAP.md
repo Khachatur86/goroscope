@@ -14,17 +14,9 @@
 - Клавиатура: Ctrl+G, ↑↓
 - Синхронизация URL с фильтрами
 
-### Отсутствует
-| # | Фича | Сложность | Описание |
-|---|------|-----------|----------|
-| 1 | Save PNG | Низкая | Экспорт timeline в PNG |
-| 2 | Zoom to G | Средняя | Зум timeline на выбранную горутину |
-| 3 | Reset zoom | Низкая | Сброс уровня зума |
-| 4 | Fullscreen | Низкая | Полноэкранный режим для timeline |
-| 5 | Minimap | Высокая | Миникарта обзора при зуме |
-| 6 | Related focus | Средняя | Фокус на связанных горутинах |
-| 7 | Heatmap view | Высокая | Переключение lanes ↔ heatmap |
-| 8 | Canvas timeline | ~~Высокая~~ ✓ | Zoom, pan, drag на canvas |
+### Статус
+
+Все фичи из roadmap реализованы (Save PNG, Zoom to G, Reset zoom, Fullscreen, Minimap, Related focus, Heatmap, Canvas timeline).
 
 ---
 

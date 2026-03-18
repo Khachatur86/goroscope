@@ -29,6 +29,7 @@ test:
   stage: test
   script:
     - go test -race ./...
+    - go test -bench=. -benchmem -count=1 ./internal/tracebridge/... ./internal/analysis/...
 
 lint:
   stage: lint

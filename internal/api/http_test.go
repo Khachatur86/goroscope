@@ -1,16 +1,20 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/model"
 	"github.com/Khachatur86/goroscope/internal/session"
+	"github.com/Khachatur86/goroscope/internal/tracebridge"
 )
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -644,4 +648,92 @@ func TestPprofDisabledWhenNotLocalhost(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("GET /debug/pprof/ on 0.0.0.0: got %d, want 404", rec.Code)
 	}
+}
+
+// ─── POST /api/v1/replay/load ──────────────────────────────────────────────────
+
+func TestHandleReplayLoad(t *testing.T) {
+	t.Parallel()
+
+	eng := analysis.NewEngine()
+	mgr := session.NewManager()
+	s := NewServer("127.0.0.1:0", eng, mgr, "")
+	handler := s.routes()
+
+	content := `{"name":"upload-test","events":[{"seq":1,"timestamp":"2026-01-01T00:00:00Z","kind":"goroutine.create","goroutine_id":1},{"seq":2,"timestamp":"2026-01-01T00:00:01Z","kind":"goroutine.state","goroutine_id":1,"state":"RUNNING"}]}`
+
+	var body bytes.Buffer
+	mpw := multipart.NewWriter(&body)
+	part, _ := mpw.CreateFormFile("file", "test.gtrace")
+	_, _ = part.Write([]byte(content))
+	_ = mpw.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/replay/load", &body)
+	req.Header.Set("Content-Type", mpw.FormDataContentType())
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["status"] != "ok" {
+		t.Errorf("status = %v, want ok", resp["status"])
+	}
+	if resp["session_id"] == nil || resp["session_id"] == "" {
+		t.Error("expected session_id in response")
+	}
+}
+
+// ─── GET /api/v1/goroutines/{id}/stack-at ──────────────────────────────────────
+
+func TestHandleGoroutineStackAt(t *testing.T) {
+	t.Parallel()
+
+	capture, err := tracebridge.LoadDemoCapture()
+	if err != nil {
+		t.Fatalf("load demo capture: %v", err)
+	}
+	eng := analysis.NewEngine()
+	mgr := session.NewManager()
+	sess := mgr.StartSession("test", "demo")
+	capture = tracebridge.BindCaptureSession(capture, sess.ID)
+	eng.LoadCapture(sess, capture)
+	s := NewServer("127.0.0.1:0", eng, mgr, "")
+	handler := s.routes()
+
+	// Demo has stacks; use a timestamp well after the last event (2026-03-14T12:00:02Z)
+	// 2026-03-14 12:00:03 UTC in Unix nanoseconds
+	ns := time.Date(2026, 3, 14, 12, 0, 3, 0, time.UTC).UnixNano()
+
+	t.Run("returns stack when found", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/goroutines/42/stack-at?ns="+strconv.FormatInt(ns, 10))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+		}
+		var snap map[string]any
+		decodeJSON(t, rec, &snap)
+		frames, ok := snap["frames"].([]any)
+		if !ok || len(frames) == 0 {
+			t.Errorf("expected frames array, got %v", snap["frames"])
+		}
+	})
+
+	t.Run("returns 404 when no stack at time", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/goroutines/42/stack-at?ns=0")
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+	})
+
+	t.Run("returns 400 when ns missing", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/goroutines/42/stack-at")
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+	})
 }

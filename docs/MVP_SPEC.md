@@ -760,14 +760,11 @@ MVP is done when all conditions hold:
 
 ---
 
-## 16. Immediate Next Steps
+## 16. Post-MVP Next Steps
 
-Recommended order:
+MVP is complete. Future directions (see [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md) and [TASKS.md](TASKS.md)):
 
-1. implement `internal/model/event.go` and `internal/analysis/state_machine.go`
-2. build a fake event generator to unblock UI before real runtime trace integration
-3. implement collector + REST/WS contracts
-4. build timeline UI against fake data
-5. replace fake generator with real trace bridge
-
-This order reduces integration risk and lets UI/API progress before the hardest runtime integration is complete.
+- Export CSV/JSON for analysis (pandas, Perfetto)
+- Benchmarks and frontend tests in CI
+- VS Code extension publish, Homebrew formula
+- Improved deadlock root-cause detection

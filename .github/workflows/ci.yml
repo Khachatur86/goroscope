@@ -40,6 +40,9 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+      - name: Benchmarks
+        run: go test -bench=. -benchmem -count=1 ./internal/tracebridge/... ./internal/analysis/...
+
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:
