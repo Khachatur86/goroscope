@@ -1,0 +1,129 @@
+# GoReleaser v2 configuration for goroscope.
+# Docs: https://goreleaser.com/customization/
+version: 2
+
+# ── Pre-release hooks ──────────────────────────────────────────────────────────
+before:
+  hooks:
+    # Build the React UI so web/dist/ is ready to bundle into archives.
+    - make web
+
+# ── Builds ────────────────────────────────────────────────────────────────────
+builds:
+  - id: goroscope
+    main: ./cmd/goroscope
+    binary: goroscope
+    # Embed version string from the git tag.
+    ldflags:
+      - -s -w -X github.com/Khachatur86/goroscope/internal/version.Version={{.Version}}
+    flags:
+      - -trimpath
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # No Windows ARM64 target — too niche for a dev-tool.
+      - goos: windows
+        goarch: arm64
+
+# ── Archives ──────────────────────────────────────────────────────────────────
+archives:
+  - id: goroscope
+    name_template: "goroscope_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    # Bundle the React UI and docs alongside the binary so users can run
+    # `goroscope run -ui=react -ui-path=web/dist`.
+    files:
+      - README.md
+      - LICENSE
+      - src: web/dist/**
+        dst: web/dist
+        strip_parent: false
+
+# ── Checksums ─────────────────────────────────────────────────────────────────
+checksum:
+  name_template: "goroscope_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+# ── Changelog ─────────────────────────────────────────────────────────────────
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: "New Features"
+      regexp: "^feat"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^fix"
+      order: 1
+    - title: "Other Changes"
+      order: 999
+
+# ── GitHub Release ────────────────────────────────────────────────────────────
+release:
+  github:
+    owner: Khachatur86
+    name: goroscope
+  draft: false
+  prerelease: auto
+  name_template: "goroscope {{.Tag}}"
+  footer: |
+    ## Installation
+
+    **Homebrew (macOS/Linux):**
+    ```sh
+    brew install Khachatur86/goroscope/goroscope
+    ```
+
+    **go install** (vanilla UI, no React build required):
+    ```sh
+    go install github.com/Khachatur86/goroscope/cmd/goroscope@{{.Tag}}
+    ```
+
+    **Manual download:** pick the archive for your OS/arch above.
+
+# ── Homebrew tap ──────────────────────────────────────────────────────────────
+# Requires a separate repo: github.com/Khachatur86/homebrew-goroscope
+# Create it once, then every tagged release auto-updates the formula.
+brews:
+  - name: goroscope
+    homepage: "https://github.com/Khachatur86/goroscope"
+    description: "Local Go concurrency debugger — goroutine lifecycle, blocking, channels, and mutex interactions on an interactive timeline."
+    license: "MIT"
+    repository:
+      owner: Khachatur86
+      name: homebrew-goroscope
+      branch: main
+      # Set HOMEBREW_TAP_TOKEN in repo secrets (a PAT with repo write access
+      # to homebrew-goroscope). See docs/distribution.md for setup instructions.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    install: |
+      bin.install "goroscope"
+      # Bundle React UI alongside the binary for -ui=react support.
+      (prefix/"web/dist").install Dir["web/dist/*"]
+    test: |
+      system "#{bin}/goroscope", "version"
+
+# ── Announce ──────────────────────────────────────────────────────────────────
+# (Slack/Discord announce can be added here when ready)

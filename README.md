@@ -4,18 +4,37 @@ Goroscope is a local Go concurrency debugger that captures runtime trace events 
 
 ## Install
 
+**Homebrew (macOS / Linux):**
+
+```bash
+brew install Khachatur86/goroscope/goroscope
+```
+
+The Homebrew formula bundles the React UI — `goroscope ui -ui=react` works out of the box.
+
+**go install** (vanilla UI, no React build required):
+
 ```bash
 go install github.com/Khachatur86/goroscope/cmd/goroscope@latest
 ```
 
-Or download a pre-built binary from [Releases](https://github.com/Khachatur86/goroscope/releases) (includes React UI).
+The binary embeds the vanilla UI and is fully self-contained. The React UI requires the `web/dist/` directory; use the Homebrew formula or a release archive if you need it.
 
-Or build from source:
+**Release archives** (Linux / macOS / Windows, React UI included):
+
+Download the archive for your OS/arch from [Releases](https://github.com/Khachatur86/goroscope/releases), extract it, and put the `goroscope` binary on your `PATH`. Each archive contains `web/dist/` so you can run:
+
+```bash
+goroscope ui -ui=react -ui-path=web/dist -open-browser
+```
+
+**Build from source:**
 
 ```bash
 git clone https://github.com/Khachatur86/goroscope
 cd goroscope
-make build
+make build          # vanilla UI only
+make web && make build  # includes React UI
 # Binary: bin/goroscope
 ```
 
@@ -138,6 +157,8 @@ All arguments after goroscope's own flags (`-addr`, `-open-browser`, `-ui`, `-ui
 | `GET /api/v1/processor-timeline` | GMP processor timeline (for scheduler view) |
 | `POST /api/v1/replay/load` | Load .gtrace file (multipart form field `file`) |
 | `POST /api/v1/compare` | Compare two .gtrace files (multipart `file_a`, `file_b`); returns baseline, compare, and diff |
+| `GET /api/v1/goroutines/groups` | Goroutine groups. Query: `by` (function\|package\|parent_id\|label), `label_key` |
+| `GET /api/v1/smart-insights` | Ranked actionable findings (deadlock, leak, contention, blocking, count) |
 | `GET /api/v1/stream` | Server-Sent Events for live updates |
 
 Open the UI with `?goroutine=123` to auto-select that goroutine. The URL updates when you select a different one (shareable links).

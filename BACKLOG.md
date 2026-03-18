@@ -243,15 +243,9 @@
 
 ---
 
-### E-3. Homebrew / go install дистрибуция (P1)
+### ~~E-3. Homebrew / go install дистрибуция~~ — ✅ РЕАЛИЗОВАНО (2026-03-19)
 
-**Gap:** Установка только через скачивание бинарника из releases. Нет `go install` или `brew install`.
-
-**Потребность гоферов:** Стандартные каналы дистрибуции для Go-инструментов.
-
-**Задача:** Настроить `goreleaser` для автоматической публикации в Homebrew tap и `go install github.com/...@latest`.
-
-**Критерий готовности:** `brew install goroscope` и `go install github.com/.../cmd/goroscope@latest` работают.
+> **Реализовано:** `.goreleaser.yaml` (v2) — builds for linux/darwin/windows × amd64/arm64, pre-hook `make web`, archives bundle `web/dist/`, sha256 checksums. Homebrew formula auto-published to `Khachatur86/homebrew-goroscope` tap via `HOMEBREW_TAP_TOKEN`. `.github/workflows/release.yml` переписан на `goreleaser/goreleaser-action@v6`. README расширен: `brew install`, `go install`, и manual archive sections.
 
 ---
 
@@ -310,7 +304,7 @@
 | C-3 | Smart Insights (автоматические рекомендации) | P1 | UX | M | ✅ Done |
 | C-4 | Time Range Selection | P1 | UX | M | ⚠️ Partial |
 | C-5 | Документация для пользователей | P1 | UX | M | Открыта |
-| E-3 | Homebrew / go install дистрибуция | P1 | DevEx | S | Открыта |
+| E-3 | Homebrew / go install дистрибуция | P1 | DevEx | S | ✅ Done |
 | E-4 | Frontend smoke tests | P1 | DevEx | S | ✅ Done |
 | F-1 | Перейти на x/exp/trace reader | P1 | Код | M | Открыта |
 | F-3 | Structured logging audit | P1 | Код | S | ✅ Done |
