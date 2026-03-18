@@ -40,13 +40,13 @@ Or `make ui-react` (builds + web + runs).
 
 This repository contains a working local MVP built around `runtime/trace`:
 
-- Go CLI with `run`, `collect`, `ui`, `replay`, and `version` commands
+- Go CLI with `run`, `collect`, `ui`, `replay`, `check`, and `version` commands
 - cooperative trace capture via the `agent` package
 - trace parsing and normalization in `internal/tracebridge`
 - in-memory analysis engine and session manager
 - local REST + SSE API with an embedded browser UI under `internal/api/ui`
 - VS Code extension with Session panel and open-in-editor from stack frames
-- React UI scaffold in `web/` (Vite + TypeScript) — run `make web` to build
+- React UI in `web/` (Vite + TypeScript) — run `make web` to build
 - product specification and architecture notes under `docs/`
 
 ## Runtime Trace Demo
@@ -79,6 +79,7 @@ This starts the local UI immediately, runs the target, and refreshes the timelin
 | `collect` | Load demo data and serve UI                      |
 | `ui`      | Load demo data and serve UI                      |
 | `replay`  | Load a .gtrace capture file and serve UI         |
+| `check`   | Analyze capture for deadlock hints; exit 1 if found (for CI) |
 | `version` | Print version                                    |
 | `help`    | Show usage                                       |
 
@@ -100,8 +101,14 @@ goroscope run -h
 | `GET /api/v1/goroutines` | List goroutines. Query: `state`, `reason`, `search`, `min_wait_ns`, `limit`, `offset` |
 | `GET /api/v1/goroutines/{id}` | Goroutine details |
 | `GET /api/v1/goroutines/{id}/children` | Child goroutines (spawned by this one) |
+| `GET /api/v1/goroutines/{id}/stack-at?ns=...` | Stack snapshot at given nanosecond (for segment inspection) |
 | `GET /api/v1/insights` | Long-blocked goroutines. Query: `min_wait_ns` (default 1s) |
 | `GET /api/v1/timeline` | Timeline segments. Query: `state`, `reason`, `search` |
+| `GET /api/v1/resources/graph` | Resource dependency graph |
+| `GET /api/v1/deadlock-hints` | Deadlock analysis hints |
+| `GET /api/v1/processor-timeline` | GMP processor timeline (for scheduler view) |
+| `POST /api/v1/replay/load` | Load .gtrace file (multipart form field `file`) |
+| `GET /api/v1/stream` | Server-Sent Events for live updates |
 
 Open the UI with `?goroutine=123` to auto-select that goroutine. The URL updates when you select a different one (shareable links).
 
@@ -128,6 +135,6 @@ internal/model          Core domain types
 internal/session        Session lifecycle
 internal/tracebridge    Runtime trace execution, parsing, and replay
 vscode/                 VS Code extension
-web/                    Future React frontend scaffold
+web/                    React frontend (Vite + TypeScript)
 docs/                   Product and architecture docs
 ```
