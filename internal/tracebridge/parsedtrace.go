@@ -442,7 +442,7 @@ func (b *parsedTraceBuilder) appendTransition(transition parsedTransition) error
 		}
 	}
 
-	keep := b.keptGoroutine[transition.GoID] || hasUserFrame(transition.Stack)
+	keep := b.keptGoroutine[transition.GoID] || hasUserFrame(transition.Stack) || transition.GoID == 1
 	if !keep {
 		return nil
 	}

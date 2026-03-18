@@ -227,7 +227,8 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage: goroscope replay [flags] <capture-file>\n\n")
-		_, _ = fmt.Fprintf(stderr, "Load a .gtrace capture file and serve the UI.\n\n")
+		_, _ = fmt.Fprintf(stderr, "Load a capture file and serve the UI. Supports .gtrace (JSON) and raw Go trace\n")
+		_, _ = fmt.Fprintf(stderr, "(e.g. from go test -trace=file.out). Without agent: go test -trace=out ./pkg && goroscope replay out\n\n")
 		fs.PrintDefaults()
 	}
 
@@ -247,7 +248,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		target = fs.Arg(0)
 	}
 
-	capture, err := tracebridge.LoadCaptureFile(target)
+	capture, err := tracebridge.LoadCaptureFromPath(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -260,7 +261,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout, *openBrowser, uiPathResolved)
 }
 
-func checkCommand(_ context.Context, args []string, stdout, stderr io.Writer) error {
+func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
@@ -280,7 +281,7 @@ func checkCommand(_ context.Context, args []string, stdout, stderr io.Writer) er
 	}
 	target := fs.Arg(0)
 
-	capture, err := tracebridge.LoadCaptureFile(target)
+	capture, err := tracebridge.LoadCaptureFromPath(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -311,7 +312,7 @@ func checkCommand(_ context.Context, args []string, stdout, stderr io.Writer) er
 
 var errDeadlockHints = fmt.Errorf("potential deadlocks detected")
 
-func exportCommand(_ context.Context, args []string, stdout, stderr io.Writer) error {
+func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("export", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	format := fs.String("format", "csv", "Output format: csv or json")
@@ -330,7 +331,7 @@ func exportCommand(_ context.Context, args []string, stdout, stderr io.Writer) e
 		return fmt.Errorf("missing capture file; usage: goroscope export [flags] <capture-file>")
 	}
 
-	capture, err := tracebridge.LoadCaptureFile(fs.Arg(0))
+	capture, err := tracebridge.LoadCaptureFromPath(ctx, fs.Arg(0))
 	if err != nil {
 		return err
 	}

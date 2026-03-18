@@ -80,7 +80,7 @@ This starts the local UI immediately, runs the target, and refreshes the timelin
 | `run`     | Run a Go program with live trace capture         |
 | `collect` | Load demo data and serve UI                      |
 | `ui`      | Load demo data and serve UI                      |
-| `replay`  | Load a .gtrace capture file and serve UI         |
+| `replay`  | Load .gtrace or raw Go trace (e.g. go test -trace) and serve UI |
 | `check`   | Analyze capture for deadlock hints; exit 1 if found (for CI) |
 | `export`  | Export timeline segments to CSV or JSON (for pandas, analysis) |
 | `version` | Print version                                    |
@@ -96,6 +96,8 @@ goroscope export --format=json capture.gtrace  # JSON with segments
 ## Troubleshooting
 
 **"target did not emit a runtime trace"** — The target must import `github.com/Khachatur86/goroscope/agent` and call `agent.StartFromEnv()` in `main`. See `examples/trace_demo` and `examples/worker_pool`.
+
+**Without agent** — Use `go test -trace=out ./pkg` to produce a raw trace, then `goroscope replay out` or `goroscope export --format=csv out` to inspect it.
 
 **"Cannot connect to Goroscope"** (VS Code) — Ensure goroscope is running (`goroscope run ...` or `goroscope ui`). Check `goroscope.addr` in VS Code settings.
 

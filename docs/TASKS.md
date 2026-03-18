@@ -8,7 +8,7 @@
 
 ### Task 1.1: Релиз v0.1.0
 - [x] Обновить CHANGELOG: `[Unreleased]` → `[0.1.0]` с датой
-- [ ] Создать тег `v0.1.0`: `git tag v0.1.0 && git push origin v0.1.0`
+- [x] Создать тег `v0.1.0`: `git tag v0.1.0 && git push origin v0.1.0`
 
 ### Task 1.2: Обновить REACT_UI_ROADMAP.md
 - [x] Удалить таблицу «Отсутствует» или пометить все пункты как выполненное
@@ -86,9 +86,9 @@
 ## Фаза 6: go test -trace поддержка (TDD, опционально)
 
 ### Task 6.1: Загрузка трейса из go test
-- [ ] **Red**: Тест — `go test -trace=trace.out ./pkg` создаёт trace.out, `goroscope replay trace.out` загружает
-- [ ] **Green**: Проверить совместимость формата; при необходимости адаптер
-- [ ] Документация: «Без agent: go test -trace && goroscope replay»
+- [x] **Red**: Тест — `go test -trace=trace.out ./pkg` создаёт trace.out, `goroscope replay trace.out` загружает
+- [x] **Green**: LoadCaptureFromPath — JSON (.gtrace) или raw trace (go tool trace -d=parsed)
+- [x] Документация: «Без agent: go test -trace && goroscope replay»
 
 ---
 

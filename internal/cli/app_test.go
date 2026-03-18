@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -96,6 +97,36 @@ func TestRun_Check_MissingFile(t *testing.T) {
 	err := Run(context.Background(), []string{"check", "/nonexistent/path.gtrace"}, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("expected error for missing file")
+	}
+}
+
+func TestRun_Replay_RawTrace(t *testing.T) {
+	modRoot, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}").Output()
+	if err != nil {
+		t.Skipf("cannot get module root: %v", err)
+	}
+	root := strings.TrimSpace(string(modRoot))
+	if root == "" {
+		t.Skip("module root is empty")
+	}
+
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace.out")
+
+	cmd := exec.Command("go", "test", "-trace="+tracePath, "-count=1", "./testdata/tracepkg")
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("go test -trace failed: %v\n%s", err, out)
+	}
+
+	var stdout, stderr bytes.Buffer
+	// Use export (not replay) — same LoadCaptureFromPath path, and replay would block on HTTP server.
+	err = Run(context.Background(), []string{"export", "--format=csv", tracePath}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("goroscope export trace.out: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "goroutine_id") {
+		t.Errorf("expected CSV header in output, got: %s", stdout.String())
 	}
 }
 

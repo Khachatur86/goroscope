@@ -1,7 +1,9 @@
 package tracebridge
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -95,6 +97,35 @@ func TestLoadCaptureFile_EmptyEvents(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no events") {
 		t.Fatalf("expected no-events error, got %v", err)
+	}
+}
+
+func TestLoadCaptureFromPath_RawTrace(t *testing.T) {
+	modRoot, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}").Output()
+	if err != nil {
+		t.Skipf("cannot get module root: %v", err)
+	}
+	root := strings.TrimSpace(string(modRoot))
+	if root == "" {
+		t.Skip("module root is empty")
+	}
+
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace.out")
+
+	cmd := exec.Command("go", "test", "-trace="+tracePath, "-count=1", "./testdata/tracepkg")
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("go test -trace failed (need Go toolchain): %v\n%s", err, out)
+	}
+
+	ctx := context.Background()
+	capture, err := LoadCaptureFromPath(ctx, tracePath)
+	if err != nil {
+		t.Fatalf("LoadCaptureFromPath(trace.out): %v", err)
+	}
+	if len(capture.Events) == 0 {
+		t.Error("expected at least one event from go test trace")
 	}
 }
 

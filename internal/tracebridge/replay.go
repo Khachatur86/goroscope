@@ -1,6 +1,7 @@
 package tracebridge
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -22,7 +23,7 @@ func LoadDemoCapture() (model.Capture, error) {
 	return decodeCapture(data)
 }
 
-// LoadCaptureFile reads and deserialises a capture from a .gtrace file.
+// LoadCaptureFile reads and deserialises a capture from a .gtrace (JSON) file.
 func LoadCaptureFile(path string) (model.Capture, error) {
 	//nolint:gosec // path validated by caller
 	data, err := os.ReadFile(path)
@@ -31,6 +32,21 @@ func LoadCaptureFile(path string) (model.Capture, error) {
 	}
 
 	return decodeCapture(data)
+}
+
+// LoadCaptureFromPath loads a capture from a file. Supports:
+// - .gtrace (JSON) — goroscope capture format
+// - raw Go trace (e.g. from go test -trace=file.out) — parsed via go tool trace
+func LoadCaptureFromPath(ctx context.Context, path string) (model.Capture, error) {
+	//nolint:gosec // path validated by caller
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return model.Capture{}, fmt.Errorf("read capture file %q: %w", path, err)
+	}
+	if len(data) > 0 && data[0] == '{' {
+		return decodeCapture(data)
+	}
+	return BuildCaptureFromRawTrace(ctx, path)
 }
 
 // LoadCaptureFromBytes decodes a capture from raw JSON bytes (e.g. from an upload).
