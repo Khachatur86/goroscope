@@ -164,6 +164,17 @@ export function CompareView({ onClose }: CompareViewProps) {
   const baselineListRef = useRef<FixedSizeList>(null);
   const compareListRef = useRef<FixedSizeList>(null);
 
+  // React Hooks must be called in a consistent order.
+  // Previously this component returned early when `data === null`,
+  // which caused a "Rendered more hooks than during the previous render" crash
+  // once `data` was set.
+  const safeData = (data ??
+    ({
+      baseline: { goroutines: [], timeline: [] },
+      compare: { goroutines: [], timeline: [] },
+      diff: { goroutine_deltas: {}, only_in_baseline: [], only_in_compare: [] },
+    }) as CompareData);
+
   const handleBaselineScroll = useCallback(
     (info: { scrollOffset: number; scrollUpdateWasRequested?: boolean }) => {
       if (info.scrollUpdateWasRequested) return;
@@ -230,74 +241,33 @@ export function CompareView({ onClose }: CompareViewProps) {
     setDiffFilter("all");
   }, []);
 
-  if (!data) {
-    return (
-      <div className="compare-modal">
-        <div className="compare-modal-content">
-          <h2>Compare captures</h2>
-          <p className="compare-modal-desc">Select two .gtrace files to compare baseline vs compare.</p>
-          <div className="compare-file-inputs">
-            <div className="compare-file-group">
-              <label htmlFor="compare-file-a">Baseline (before)</label>
-              <input
-                id="compare-file-a"
-                type="file"
-                accept=".gtrace,.json"
-                onChange={handleFileA}
-              />
-              <span className="compare-file-name">{fileA?.name ?? "—"}</span>
-            </div>
-            <div className="compare-file-group">
-              <label htmlFor="compare-file-b">Compare (after)</label>
-              <input
-                id="compare-file-b"
-                type="file"
-                accept=".gtrace,.json"
-                onChange={handleFileB}
-              />
-              <span className="compare-file-name">{fileB?.name ?? "—"}</span>
-            </div>
-          </div>
-          {error && <p className="compare-error" role="alert">{error}</p>}
-          <div className="compare-modal-actions">
-            <button type="button" className="action-button secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="action-button"
-              onClick={handleCompare}
-              disabled={loading || !fileA || !fileB}
-            >
-              {loading ? "Comparing…" : "Compare"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const unifiedRows = useMemo(
-    () => buildUnifiedRows(data.baseline.goroutines, data.compare.goroutines),
-    [data.baseline.goroutines, data.compare.goroutines]
+    () => buildUnifiedRows(safeData.baseline.goroutines, safeData.compare.goroutines),
+    [safeData.baseline.goroutines, safeData.compare.goroutines]
   );
 
   const filteredRows = useMemo(() => {
     if (diffFilter === "all") return unifiedRows;
     return unifiedRows.filter((row) => {
-      const delta = data.diff.goroutine_deltas[String(row.id)];
+      const delta = safeData.diff.goroutine_deltas[String(row.id)];
       if (!delta) return false;
       return delta.status === diffFilter;
     });
-  }, [unifiedRows, diffFilter, data.diff.goroutine_deltas]);
+  }, [unifiedRows, diffFilter, safeData.diff.goroutine_deltas]);
 
   const filteredBaselineGoroutines = useMemo(
-    () => data.baseline.goroutines.filter((g) => filteredRows.some((r) => r.baseline?.goroutine_id === g.goroutine_id)),
-    [data.baseline.goroutines, filteredRows]
+    () =>
+      safeData.baseline.goroutines.filter((g) =>
+        filteredRows.some((r) => r.baseline?.goroutine_id === g.goroutine_id)
+      ),
+    [safeData.baseline.goroutines, filteredRows]
   );
   const filteredCompareGoroutines = useMemo(
-    () => data.compare.goroutines.filter((g) => filteredRows.some((r) => r.compare?.goroutine_id === g.goroutine_id)),
-    [data.compare.goroutines, filteredRows]
+    () =>
+      safeData.compare.goroutines.filter((g) =>
+        filteredRows.some((r) => r.compare?.goroutine_id === g.goroutine_id)
+      ),
+    [safeData.compare.goroutines, filteredRows]
   );
 
   useEffect(() => {
@@ -334,15 +304,66 @@ export function CompareView({ onClose }: CompareViewProps) {
   }, [selectedId, filteredRows]);
 
   const diffSummary = useMemo(() => {
-    const deltas = Object.values(data.diff.goroutine_deltas);
+    const deltas = Object.values(safeData.diff.goroutine_deltas);
     return {
       improved: deltas.filter((d) => d.status === "improved").length,
       regressed: deltas.filter((d) => d.status === "regressed").length,
       unchanged: deltas.filter((d) => d.status === "unchanged").length,
-      onlyBaseline: data.diff.only_in_baseline?.length ?? 0,
-      onlyCompare: data.diff.only_in_compare?.length ?? 0,
+      onlyBaseline: safeData.diff.only_in_baseline?.length ?? 0,
+      onlyCompare: safeData.diff.only_in_compare?.length ?? 0,
     };
-  }, [data.diff.goroutine_deltas, data.diff.only_in_baseline, data.diff.only_in_compare]);
+  }, [safeData.diff.goroutine_deltas, safeData.diff.only_in_baseline, safeData.diff.only_in_compare]);
+
+  if (!data) {
+    return (
+      <div className="compare-modal">
+        <div className="compare-modal-content">
+          <h2>Compare captures</h2>
+          <p className="compare-modal-desc">Select two .gtrace files to compare baseline vs compare.</p>
+          <div className="compare-file-inputs">
+            <div className="compare-file-group">
+              <label htmlFor="compare-file-a">Baseline (before)</label>
+              <input
+                id="compare-file-a"
+                type="file"
+                accept=".gtrace,.json"
+                onChange={handleFileA}
+              />
+              <span className="compare-file-name">{fileA?.name ?? "—"}</span>
+            </div>
+            <div className="compare-file-group">
+              <label htmlFor="compare-file-b">Compare (after)</label>
+              <input
+                id="compare-file-b"
+                type="file"
+                accept=".gtrace,.json"
+                onChange={handleFileB}
+              />
+              <span className="compare-file-name">{fileB?.name ?? "—"}</span>
+            </div>
+          </div>
+          {error && (
+            <p className="compare-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="compare-modal-actions">
+            <button type="button" className="action-button secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="action-button"
+              onClick={handleCompare}
+              disabled={loading || !fileA || !fileB}
+            >
+              {loading ? "Comparing…" : "Compare"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="compare-view">
@@ -412,7 +433,7 @@ export function CompareView({ onClose }: CompareViewProps) {
           rows={filteredRows}
           getGoroutine={(r) => r.baseline}
           goroutines={filteredBaselineGoroutines}
-          segments={data.baseline.timeline}
+          segments={safeData.baseline.timeline}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onSelectSegment={(id) => setSelectedId(id)}
@@ -426,7 +447,7 @@ export function CompareView({ onClose }: CompareViewProps) {
           rows={filteredRows}
           getGoroutine={(r) => r.compare}
           goroutines={filteredCompareGoroutines}
-          segments={data.compare.timeline}
+          segments={safeData.compare.timeline}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onSelectSegment={(id) => setSelectedId(id)}

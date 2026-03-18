@@ -1,5 +1,10 @@
 name: CI
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 on:
   push:
     branches: [main, master]
@@ -40,8 +45,78 @@ jobs:
       - name: Test
         run: go test -race ./...
 
-      - name: Benchmarks
+      - name: Benchmarks (non-PR)
+        if: github.event_name != 'pull_request'
         run: go test -bench=. -benchmem -count=1 ./internal/tracebridge/... ./internal/analysis/...
+
+      - name: Checkout base branch
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+          fetch-depth: 1
+
+      - name: Install benchstat
+        if: github.event_name == 'pull_request'
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Run benchmarks (baseline)
+        if: github.event_name == 'pull_request'
+        run: |
+          cd base
+          go test -run=^$ -bench=. -benchmem -count=1 ./internal/tracebridge/... ./internal/analysis/... > ../bench_main.txt
+
+      - name: Run benchmarks (head)
+        if: github.event_name == 'pull_request'
+        run: |
+          go test -run=^$ -bench=. -benchmem -count=1 ./internal/tracebridge/... ./internal/analysis/... > bench_head.txt
+
+      - name: Benchstat diff
+        if: github.event_name == 'pull_request'
+        run: |
+          # Produce a human-readable diff for PR comments.
+          # Regression gating is handled by internal/ci/bench_regression.go.
+          "$(go env GOPATH)/bin/benchstat" bench_main.txt bench_head.txt > benchstat.diff.txt || true
+
+      - name: Check benchmark regressions (>10%)
+        if: github.event_name == 'pull_request'
+        id: bench_regress
+        run: |
+          go run ./internal/ci/bench_regression.go bench_main.txt bench_head.txt --threshold=0.10 --out bench_regression_report.txt
+
+      - name: Comment benchmark regressions
+        if: github.event_name == 'pull_request' && always() && steps.bench_regress.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let report = '(bench regression report not found)';
+            let diff = '(benchstat diff not found)';
+            try { report = fs.readFileSync('bench_regression_report.txt', 'utf8'); } catch (e) {}
+            try { diff = fs.readFileSync('benchstat.diff.txt', 'utf8'); } catch (e) {}
+            const truncatedDiff = diff.slice(0, 60000);
+
+            const body = [
+              '## Benchmarks regression check (>10%)',
+              '',
+              '### Report',
+              '```',
+              report,
+              '```',
+              '',
+              '### benchstat diff (main vs PR)',
+              '```',
+              truncatedDiff,
+              '```'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
 
       - name: Lint
         uses: golangci/golangci-lint-action@v7
