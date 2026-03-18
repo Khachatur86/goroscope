@@ -20,6 +20,7 @@ import { Timeline } from "./timeline/Timeline";
 import { CompareView } from "./compare/CompareView";
 import { ResourceGraph } from "./resource-graph/ResourceGraph";
 import { GoroutineGroups } from "./groups/GoroutineGroups";
+import { SmartInsights } from "./insights/SmartInsights";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
 /** Height of one row in the virtualised goroutine list (px). */
@@ -213,6 +214,7 @@ export function App() {
     setContention(Array.isArray(contentionData) ? contentionData : []);
     setInsights(ins ?? { long_blocked_count: 0, leak_candidates_count: 0 });
     setDeadlockHints(deadlock?.hints ?? []);
+    setDataRevision((v) => v + 1);
   }, [hasGoroutineInURL, filters.state, filters.reason, filters.search, filters.minWaitNs, filters.labelFilter]);
 
   useEffect(() => {
@@ -393,6 +395,7 @@ export function App() {
   const captureInputRef = useRef<HTMLInputElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [streamStatus, setStreamStatus] = useState<"connecting" | "live" | "disconnected">("connecting");
+  const [dataRevision, setDataRevision] = useState(0);
   const [replayUploading, setReplayUploading] = useState(false);
   const [replayError, setReplayError] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -603,6 +606,8 @@ export function App() {
           {replayError}
         </div>
       )}
+
+      <SmartInsights refreshKey={dataRevision} onSelectGoroutine={handleSelect} />
 
       <section className="legend-panel">
         <span className="legend-chip running">RUNNING</span>

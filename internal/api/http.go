@@ -87,6 +87,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/goroutines/{id}", s.handleGoroutineByID)
 	mux.HandleFunc("/api/v1/goroutines/{id}/stack-at", s.handleGoroutineStackAt)
 	mux.HandleFunc("/api/v1/insights", s.handleInsights)
+	mux.HandleFunc("/api/v1/smart-insights", s.handleSmartInsights)
 	mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
 	mux.HandleFunc("/api/v1/processor-timeline", s.handleProcessorTimeline)
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
@@ -470,6 +471,67 @@ func (s *Server) handleInsights(w http.ResponseWriter, r *http.Request) {
 		LongBlocked:         longBlocked,
 		MinWaitNS:           minWaitNS,
 		LeakCandidatesCount: int64(len(leakCandidates)),
+	})
+}
+
+// handleSmartInsights synthesises all analysis primitives into a ranked list
+// of actionable findings.
+//
+// GET /api/v1/smart-insights
+//
+// Optional query params:
+//
+//	leak_threshold_ns      int64  (default 30s)
+//	block_threshold_ns     int64  (default 1s)
+//	contention_min_peak    int    (default 4)
+//	goroutine_count_min    int    (default 1000)
+func (s *Server) handleSmartInsights(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	var leakNS, blockNS int64
+	var contentionMin, goroutineMin int
+
+	if v := q.Get("leak_threshold_ns"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			leakNS = n
+		}
+	}
+	if v := q.Get("block_threshold_ns"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			blockNS = n
+		}
+	}
+	if v := q.Get("contention_min_peak"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			contentionMin = n
+		}
+	}
+	if v := q.Get("goroutine_count_min"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			goroutineMin = n
+		}
+	}
+
+	goroutines := s.engine.ListGoroutines()
+	segments := s.engine.Timeline()
+	edges := s.engine.ResourceGraph()
+	if len(edges) == 0 {
+		edges = analysis.DeriveResourceEdgesFromTimeline(segments, goroutines)
+	}
+
+	insights := analysis.GenerateInsights(analysis.GenerateInsightsInput{
+		Goroutines:           goroutines,
+		Segments:             segments,
+		Edges:                edges,
+		LeakThresholdNS:      leakNS,
+		LongBlockThresholdNS: blockNS,
+		ContentionMinPeak:    contentionMin,
+		GoroutineCountMin:    goroutineMin,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"insights": insights,
+		"total":    len(insights),
 	})
 }
 

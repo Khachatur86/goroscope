@@ -37,6 +37,7 @@
 | Frontend smoke tests (E-4) | ✅ Done | `web/tests/smoke.test.tsx` — 2 теста, html2canvas замокан, CI запускает `npm run test` |
 | Structured logging — нет fmt.Printf/log.Print в production коде (F-3) | ✅ Done | Аудит: `grep` по `internal/`, `cmd/`, `agent/` возвращает 0 hits |
 | Goroutine groups view (C-1) | ✅ Done | `internal/analysis/group.go`, `GET /api/v1/goroutines/groups`, `web/src/groups/` |
+| Smart Insights engine (C-3) | ✅ Done | `internal/analysis/insights.go`, `GET /api/v1/smart-insights`, `web/src/insights/` |
 | Spawn-tree в Inspector (частичная реализация C-2) | ⚠️ Partial | `web/src/inspector/Inspector.tsx` — показывает parent + children в инспекторе, но нет полноценного tree-view и подсветки в timeline |
 | Zoom/pan timeline (частичная реализация C-4) | ⚠️ Partial | `web/src/timeline/TimelineCanvas.tsx` — zoom/pan по скроллу + кнопка «Reset zoom», но нет brush-selection с фильтрацией всех панелей |
 
@@ -146,15 +147,9 @@
 
 ---
 
-### C-3. Автоматические рекомендации (Smart Insights) (P1)
+### ~~C-3. Автоматические рекомендации (Smart Insights)~~ — ✅ РЕАЛИЗОВАНО (2026-03-19)
 
-**Gap:** `check` команда выдаёт deadlock hints, leak detection есть, contention metrics есть. Но нет unified «здесь проблема, вот почему, вот что делать».
-
-**Потребность гоферов:** AI-driven observability — тренд 2025. Автоматическое обнаружение и объяснение проблем, а не просто метрики.
-
-**Задача:** Создать insight engine, который на основе имеющихся анализов (deadlock, leak, contention, diff) генерирует ranked список проблем с severity, описанием и actionable-рекомендациями. Показывать в UI как notification panel.
-
-**Критерий готовности:** При загрузке capture UI показывает top-3 insights: «Potential goroutine leak in worker pool (12 goroutines stuck >30s)», «High mutex contention on resource X (avg wait 45ms, peak 8 waiters)».
+> **Реализовано:** `GET /api/v1/smart-insights` — `analysis.GenerateInsights()` синтезирует deadlock/leak/contention/blocking/goroutine-count в ranked список findings (score 0–100, severity critical/warning/info, actionable recommendations). Компонент `SmartInsights` отображается баннером под header: collapsible карточки с иконкой severity, badge critical/warning, G-id бэджи для перехода в инспектор, кнопка Dismiss.
 
 ---
 
@@ -305,14 +300,14 @@
 | ID | Задача | Приоритет | Категория | Effort | Статус |
 |----|--------|-----------|-----------|--------|--------|
 | A-1 | Стриминговый парсинг трейсов | P0 | Масштабируемость | L | Открыта |
-| C-1 | Агрегированный вид goroutine-групп | P0 | UX | M | Открыта |
+| C-1 | Агрегированный вид goroutine-групп | P0 | UX | M | ✅ Done |
 | B-1 | OpenTelemetry trace correlation | P1 | Интеграция | L | Открыта |
 | E-1 | `go test -trace` интеграция | P1 | DevEx | S | ✅ Done |
 | A-2 | Масштабирование UI до 100k goroutines | P1 | Масштабируемость | L | Открыта |
 | A-3 | Benchmark regression tracking в CI | P1 | Масштабируемость | S | ✅ Done |
 | B-2 | Flight Recorder интеграция (Go 1.25+) | P1 | Интеграция | L | Открыта |
 | C-2 | Визуализация parent-child иерархии | P1 | UX | M | ⚠️ Partial |
-| C-3 | Smart Insights (автоматические рекомендации) | P1 | UX | M | Открыта |
+| C-3 | Smart Insights (автоматические рекомендации) | P1 | UX | M | ✅ Done |
 | C-4 | Time Range Selection | P1 | UX | M | ⚠️ Partial |
 | C-5 | Документация для пользователей | P1 | UX | M | Открыта |
 | E-3 | Homebrew / go install дистрибуция | P1 | DevEx | S | Открыта |

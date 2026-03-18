@@ -191,6 +191,47 @@ export async function uploadReplayCapture(file: File): Promise<{ status: string;
   return res.json();
 }
 
+export type InsightSeverity = "critical" | "warning" | "info";
+export type InsightKind =
+  | "deadlock"
+  | "leak"
+  | "contention"
+  | "blocking"
+  | "goroutine_count";
+
+export type Insight = {
+  id: string;
+  kind: InsightKind;
+  severity: InsightSeverity;
+  score: number;
+  title: string;
+  description: string;
+  recommendation: string;
+  goroutine_ids?: number[];
+  resource_ids?: string[];
+};
+
+export type SmartInsightsResponse = {
+  insights: Insight[];
+  total: number;
+};
+
+export async function fetchSmartInsights(params?: {
+  leak_threshold_ns?: string;
+  block_threshold_ns?: string;
+  contention_min_peak?: number;
+  goroutine_count_min?: number;
+}): Promise<SmartInsightsResponse> {
+  const q = new URLSearchParams();
+  if (params?.leak_threshold_ns) q.set("leak_threshold_ns", params.leak_threshold_ns);
+  if (params?.block_threshold_ns) q.set("block_threshold_ns", params.block_threshold_ns);
+  if (params?.contention_min_peak) q.set("contention_min_peak", String(params.contention_min_peak));
+  if (params?.goroutine_count_min) q.set("goroutine_count_min", String(params.goroutine_count_min));
+  const query = q.toString();
+  const path = `/api/v1/smart-insights${query ? `?${query}` : ""}`;
+  return fetchJson<SmartInsightsResponse>(path).catch(() => ({ insights: [], total: 0 }));
+}
+
 export type GoroutineGroup = {
   key: string;
   by: string;

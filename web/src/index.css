@@ -1458,3 +1458,199 @@ body {
   background: #1e3a5f;
   border-color: #4da6ff;
 }
+
+/* ── Smart Insights banner ───────────────────────────────────────── */
+
+.smart-insights-banner {
+  margin: 0 1.5rem 0.75rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.smart-insights-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #1e293b;
+  gap: 0.5rem;
+}
+
+.smart-insights-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.smart-insights-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.03em;
+}
+
+.smart-insights-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 0.1rem 0.45rem;
+}
+
+.badge-critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.smart-insights-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.smart-insights-refresh,
+.smart-insights-dismiss {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.smart-insights-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Individual insight card ─────────────────────────────────────── */
+
+.insight-card {
+  border-top: 1px solid transparent;
+}
+
+.insight-card + .insight-card {
+  border-top-color: #1e293b;
+}
+
+.insight-card--critical .insight-card-header {
+  border-left: 3px solid #ef4444;
+}
+
+.insight-card--warning .insight-card-header {
+  border-left: 3px solid #f59e0b;
+}
+
+.insight-card--info .insight-card-header {
+  border-left: 3px solid #3b82f6;
+}
+
+.insight-card-header {
+  width: 100%;
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  padding: 0.45rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  color: #e2e8f0;
+  transition: background 0.1s;
+}
+
+.insight-card-header:hover {
+  background: #1a2537;
+}
+
+.insight-severity-icon {
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.insight-kind-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+.insight-title {
+  flex: 1;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-expand-icon {
+  font-size: 0.65rem;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.insight-card-body {
+  padding: 0.5rem 0.75rem 0.6rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.insight-description {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.insight-recommendation {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.insight-goroutines,
+.insight-resources {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.insight-goroutines-label {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+.insight-goroutine-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.insight-goroutines-overflow {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.insight-resource-tag {
+  font-size: 0.7rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  color: #94a3b8;
+  font-family: ui-monospace, monospace;
+}
