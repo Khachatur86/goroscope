@@ -8,11 +8,11 @@ import (
 
 // ResourceContention holds contention metrics for a single resource.
 type ResourceContention struct {
-	ResourceID         string  `json:"resource_id"`
-	PeakWaiters        int     `json:"peak_waiters"`
-	SegmentCount       int     `json:"segment_count"`
-	TotalWaitNS        int64   `json:"total_wait_ns"`
-	AvgWaitNS          float64 `json:"avg_wait_ns"`
+	ResourceID   string  `json:"resource_id"`
+	PeakWaiters  int     `json:"peak_waiters"`
+	SegmentCount int     `json:"segment_count"`
+	TotalWaitNS  int64   `json:"total_wait_ns"`
+	AvgWaitNS    float64 `json:"avg_wait_ns"`
 }
 
 // ComputeResourceContention derives contention metrics from timeline segments.
@@ -60,7 +60,7 @@ func peakConcurrent(segs []segBounds) int {
 	}
 	// Sweep line: collect all start/end events, sort by time
 	type event struct {
-		ns   int64
+		ns    int64
 		delta int // +1 for start, -1 for end
 	}
 	var events []event

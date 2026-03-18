@@ -175,7 +175,7 @@ type goroutineListParams struct {
 	State     model.GoroutineState
 	Reason    model.BlockingReason
 	Search    string
-	MinWaitNS int64 // filter goroutines in wait state with WaitNS >= MinWaitNS
+	MinWaitNS int64  // filter goroutines in wait state with WaitNS >= MinWaitNS
 	Label     string // key=value for pprof label filter
 	Limit     int
 	Offset    int

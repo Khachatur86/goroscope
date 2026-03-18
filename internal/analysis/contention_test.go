@@ -25,9 +25,10 @@ func TestComputeResourceContention(t *testing.T) {
 	// chan:0x1: peak = 3 (all three overlap at 75-100), 3 segments, total 100+100+50=250, avg 250/3
 	var chanRes, mutexRes *ResourceContention
 	for i := range out {
-		if out[i].ResourceID == "chan:0x1" {
+		switch out[i].ResourceID {
+		case "chan:0x1":
 			chanRes = &out[i]
-		} else if out[i].ResourceID == "mutex:0x2" {
+		case "mutex:0x2":
 			mutexRes = &out[i]
 		}
 	}
