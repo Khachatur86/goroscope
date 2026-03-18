@@ -109,6 +109,18 @@ func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
 				e.goroutines[goID] = g
 			}
 		}
+		// Merge label overrides (e.g. from agent.WithRequestID).
+		for goID, labels := range capture.LabelOverrides {
+			if g, ok := e.goroutines[goID]; ok && len(labels) > 0 {
+				if g.Labels == nil {
+					g.Labels = make(map[string]string, len(labels))
+				}
+				for k, v := range labels {
+					g.Labels[k] = v
+				}
+				e.goroutines[goID] = g
+			}
+		}
 	}()
 
 	e.notifySubscribers()

@@ -17,4 +17,7 @@ type Capture struct {
 	// ProcessorSegments records intervals when a goroutine ran on a specific
 	// logical processor (P).  Populated by the trace parser from P= fields.
 	ProcessorSegments []ProcessorSegment `json:"processor_segments,omitempty"`
+	// LabelOverrides merges into goroutine Labels (e.g. from agent.WithRequestID).
+	// Keys are goroutine IDs; values are label key-value pairs to merge.
+	LabelOverrides map[int64]Labels `json:"label_overrides,omitempty"`
 }

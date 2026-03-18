@@ -365,6 +365,20 @@ body {
   font-size: 0.9rem;
 }
 
+.inspector-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.inspector-label-pair {
+  padding: 0.2rem 0.5rem;
+  background: rgba(51, 65, 85, 0.6);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: ui-monospace, monospace;
+}
+
 .inspector-goroutine-id {
   display: flex;
   align-items: center;

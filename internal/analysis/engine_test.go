@@ -242,3 +242,40 @@ func TestEngine_IgnoresStackSnapshotForUnknownGoroutine(t *testing.T) {
 		t.Fatal("expected stack to be stored")
 	}
 }
+
+func TestLoadCapture_MergesLabelOverrides(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine()
+	base := time.Date(2026, time.March, 14, 12, 0, 0, 0, time.UTC)
+	session := &model.Session{
+		ID:        "sess_labels",
+		Name:      "labels",
+		Target:    "demo://labels",
+		Status:    model.SessionStatusRunning,
+		StartedAt: base,
+	}
+
+	capture := model.Capture{
+		Name: "test",
+		Events: []model.Event{
+			{Kind: model.EventKindGoroutineCreate, GoroutineID: 42, Timestamp: base, Labels: model.Labels{"function": "main.handler"}},
+			{Kind: model.EventKindGoroutineStart, GoroutineID: 42, Timestamp: base},
+		},
+		LabelOverrides: map[int64]model.Labels{
+			42: {"request_id": "req-abc-123"},
+		},
+	}
+	engine.LoadCapture(session, capture)
+
+	g, ok := engine.GetGoroutine(42)
+	if !ok {
+		t.Fatal("expected goroutine 42")
+	}
+	if got := g.Labels["function"]; got != "main.handler" {
+		t.Errorf("Labels[function] = %q, want main.handler", got)
+	}
+	if got := g.Labels["request_id"]; got != "req-abc-123" {
+		t.Errorf("Labels[request_id] = %q, want req-abc-123", got)
+	}
+}

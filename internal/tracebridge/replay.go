@@ -71,6 +71,17 @@ func BindCaptureSession(capture model.Capture, sessionID string) model.Capture {
 		}
 	}
 
+	if len(capture.LabelOverrides) > 0 {
+		bound.LabelOverrides = make(map[int64]model.Labels, len(capture.LabelOverrides))
+		for goID, labels := range capture.LabelOverrides {
+			cp := make(model.Labels, len(labels))
+			for k, v := range labels {
+				cp[k] = v
+			}
+			bound.LabelOverrides[goID] = cp
+		}
+	}
+
 	return bound
 }
 

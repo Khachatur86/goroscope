@@ -123,6 +123,20 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
         <div className="inspector-label">Function</div>
         <div className="inspector-value">{goroutine.labels?.function ?? "—"}</div>
       </div>
+      {goroutine.labels && Object.keys(goroutine.labels).length > 0 && (
+        <div className="inspector-section">
+          <div className="inspector-label">Labels</div>
+          <div className="inspector-value inspector-labels">
+            {Object.entries(goroutine.labels)
+              .filter(([k]) => k !== "function")
+              .map(([k, v]) => (
+                <span key={k} className="inspector-label-pair">
+                  {k}={v}
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
 
       {(parent || children.length > 0) && (
         <div className="inspector-section">
