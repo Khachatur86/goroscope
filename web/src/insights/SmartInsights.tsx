@@ -97,6 +97,7 @@ export function SmartInsights({ refreshKey, onSelectGoroutine }: Props) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   const load = useCallback(async () => {
@@ -110,6 +111,7 @@ export function SmartInsights({ refreshKey, onSelectGoroutine }: Props) {
         setDismissed(false);
       }
     } finally {
+      setHasLoadedOnce(true);
       setLoading(false);
     }
   }, []);
@@ -118,13 +120,13 @@ export function SmartInsights({ refreshKey, onSelectGoroutine }: Props) {
     load();
   }, [load, refreshKey]);
 
-  if (loading || total === 0 || dismissed) return null;
+  if ((!hasLoadedOnce && loading) || (!loading && total === 0) || dismissed) return null;
 
   const criticalCount = insights.filter((i) => i.severity === "critical").length;
   const warningCount = insights.filter((i) => i.severity === "warning").length;
 
   return (
-    <section className="smart-insights-banner" aria-label="Smart Insights">
+    <section className="smart-insights-banner" aria-label="Smart Insights" aria-busy={loading}>
       <div className="smart-insights-header">
         <span className="smart-insights-title">
           {criticalCount > 0 && (
@@ -140,9 +142,10 @@ export function SmartInsights({ refreshKey, onSelectGoroutine }: Props) {
             type="button"
             className="action-button secondary smart-insights-refresh"
             onClick={load}
-            title="Refresh insights"
+            title={loading ? "Refreshing insights" : "Refresh insights"}
+            disabled={loading}
           >
-            ↻
+            {loading ? "…" : "↻"}
           </button>
           <button
             type="button"
