@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
 
 	xtrace "golang.org/x/exp/trace"
@@ -154,12 +155,16 @@ func StreamBinaryTrace(ctx context.Context, in StreamBinaryTraceInput) error {
 	var pendingFlush int
 	const flushEvery = 64 // notify subscribers roughly every 64 kept events
 
-	// Time-based flush: even when fewer than flushEvery events arrive (e.g.
-	// when the TailReader is stalled at EOF), push UI updates every 200 ms so
-	// goroutines in blocking states are visible while the target is alive.
-	// Writer.Flush is idempotent (it only wakes SSE subscribers), so calling
-	// it from both the ticker and the event loop is safe.
-	// The goroutine is tied to streamDone (CC-2: goroutine lifetime to context).
+	// hasPending is set to 1 whenever an event is emitted and reset to 0
+	// after each flush.  The ticker goroutine only calls Flush when this flag
+	// is set, so the UI only refreshes when the engine state actually changed —
+	// preventing the constant jitter that unconditional periodic flushes cause.
+	var hasPending atomic.Bool
+
+	// Time-based flush: even when fewer than flushEvery events arrive in a
+	// poll window (sparse workload or TailReader stalled at EOF), push an SSE
+	// update so goroutines in blocking states become visible in the UI.
+	// The goroutine is tied to streamDone (CC-2).
 	streamDone := make(chan struct{})
 	defer close(streamDone)
 	go func() {
@@ -172,7 +177,9 @@ func StreamBinaryTrace(ctx context.Context, in StreamBinaryTraceInput) error {
 			case <-streamDone:
 				return
 			case <-ticker.C:
-				in.Writer.Flush()
+				if hasPending.Swap(false) {
+					in.Writer.Flush()
+				}
 			}
 		}
 	}()
@@ -200,8 +207,10 @@ func StreamBinaryTrace(ctx context.Context, in StreamBinaryTraceInput) error {
 
 		emitted := b.appendEvent(ev, st, &eventSeq, &stackSeq)
 		if emitted {
+			hasPending.Store(true)
 			pendingFlush++
 			if pendingFlush >= flushEvery {
+				hasPending.Store(false)
 				in.Writer.Flush()
 				pendingFlush = 0
 			}
