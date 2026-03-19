@@ -1038,6 +1038,8 @@ body {
   padding: 0.5rem;
   background: rgba(15, 23, 42, 0.5);
   border-radius: 6px;
+  min-width: 0; /* allow children to shrink below content width in flex/grid */
+  overflow: hidden;
 }
 
 .stack-frame[role="button"] {
@@ -1051,11 +1053,17 @@ body {
 .stack-func {
   font-family: monospace;
   font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stack-path {
   font-size: 0.75rem;
   color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .metrics-chart {
