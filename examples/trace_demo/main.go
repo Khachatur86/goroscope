@@ -13,13 +13,14 @@ import (
 
 const (
 	numWorkers = 8
-	// numJobs is large enough that the demo runs for ~6-8 seconds so that
-	// the live-streaming UI can show goroutines in BLOCKED state while the
-	// program is still running.  With 8 workers serialised by a single mutex
-	// and each job holding the lock for 100 ms, 7 out of 8 workers are
-	// blocked at any given moment — making the "blocked" filter immediately
-	// useful without requiring split-second timing.
+	// numJobs × lockDuration = total runtime (~1 min with the defaults).
+	// Because only one goroutine holds the mutex at a time, 7 out of 8 workers
+	// are always visibly BLOCKED — the "blocked" filter works for the entire run.
 	numJobs = 60
+	// lockDuration is how long each worker holds the mutex per job.
+	// 1 s gives a ~60 s total demo: the mutex is serial, so 60 jobs × 1 s = ~1 min.
+	// 7/8 workers are visibly BLOCKED at any moment for the entire run.
+	lockDuration = 1 * time.Second
 )
 
 func main() {
@@ -44,10 +45,7 @@ func main() {
 			defer wg.Done()
 			for job := range jobs {
 				mu.Lock()
-				// Hold the mutex for 100 ms so that 7/8 workers are visibly
-				// BLOCKED at any moment — long enough for the streaming UI to
-				// capture and display the state before the next poll cycle.
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(lockDuration)
 				mu.Unlock()
 				results <- job * 2
 			}
