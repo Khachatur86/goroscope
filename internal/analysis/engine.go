@@ -150,6 +150,66 @@ func (e *Engine) ApplyStackSnapshot(snapshot model.StackSnapshot) {
 	e.applyStackSnapshotLocked(snapshot, true)
 }
 
+// AddProcessorSegments appends processor segments to the engine.
+// Designed for the streaming live-trace path (A-1), where segments arrive
+// incrementally rather than in a single LoadCapture batch.
+func (e *Engine) AddProcessorSegments(segs []model.ProcessorSegment) {
+	if len(segs) == 0 {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.processorSegments = append(e.processorSegments, segs...)
+	e.dataVersion++
+}
+
+// SetParentIDs merges the provided goroutine→parent mapping into the engine.
+// It sets ParentID only for goroutines that are already tracked and have no
+// parent set, matching the behaviour of LoadCapture.
+func (e *Engine) SetParentIDs(ids map[int64]int64) {
+	if len(ids) == 0 {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for goID, parentID := range ids {
+		if g, ok := e.goroutines[goID]; ok && g.ParentID == 0 {
+			g.ParentID = parentID
+			e.goroutines[goID] = g
+		}
+	}
+	e.dataVersion++
+}
+
+// SetLabelOverrides merges label overrides (e.g. from agent.WithRequestID)
+// into tracked goroutines. Existing labels are preserved; override values win
+// on key collisions. Mirrors the label-merge logic in LoadCapture.
+func (e *Engine) SetLabelOverrides(overrides map[int64]model.Labels) {
+	if len(overrides) == 0 {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for goID, labels := range overrides {
+		if g, ok := e.goroutines[goID]; ok && len(labels) > 0 {
+			if g.Labels == nil {
+				g.Labels = make(map[string]string, len(labels))
+			}
+			for k, v := range labels {
+				g.Labels[k] = v
+			}
+			e.goroutines[goID] = g
+		}
+	}
+	e.dataVersion++
+}
+
+// Flush notifies all subscribers that engine state has been updated.
+// Call this after applying a batch of streaming events so the UI can refresh.
+func (e *Engine) Flush() {
+	e.notifySubscribers()
+}
+
 // SetResourceGraph replaces the current resource edge set.
 func (e *Engine) SetResourceGraph(edges []model.ResourceEdge) {
 	e.mu.Lock()

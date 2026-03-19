@@ -19,6 +19,7 @@
 |---|---|---|
 | CLI: run, replay, check, export, ui, version | ✅ Done | `internal/cli/app.go` |
 | Парсинг runtime trace через `golang.org/x/exp/trace` (прямой binary reader, без subprocess) | ✅ Done | `internal/tracebridge/xtrace.go` |
+| Стриминговый live-парсинг: `TailReader` + `StreamBinaryTrace` + `EngineWriter` (A-1) | ✅ Done | `internal/tracebridge/stream.go`, `internal/analysis/engine.go` |
 | Анализ: state machine, timeline, goroutine graph | ✅ Done | `internal/analysis/` |
 | Deadlock-hints (циклы в графе ресурсов) | ✅ Done | `internal/analysis/graph.go` |
 | Leak-detection (goroutines в WAITING/BLOCKED > threshold) | ✅ Done | `internal/analysis/leak.go` |
@@ -49,15 +50,9 @@
 
 > Полностью реализовано: `internal/tracebridge/xtrace.go` — `BuildCaptureFromRawTrace` теперь использует `golang.org/x/exp/trace.NewReader` + `ReadEvent` без subprocess. `ParseParsedTrace` (text-parser) сохранён для обратной совместимости с тестами.
 
-### A-1. Стриминговый парсинг трейсов (P0)
+### ~~A-1. Стриминговый парсинг трейсов~~ — ✅ РЕАЛИЗОВАНО
 
-**Gap:** Текущий парсер читает весь трейс перед обработкой. При больших трейсах (100k+ goroutines) это приводит к длительным задержкам. `buildCaptureFromReader` в `xtrace.go` уже работает потокобезопасно с `io.Reader` — требует только подключения к Engine в streaming-режиме.
-
-**Потребность гоферов:** Сообщество активно просит streaming-анализ, который обрабатывает трейсы по мере записи, не дожидаясь завершения.
-
-**Задача:** Подключить `buildCaptureFromReader` к Engine в инкрементальном режиме — подавать события в Engine по мере их чтения из reader. Live-режим (`goroscope run`) обновляет UI каждые N миллисекунд.
-
-**Критерий готовности:** Goroscope может открыть трейс размером 500MB без превышения 512MB RSS. Live-режим показывает события в UI в течение 2 секунд после их генерации.
+> Полностью реализовано: `internal/tracebridge/stream.go` — `EngineWriter` interface, `TailReader` (следит за растущим файлом, блокируется на EOF), `StreamBinaryTrace` (парсит события и подаёт их в Engine через `ApplyEvent`/`ApplyStackSnapshot`). `watchLiveTrace` в `app.go` заменён на `streamLiveTrace`: O(1) на батч вместо O(n²). `internal/analysis/engine.go` дополнен методами `AddProcessorSegments`, `SetParentIDs`, `SetLabelOverrides`, `Flush`.
 
 ---
 

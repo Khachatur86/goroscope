@@ -173,6 +173,11 @@ func (r *LiveTraceRun) Done() <-chan struct{} {
 	return r.done
 }
 
+// TracePath returns the filesystem path of the runtime trace file.
+func (r *LiveTraceRun) TracePath() string {
+	return r.tracePath
+}
+
 // Wait blocks until the target process exits and returns any error.
 func (r *LiveTraceRun) Wait() error {
 	<-r.done

@@ -564,8 +564,7 @@ func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 	}
 	defer func() { _ = liveRun.Close() }()
 
-	go watchLiveTrace(ctx, watchLiveTraceInput{
-		SessionID:    current.ID,
+	go streamLiveTrace(ctx, streamLiveTraceInput{
 		Target:       in.Target,
 		LiveRun:      liveRun,
 		Engine:       engine,
@@ -589,9 +588,8 @@ func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 	return server.Serve(ctx)
 }
 
-// watchLiveTraceInput holds all non-context parameters for watchLiveTrace.
-type watchLiveTraceInput struct {
-	SessionID    string
+// streamLiveTraceInput holds all non-context parameters for streamLiveTrace.
+type streamLiveTraceInput struct {
 	Target       string
 	LiveRun      *tracebridge.LiveTraceRun
 	Engine       *analysis.Engine
@@ -601,91 +599,70 @@ type watchLiveTraceInput struct {
 	Stderr       io.Writer
 }
 
-func watchLiveTrace(ctx context.Context, in watchLiveTraceInput) {
-	pollInterval := in.PollInterval
-	if pollInterval <= 0 {
-		pollInterval = time.Second
+// streamLiveTrace follows a growing runtime/trace binary file and streams
+// parsed events directly into the engine via the EngineWriter interface.
+// It replaces the previous O(n²) watchLiveTrace (full re-read every poll tick)
+// with an O(n) streaming approach: the TailReader blocks at EOF and unblocks
+// as new data arrives, so the engine is updated with near-zero latency.
+//
+// When the target exits, streamLiveTrace drains the remaining trace data,
+// applies label overrides from the .labels sidecar, and marks the session
+// complete (or failed).  If SavePath is set, the final capture is written
+// using a single pass over the completed trace file.
+func streamLiveTrace(ctx context.Context, in streamLiveTraceInput) {
+	pollDelay := in.PollInterval / 2
+	if pollDelay <= 0 {
+		pollDelay = 500 * time.Millisecond
 	}
 
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
+	tracePath := in.LiveRun.TracePath()
 
-	var lastSize int64 = -1
+	f, err := tracebridge.WaitForTraceFile(ctx, tracePath, in.LiveRun.Done(), pollDelay)
+	if err != nil {
+		in.Sessions.FailCurrent(err.Error())
+		_, _ = fmt.Fprintf(in.Stderr, "goroscope: wait for trace file: %v\n", err)
+		return
+	}
+	defer func() { _ = f.Close() }()
 
-	refreshCapture := func(final bool) (model.Capture, error) {
-		size, err := in.LiveRun.TraceSize()
-		if err != nil {
-			if os.IsNotExist(err) && !final {
-				return model.Capture{}, nil
-			}
-			if os.IsNotExist(err) && final {
-				return model.Capture{}, fmt.Errorf("target did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
-			}
-			return model.Capture{}, err
-		}
-		if size == 0 {
-			if final {
-				return model.Capture{}, fmt.Errorf("target did not emit a runtime trace; import github.com/Khachatur86/goroscope/agent and call agent.StartFromEnv() in main")
-			}
-			return model.Capture{}, nil
-		}
-		if !final && size == lastSize {
-			return model.Capture{}, nil
-		}
+	tailReader := tracebridge.NewTailReader(f, in.LiveRun.Done(), pollDelay)
 
-		capture, err := in.LiveRun.BuildCapture(ctx)
-		if err != nil {
-			if final {
-				return model.Capture{}, err
-			}
-			return model.Capture{}, nil
-		}
+	streamErr := tracebridge.StreamBinaryTrace(ctx, tracebridge.StreamBinaryTraceInput{
+		Reader: tailReader,
+		Writer: in.Engine,
+	})
 
-		sessionState := in.Sessions.Current()
-		if sessionState == nil {
-			return model.Capture{}, nil
-		}
-
-		in.Engine.LoadCapture(sessionState, tracebridge.BindCaptureSession(capture, in.SessionID))
-		lastSize = size
-
-		if final {
-			capture.Target = in.Target
-			return capture, nil
-		}
-		return model.Capture{}, nil
+	// Apply label overrides from the agent sidecar now that the stream is done.
+	if overrides, labelsErr := tracebridge.ReadLabelsFile(tracePath + ".labels"); labelsErr == nil && len(overrides) > 0 {
+		in.Engine.SetLabelOverrides(overrides)
+		in.Engine.Flush()
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if _, err := refreshCapture(false); err != nil {
-				_, _ = fmt.Fprintf(in.Stderr, "goroscope: refresh live trace: %v\n", err)
-			}
-		case <-in.LiveRun.Done():
-			runErr := in.LiveRun.Wait()
-			finalCapture, refreshErr := refreshCapture(true)
+	runErr := in.LiveRun.Wait()
 
-			switch {
-			case runErr != nil:
-				in.Sessions.FailCurrent(runErr.Error())
-				_, _ = fmt.Fprintf(in.Stderr, "goroscope: target exited with error: %v\n", runErr)
-			case refreshErr != nil:
-				in.Sessions.FailCurrent(refreshErr.Error())
-				_, _ = fmt.Fprintf(in.Stderr, "goroscope: finalize trace capture: %v\n", refreshErr)
-			default:
-				in.Sessions.CompleteCurrent()
-				if in.SavePath != "" && len(finalCapture.Events) > 0 {
-					if err := tracebridge.SaveCaptureFile(in.SavePath, finalCapture); err != nil {
-						_, _ = fmt.Fprintf(in.Stderr, "goroscope: save capture: %v\n", err)
-					} else {
-						_, _ = fmt.Fprintf(in.Stderr, "goroscope: saved capture to %s\n", in.SavePath)
-					}
+	switch {
+	case runErr != nil:
+		in.Sessions.FailCurrent(runErr.Error())
+		_, _ = fmt.Fprintf(in.Stderr, "goroscope: target exited with error: %v\n", runErr)
+	case streamErr != nil:
+		in.Sessions.FailCurrent(streamErr.Error())
+		_, _ = fmt.Fprintf(in.Stderr, "goroscope: trace stream error: %v\n", streamErr)
+	default:
+		in.Sessions.CompleteCurrent()
+		if in.SavePath != "" {
+			// Re-parse the completed file for the save snapshot — single pass,
+			// same result as if BuildCaptureFromRawTrace were called directly.
+			saveCapture, saveErr := tracebridge.BuildCaptureFromRawTrace(ctx, tracePath)
+			if saveErr != nil {
+				_, _ = fmt.Fprintf(in.Stderr, "goroscope: build capture for save: %v\n", saveErr)
+			} else {
+				saveCapture.Target = in.Target
+				if err := tracebridge.SaveCaptureFile(in.SavePath, saveCapture); err != nil {
+					_, _ = fmt.Fprintf(in.Stderr, "goroscope: save capture: %v\n", err)
+				} else {
+					_, _ = fmt.Fprintf(in.Stderr, "goroscope: saved capture to %s\n", in.SavePath)
 				}
 			}
-			return
 		}
 	}
 }
