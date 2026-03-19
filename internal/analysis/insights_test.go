@@ -136,10 +136,10 @@ func TestGenerateInsights_Blocking(t *testing.T) {
 	const leakNS = int64(5_000_000_000) // 5s
 
 	goroutines := []model.Goroutine{
-		{ID: 1, State: model.StateBlocked, WaitNS: blockNS + 100},   // blocked, not leak
-		{ID: 2, State: model.StateWaiting, WaitNS: blockNS + 200},   // waiting, not leak
-		{ID: 3, State: model.StateRunning, WaitNS: blockNS + 300},   // running — should not appear
-		{ID: 4, State: model.StateBlocked, WaitNS: leakNS + 1},      // leak — excluded from blocking
+		{ID: 1, State: model.StateBlocked, WaitNS: blockNS + 100}, // blocked, not leak
+		{ID: 2, State: model.StateWaiting, WaitNS: blockNS + 200}, // waiting, not leak
+		{ID: 3, State: model.StateRunning, WaitNS: blockNS + 300}, // running — should not appear
+		{ID: 4, State: model.StateBlocked, WaitNS: leakNS + 1},    // leak — excluded from blocking
 	}
 
 	insights := GenerateInsights(GenerateInsightsInput{

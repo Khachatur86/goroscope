@@ -58,11 +58,15 @@ func TestBuildCaptureFromRawTrace_Ordering(t *testing.T) {
 	t.Parallel()
 
 	tracePath := generateTestTrace(t, func() {
-		var mu sync.Mutex
-		mu.Lock()
-		go func() { mu.Unlock() }()
-		mu.Lock() //nolint:staticcheck // intentional lock-to-block
-		mu.Unlock()
+		release := make(chan struct{})
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			<-release
+		}()
+		time.Sleep(time.Microsecond)
+		close(release)
+		<-done
 	})
 
 	capture, err := BuildCaptureFromRawTrace(context.Background(), tracePath)
@@ -164,6 +168,9 @@ func TestXTimestamp(t *testing.T) {
 func generateTestTrace(t *testing.T, fn func()) string {
 	t.Helper()
 
+	runtimeTraceMu.Lock()
+	defer runtimeTraceMu.Unlock()
+
 	f, err := os.CreateTemp(t.TempDir(), "trace*.out")
 	if err != nil {
 		t.Fatalf("create temp trace file: %v", err)
@@ -174,10 +181,18 @@ func generateTestTrace(t *testing.T, fn func()) string {
 		f.Close()
 		t.Fatalf("start runtime trace: %v", err)
 	}
+	stopped := false
+	defer func() {
+		if !stopped {
+			rttrace.Stop()
+		}
+	}()
+	defer func() { _ = f.Close() }()
 
 	fn()
-
 	rttrace.Stop()
+	stopped = true
+
 	if err := f.Close(); err != nil {
 		t.Fatalf("close trace file: %v", err)
 	}

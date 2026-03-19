@@ -69,11 +69,10 @@ type benchMetric struct {
 }
 
 func parseBenchFile(path string) (map[string]benchMetric, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // benchmark report paths are local files passed by CI/user.
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
 	out := make(map[string]benchMetric)
 	sc := bufio.NewScanner(f)
@@ -108,6 +107,12 @@ func parseBenchFile(path string) (map[string]benchMetric, error) {
 		out[name] = benchMetric{nsPerOp: ns}
 	}
 	if err := sc.Err(); err != nil {
+		if closeErr := f.Close(); closeErr != nil {
+			return nil, errors.Join(err, closeErr)
+		}
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -119,6 +124,10 @@ func formatPct(x float64) string {
 		sign = ""
 	}
 	return fmt.Sprintf("%s%.1f%%", sign, x)
+}
+
+func writeReport(path string, reportLines []string) error {
+	return os.WriteFile(path, []byte(strings.Join(reportLines, "\n")+"\n"), 0o600)
 }
 
 func main() {
@@ -221,7 +230,10 @@ func main() {
 
 	if len(regressions) == 0 {
 		reportLines = append(reportLines, "No regressions detected.", "")
-		_ = os.WriteFile(outPath, []byte(strings.Join(reportLines, "\n")), 0o644)
+		if err := writeReport(outPath, reportLines); err != nil {
+			fmt.Fprintln(os.Stderr, "write report:", err)
+			os.Exit(2)
+		}
 		return
 	}
 
@@ -233,10 +245,15 @@ func main() {
 	}
 	reportLines = append(reportLines, "", fmt.Sprintf("Failing because regression exceeds threshold (> %s).", formatPct(thresholdPct)))
 
-	absOut, _ := filepath.Abs(outPath)
-	_ = os.WriteFile(absOut, []byte(strings.Join(reportLines, "\n")+"\n"), 0o644)
+	absOut, err := filepath.Abs(outPath)
+	if err != nil {
+		absOut = outPath
+	}
+	if err := writeReport(absOut, reportLines); err != nil {
+		fmt.Fprintln(os.Stderr, "write report:", err)
+		os.Exit(2)
+	}
 
 	fmt.Fprintln(os.Stderr, strings.Join(reportLines[len(reportLines)-3:], "\n"))
 	os.Exit(1)
 }
-

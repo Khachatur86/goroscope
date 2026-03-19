@@ -93,7 +93,7 @@ func (t *TailReader) Read(p []byte) (int, error) {
 // Returns an open *os.File on success; the caller is responsible for closing it.
 func WaitForTraceFile(ctx context.Context, path string, done <-chan struct{}, pollDelay time.Duration) (*os.File, error) {
 	for {
-		f, err := os.Open(path)
+		f, err := os.Open(path) //nolint:gosec // path is a local trace file path chosen by the caller.
 		if err == nil {
 			return f, nil
 		}
@@ -106,7 +106,7 @@ func WaitForTraceFile(ctx context.Context, path string, done <-chan struct{}, po
 			return nil, fmt.Errorf("context cancelled waiting for trace file: %w", ctx.Err())
 		case <-done:
 			// Target exited — try once more in case it wrote the file on the way out.
-			f, err := os.Open(path)
+			f, err := os.Open(path) //nolint:gosec // path is a local trace file path chosen by the caller.
 			if err != nil {
 				return nil, fmt.Errorf(
 					"target exited without creating trace file %s; "+

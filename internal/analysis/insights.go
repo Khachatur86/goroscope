@@ -23,6 +23,7 @@ const (
 // InsightKind identifies the class of finding.
 type InsightKind string
 
+// Supported insight kinds produced by GenerateInsights.
 const (
 	InsightKindDeadlock   InsightKind = "deadlock"
 	InsightKindLeak       InsightKind = "leak"

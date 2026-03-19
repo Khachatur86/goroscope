@@ -17,6 +17,7 @@ package tracebridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -32,13 +33,18 @@ import (
 // If tracePath+".labels" exists (written by agent.WithRequestID), label overrides
 // are merged into the returned Capture.
 func BuildCaptureFromRawTrace(ctx context.Context, tracePath string) (model.Capture, error) {
-	f, err := os.Open(tracePath)
+	f, err := os.Open(tracePath) //nolint:gosec // tracePath points to a local trace artifact selected by the caller.
 	if err != nil {
 		return model.Capture{}, fmt.Errorf("open trace file %s: %w", tracePath, err)
 	}
-	defer f.Close()
 
 	capture, err := buildCaptureFromReader(ctx, f)
+	if closeErr := f.Close(); closeErr != nil {
+		if err != nil {
+			return model.Capture{}, errors.Join(err, fmt.Errorf("close trace file %s: %w", tracePath, closeErr))
+		}
+		return model.Capture{}, fmt.Errorf("close trace file %s: %w", tracePath, closeErr)
+	}
 	if err != nil {
 		return model.Capture{}, err
 	}
@@ -280,8 +286,16 @@ func xFrames(stack xtrace.Stack) []model.StackFrame {
 		frames = append(frames, model.StackFrame{
 			Func: f.Func,
 			File: f.File,
-			Line: int(f.Line),
+			Line: xLineNumber(f.Line),
 		})
 	}
 	return frames
+}
+
+func xLineNumber(line uint64) int {
+	maxInt := uint64(^uint(0) >> 1)
+	if line > maxInt {
+		return int(maxInt)
+	}
+	return int(line)
 }

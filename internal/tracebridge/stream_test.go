@@ -189,13 +189,26 @@ func TestTailReader_ReturnsEOFOnDone(t *testing.T) {
 // trace data as a *bytes.Reader.
 func generateTraceBuf(t *testing.T, fn func()) *bytes.Reader {
 	t.Helper()
+
+	runtimeTraceMu.Lock()
+	defer runtimeTraceMu.Unlock()
+
 	var buf bytes.Buffer
 	if err := trace.Start(&buf); err != nil {
 		t.Fatalf("trace.Start: %v", err)
 	}
+	stopped := false
+	defer func() {
+		if !stopped {
+			trace.Stop()
+		}
+	}()
+
 	fn()
 	trace.Stop()
-	return bytes.NewReader(buf.Bytes())
+	stopped = true
+
+	return bytes.NewReader(append([]byte(nil), buf.Bytes()...))
 }
 
 // tempEmptyFile creates a temporary empty file for TailReader tests.

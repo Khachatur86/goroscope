@@ -140,6 +140,7 @@ func runPipeline(outer *sync.WaitGroup) {
 				defer wg.Done()
 				for v := range in {
 					// Variable processing time: 10–60 ms.
+					//nolint:gosec // demo jitter does not require a cryptographic RNG.
 					time.Sleep(time.Duration(10+rand.IntN(50)) * time.Millisecond)
 					out <- v*2 + stageID
 				}

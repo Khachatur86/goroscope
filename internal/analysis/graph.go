@@ -111,7 +111,7 @@ func FindDeadlockHints(edges []model.ResourceEdge, goroutines []model.Goroutine)
 	var hints []DeadlockHint
 
 	for id := range adj {
-		cycle := findCycleFrom(id, id, -1, nil, adj, make(map[int64]bool))
+		cycle := findCycleFrom(id, nil, adj, make(map[int64]bool))
 		if len(cycle) >= 2 {
 			key := cycleKey(cycle)
 			if seenCycles[key] {
@@ -150,7 +150,7 @@ func isBlockedState(s model.GoroutineState) bool {
 }
 
 // findCycleFrom does DFS; when it hits a node already in path (back edge), returns the cycle.
-func findCycleFrom(start, curr, parent int64, path []int64, adj map[int64][]int64, inPath map[int64]bool) []int64 {
+func findCycleFrom(curr int64, path []int64, adj map[int64][]int64, inPath map[int64]bool) []int64 {
 	if inPath[curr] {
 		// Back edge: curr is in path, extract cycle from curr to curr
 		var startIdx int
@@ -169,10 +169,7 @@ func findCycleFrom(start, curr, parent int64, path []int64, adj map[int64][]int6
 	path = append(path, curr)
 
 	for _, next := range adj[curr] {
-		if next == parent {
-			continue
-		}
-		if c := findCycleFrom(start, next, curr, path, adj, inPath); len(c) > 0 {
+		if c := findCycleFrom(next, path, adj, inPath); len(c) > 0 {
 			return c
 		}
 	}
