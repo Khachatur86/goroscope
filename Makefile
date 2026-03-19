@@ -13,6 +13,9 @@ run:
 run-react: build web
 	./bin/goroscope run -ui=react -ui-path=web/dist -open-browser ./examples/trace_demo
 
+run-react-complex: build web
+	./bin/goroscope run -ui=react -ui-path=web/dist -open-browser ./examples/complex_demo
+
 ui:
 	go run ./cmd/goroscope ui
 
