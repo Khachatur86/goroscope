@@ -3,7 +3,6 @@ package tracebridge
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -118,30 +117,6 @@ type parsedTraceBuilder struct {
 	// filtered to kept goroutines and moved to capture.ProcessorSegments
 	// after the full trace is scanned.
 	rawPSegments []model.ProcessorSegment
-}
-
-// BuildCaptureFromRawTrace parses a raw runtime/trace file into a Capture.
-// If tracePath.labels exists (from agent.WithRequestID), label overrides are merged.
-func BuildCaptureFromRawTrace(ctx context.Context, tracePath string) (model.Capture, error) {
-	cmd := exec.CommandContext(ctx, "go", "tool", "trace", "-d=parsed", tracePath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return model.Capture{}, fmt.Errorf("parse raw trace with go tool trace: %w\n%s", err, string(output))
-	}
-
-	capture, err := ParseParsedTrace(bytes.NewReader(output))
-	if err != nil {
-		return model.Capture{}, err
-	}
-
-	overrides, err := ReadLabelsFile(tracePath + ".labels")
-	if err != nil {
-		return model.Capture{}, err
-	}
-	if len(overrides) > 0 {
-		capture.LabelOverrides = overrides
-	}
-	return capture, nil
 }
 
 // RunGoTargetWithTrace runs the target, collects the trace, and returns the resulting Capture.
