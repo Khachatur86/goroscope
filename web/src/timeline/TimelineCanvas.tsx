@@ -86,6 +86,12 @@ type Props = {
   onZoomPanChange?: (zoomLevel: number, panOffsetNS: number) => void;
   /** When set, goroutines NOT in this set are dimmed. */
   highlightedIds?: Set<number> | null;
+  /** When true, drag creates a time-range brush instead of panning. */
+  brushMode?: boolean;
+  /** The currently committed brush range [startNS, endNS], drawn as an overlay. */
+  brushRange?: [number, number] | null;
+  /** Fired when the user drags a new brush or clears it (null). */
+  onBrushChange?: (range: [number, number] | null) => void;
 };
 
 export function TimelineCanvas({
@@ -100,6 +106,9 @@ export function TimelineCanvas({
   panOffsetNS: controlledPan,
   onZoomPanChange,
   highlightedIds,
+  brushMode = false,
+  brushRange,
+  onBrushChange,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -132,6 +141,10 @@ export function TimelineCanvas({
   const [rowScrollTop, setRowScrollTop] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Brush drag state (pixels from canvas left edge → converted to NS on commit)
+  const [brushDragStartPx, setBrushDragStartPx] = useState<number | null>(null);
+  const [brushDragCurrentPx, setBrushDragCurrentPx] = useState<number | null>(null);
+
   const fullMinStart = Math.min(...segments.map((s) => s.start_ns));
   const fullMaxEnd = Math.max(...segments.map((s) => s.end_ns));
   const fullSpan = Math.max(fullMaxEnd - fullMinStart, 1);
@@ -161,6 +174,19 @@ export function TimelineCanvas({
   const visibleStart = fullMinStart + Math.max(0, Math.min(fullSpan - visibleSpan, panOffsetNS));
 
   const plotLeft = METRICS.labelGutterWidth + METRICS.leftPadding;
+
+  /** Convert a canvas-relative X pixel to an absolute NS timestamp. */
+  const pxToNS = useCallback(
+    (px: number): number => {
+      const container = containerRef.current;
+      if (!container) return visibleStart;
+      const innerWidth = getInnerWidth(container.clientWidth);
+      const offset = METRICS.labelGutterWidth + METRICS.leftPadding;
+      const clamped = Math.max(0, Math.min(innerWidth, px - offset));
+      return visibleStart + (clamped / innerWidth) * visibleSpan;
+    },
+    [visibleStart, visibleSpan]
+  );
   const getInnerWidth = (width: number) =>
     Math.max(1, width - METRICS.labelGutterWidth - METRICS.leftPadding - METRICS.rightPadding);
 
@@ -394,6 +420,36 @@ export function TimelineCanvas({
         });
       ctx.globalAlpha = 1;
     }
+
+    // Draw brush overlay (active drag or committed brushRange)
+    const drawBrush = (startNS: number, endNS: number) => {
+      const container2 = containerRef.current;
+      if (!container2) return;
+      const innerWidth = getInnerWidth(container2.clientWidth);
+      const bx1 = plotLeft + ((Math.min(startNS, endNS) - visibleStart) / visibleSpan) * innerWidth;
+      const bx2 = plotLeft + ((Math.max(startNS, endNS) - visibleStart) / visibleSpan) * innerWidth;
+      const bw = Math.max(bx2 - bx1, 2);
+      const clampedX = Math.max(plotLeft, bx1);
+      const clampedW = Math.min(plotLeft + innerWidth, bx1 + bw) - clampedX;
+      if (clampedW <= 0) return;
+      ctx.fillStyle = "rgba(56, 189, 248, 0.12)";
+      ctx.fillRect(clampedX, 0, clampedW, height);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.7)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(clampedX, 0);
+      ctx.lineTo(clampedX, height);
+      ctx.moveTo(clampedX + clampedW, 0);
+      ctx.lineTo(clampedX + clampedW, height);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    };
+
+    if (brushDragStartPx !== null && brushDragCurrentPx !== null) {
+      drawBrush(pxToNS(brushDragStartPx), pxToNS(brushDragCurrentPx));
+    } else if (brushRange) {
+      drawBrush(brushRange[0], brushRange[1]);
+    }
   }, [
     goroutines,
     segments,
@@ -406,6 +462,10 @@ export function TimelineCanvas({
     lastVisibleIndex,
     rowScrollTop,
     rowAreaHeight,
+    brushDragStartPx,
+    brushDragCurrentPx,
+    brushRange,
+    pxToNS,
   ]);
 
   useEffect(() => {
@@ -493,30 +553,48 @@ export function TimelineCanvas({
     [fullSpan, zoomLevel, panOffsetNS, visibleSpan]
   );
 
+  const canvasRelativeX = useCallback((clientX: number): number => {
+    const canvas = rowsCanvasRef.current;
+    if (!canvas) return 0;
+    return clientX - canvas.getBoundingClientRect().left;
+  }, []);
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return;
       setHoveredSegment(null);
       onHoverSegment?.(null);
-      setIsDragging(true);
-      setHasDragged(false);
-      dragStartX.current = e.clientX;
-      dragStartPanNS.current = panOffsetNS;
+      if (brushMode) {
+        const px = canvasRelativeX(e.clientX);
+        setBrushDragStartPx(px);
+        setBrushDragCurrentPx(px);
+        setIsDragging(true);
+        setHasDragged(false);
+      } else {
+        setIsDragging(true);
+        setHasDragged(false);
+        dragStartX.current = e.clientX;
+        dragStartPanNS.current = panOffsetNS;
+      }
     },
-    [panOffsetNS, onHoverSegment]
+    [panOffsetNS, onHoverSegment, brushMode, canvasRelativeX]
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (isDragging) {
         setHasDragged(true);
-        const dx = e.clientX - dragStartX.current;
-        const container = containerRef.current;
-        if (!container) return;
-        const innerWidth = getInnerWidth(container.clientWidth);
-        const nsPerPx = visibleSpan / innerWidth;
-        const newPan = dragStartPanNS.current - dx * nsPerPx;
-        setPanOffsetNS(Math.max(0, Math.min(fullSpan - visibleSpan, newPan)));
+        if (brushMode) {
+          setBrushDragCurrentPx(canvasRelativeX(e.clientX));
+        } else {
+          const dx = e.clientX - dragStartX.current;
+          const container = containerRef.current;
+          if (!container) return;
+          const innerWidth = getInnerWidth(container.clientWidth);
+          const nsPerPx = visibleSpan / innerWidth;
+          const newPan = dragStartPanNS.current - dx * nsPerPx;
+          setPanOffsetNS(Math.max(0, Math.min(fullSpan - visibleSpan, newPan)));
+        }
       } else {
         const seg = hitTest(e.clientX, e.clientY);
         setHoveredSegment(seg);
@@ -524,12 +602,26 @@ export function TimelineCanvas({
         onHoverSegment?.(seg ?? null);
       }
     },
-    [isDragging, visibleSpan, fullSpan, hitTest, onHoverSegment]
+    [isDragging, brushMode, canvasRelativeX, visibleSpan, fullSpan, hitTest, onHoverSegment]
   );
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return;
+      if (brushMode && isDragging) {
+        if (hasDragged && brushDragStartPx !== null && brushDragCurrentPx !== null) {
+          const startNS = pxToNS(brushDragStartPx);
+          const endNS = pxToNS(brushDragCurrentPx);
+          if (Math.abs(endNS - startNS) > 0) {
+            onBrushChange?.([Math.min(startNS, endNS), Math.max(startNS, endNS)]);
+          }
+        }
+        setBrushDragStartPx(null);
+        setBrushDragCurrentPx(null);
+        setIsDragging(false);
+        setHasDragged(false);
+        return;
+      }
       if (isDragging && !hasDragged) {
         const seg = hitTest(e.clientX, e.clientY);
         if (seg) {
@@ -549,14 +641,25 @@ export function TimelineCanvas({
       setIsDragging(false);
       setHasDragged(false);
     },
-    [isDragging, hasDragged, hitTest, goroutines, onSelectGoroutine, rowScrollTop]
+    [
+      brushMode, isDragging, hasDragged,
+      brushDragStartPx, brushDragCurrentPx,
+      pxToNS, onBrushChange,
+      hitTest, goroutines, onSelectGoroutine, rowScrollTop,
+    ]
   );
 
   const handleMouseLeave = useCallback(() => {
     setHoveredSegment(null);
     onHoverSegment?.(null);
-    if (isDragging) setIsDragging(false);
-  }, [onHoverSegment, isDragging]);
+    if (isDragging) {
+      if (brushMode) {
+        setBrushDragStartPx(null);
+        setBrushDragCurrentPx(null);
+      }
+      setIsDragging(false);
+    }
+  }, [onHoverSegment, isDragging, brushMode]);
 
   return (
     <div ref={containerRef} className="timeline-canvas-container">
@@ -581,7 +684,11 @@ export function TimelineCanvas({
             style={{
               position: "sticky",
               top: 0,
-              cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "pointer",
+              cursor: brushMode
+                ? (isDragging ? "col-resize" : "crosshair")
+                : zoomLevel > 1
+                  ? (isDragging ? "grabbing" : "grab")
+                  : "pointer",
             }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}

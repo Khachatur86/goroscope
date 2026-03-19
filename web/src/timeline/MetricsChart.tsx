@@ -7,12 +7,14 @@ type Props = {
   segments: TimelineSegment[];
   width?: number;
   height?: number;
+  /** When set, draws a highlighted rect over the selected NS range. */
+  highlightRange?: [number, number] | null;
 };
 
-export function MetricsChart({ segments, width = 280, height = 60 }: Props) {
-  const { buckets } = useMemo(() => {
+export function MetricsChart({ segments, width = 280, height = 60, highlightRange }: Props) {
+  const { buckets, minNS, maxNS } = useMemo(() => {
     if (segments.length === 0) {
-      return { buckets: [] as { total: number; blocked: number }[] };
+      return { buckets: [] as { total: number; blocked: number }[], minNS: 0, maxNS: 0 };
     }
     const min = Math.min(...segments.map((s) => s.start_ns));
     const max = Math.max(...segments.map((s) => s.end_ns));
@@ -42,7 +44,7 @@ export function MetricsChart({ segments, width = 280, height = 60 }: Props) {
       total: b.total.size,
       blocked: b.blocked.size,
     }));
-    return { buckets: bucketCounts };
+    return { buckets: bucketCounts, minNS: min, maxNS: max };
   }, [segments]);
 
   if (buckets.length === 0) return null;
@@ -51,6 +53,7 @@ export function MetricsChart({ segments, width = 280, height = 60 }: Props) {
   const padding = { top: 4, right: 4, bottom: 16, left: 4 };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
+  const totalSpan = Math.max(maxNS - minNS, 1);
 
   const toX = (i: number) => padding.left + (i / (buckets.length - 1 || 1)) * chartW;
   const toYTotal = (v: number) =>
@@ -64,6 +67,17 @@ export function MetricsChart({ segments, width = 280, height = 60 }: Props) {
   const blockedPath = buckets
     .map((b, i) => `${i === 0 ? "M" : "L"} ${toX(i)} ${toYBlocked(b.blocked)}`)
     .join(" ");
+
+  // Compute highlight rect in SVG coords
+  let hlX: number | null = null;
+  let hlW: number | null = null;
+  if (highlightRange) {
+    const [startNS, endNS] = highlightRange;
+    const x1 = padding.left + ((startNS - minNS) / totalSpan) * chartW;
+    const x2 = padding.left + ((endNS - minNS) / totalSpan) * chartW;
+    hlX = Math.max(padding.left, Math.min(x1, padding.left + chartW));
+    hlW = Math.min(padding.left + chartW, x2) - hlX;
+  }
 
   return (
     <div className="metrics-chart">
@@ -88,10 +102,28 @@ export function MetricsChart({ segments, width = 280, height = 60 }: Props) {
           fill="url(#metrics-blocked)"
         />
         <path d={blockedPath} fill="none" stroke="#f43f5e" strokeWidth="1.5" />
+        {hlX !== null && hlW !== null && hlW > 0 && (
+          <>
+            <rect
+              x={hlX}
+              y={padding.top}
+              width={hlW}
+              height={chartH}
+              fill="rgba(56, 189, 248, 0.15)"
+            />
+            <line x1={hlX} y1={padding.top} x2={hlX} y2={padding.top + chartH}
+              stroke="rgba(56, 189, 248, 0.7)" strokeWidth="1.5" />
+            <line x1={hlX + hlW} y1={padding.top} x2={hlX + hlW} y2={padding.top + chartH}
+              stroke="rgba(56, 189, 248, 0.7)" strokeWidth="1.5" />
+          </>
+        )}
       </svg>
       <div className="metrics-chart-legend">
         <span style={{ color: "#10cfb8" }}>●</span> active
         <span style={{ color: "#f43f5e", marginLeft: "0.75rem" }}>●</span> blocked
+        {highlightRange && (
+          <span style={{ color: "#38bdf8", marginLeft: "0.75rem" }}>⌖ range active</span>
+        )}
       </div>
     </div>
   );

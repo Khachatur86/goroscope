@@ -123,6 +123,7 @@ export function App() {
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
   const [inspectorTab, setInspectorTab] = useState<"inspector" | "hotspots" | "resources" | "deadlock" | "groups">("inspector");
+  const [brushFilterIds, setBrushFilterIds] = useState<Set<number> | null>(null);
   const [filters, setFilters] = useState<FiltersState>(() => {
     const fromUrl = parseFiltersFromURL();
     return {
@@ -161,6 +162,13 @@ export function App() {
       if (e.to_goroutine_id === selectedId) relatedIds.add(e.from_goroutine_id);
     });
     displayGoroutines = displayGoroutines.filter((g) => relatedIds.has(g.goroutine_id));
+  }
+
+  if (brushFilterIds !== null) {
+    // Always keep the selected goroutine visible even if it has no segments in range
+    displayGoroutines = displayGoroutines.filter(
+      (g) => brushFilterIds.has(g.goroutine_id) || g.goroutine_id === selectedId
+    );
   }
 
   const initialUrlId = useRef(parseGoroutineFromURL());
@@ -675,6 +683,11 @@ export function App() {
                   ? `${goroutines.length} goroutines`
                   : `${filteredGoroutines.length} of ${goroutines.length} goroutines`
                 : ""}
+              {brushFilterIds !== null && (
+                <span className="brush-filter-badge" title="Filtered by time range selection">
+                  ⌖ range
+                </span>
+              )}
             </p>
           </div>
           <Filters
@@ -769,6 +782,7 @@ export function App() {
             zoomToSelected={zoomToSelected}
             viewMode={viewMode}
             highlightedIds={highlightedIds}
+            onBrushFilterChange={setBrushFilterIds}
           />
         </section>
 

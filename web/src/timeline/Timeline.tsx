@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 import { fetchTimeline, fetchProcessorTimeline } from "../api/client";
 import { TimelineCanvas } from "./TimelineCanvas";
@@ -25,6 +25,8 @@ type Props = {
   segmentsOverride?: TimelineSegment[] | null;
   /** When set, goroutines NOT in this set are dimmed in the timeline. */
   highlightedIds?: Set<number> | null;
+  /** Fired when brush selection changes — null means cleared. */
+  onBrushFilterChange?: (ids: Set<number> | null) => void;
 };
 
 const COLORS: Record<string, string> = {
@@ -45,11 +47,14 @@ export function Timeline({
   viewMode = "lanes",
   segmentsOverride,
   highlightedIds,
+  onBrushFilterChange,
 }: Props) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [processorSegments, setProcessorSegments] = useState<ProcessorSegment[]>([]);
   const [canvasZoomLevel, setCanvasZoomLevel] = useState(1);
   const [canvasPanOffsetNS, setCanvasPanOffsetNS] = useState(0);
+  const [brushMode, setBrushMode] = useState(false);
+  const [brushRange, setBrushRange] = useState<[number, number] | null>(null);
 
   useEffect(() => {
     if (segmentsOverride !== undefined) {
@@ -119,6 +124,32 @@ export function Timeline({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomToSelected, selectedId]);
 
+  const handleBrushChange = useCallback(
+    (range: [number, number] | null) => {
+      setBrushRange(range);
+      if (range === null) {
+        onBrushFilterChange?.(null);
+        return;
+      }
+      const [startNS, endNS] = range;
+      // goroutines with at least one segment overlapping [startNS, endNS]
+      const activeIds = new Set<number>();
+      for (const seg of filteredSegmentsRef.current) {
+        if (seg.end_ns >= startNS && seg.start_ns <= endNS) {
+          activeIds.add(seg.goroutine_id);
+        }
+      }
+      onBrushFilterChange?.(activeIds);
+    },
+    [onBrushFilterChange]
+  );
+
+  const clearBrush = () => {
+    setBrushRange(null);
+    setBrushMode(false);
+    onBrushFilterChange?.(null);
+  };
+
   if (filteredSegments.length === 0) {
     return (
       <div className="timeline-placeholder">
@@ -138,8 +169,33 @@ export function Timeline({
             {state}
           </span>
         ))}
+        <div className="timeline-brush-controls">
+          <button
+            type="button"
+            className={`timeline-control-button timeline-brush-toggle ${brushMode ? "active" : ""}`}
+            onClick={() => {
+              const next = !brushMode;
+              setBrushMode(next);
+              if (!next) clearBrush();
+            }}
+            title="Select a time range to filter goroutines (drag on timeline)"
+            aria-pressed={brushMode}
+          >
+            ⌖ Select range
+          </button>
+          {brushRange && (
+            <button
+              type="button"
+              className="timeline-control-button timeline-brush-clear"
+              onClick={clearBrush}
+              title="Clear time range selection"
+            >
+              ✕ Clear range
+            </button>
+          )}
+        </div>
       </div>
-      <MetricsChart segments={filteredSegments} />
+      <MetricsChart segments={filteredSegments} highlightRange={brushRange} />
       {isHeatmap ? (
         <div className="timeline-canvas-wrapper">
           <TimelineHeatmapCanvas
@@ -174,6 +230,9 @@ export function Timeline({
               setCanvasPanOffsetNS(pan);
             }}
             highlightedIds={highlightedIds}
+            brushMode={brushMode}
+            brushRange={brushRange}
+            onBrushChange={handleBrushChange}
           />
         </div>
       )}
