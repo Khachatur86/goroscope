@@ -145,17 +145,9 @@
 
 ---
 
-### C-4. Интерактивный фильтр по времени (Time Range Selection) (P1) ⚠️ Partial
+### ~~C-4. Интерактивный фильтр по времени (Time Range Selection)~~ — ✅ РЕАЛИЗОВАНО (2026-03-19)
 
-**Уже есть:** `TimelineCanvas.tsx` реализует zoom/pan (scroll для zoom, drag для pan), кнопку «Reset zoom», `zoomToSelected` для автофокуса на выбранной goroutine.
-
-**Gap:** Это визуальный zoom, а не data-фильтр. Нет brush-selection (drag для выделения диапазона) и нет сквозной фильтрации — goroutine list, metrics chart, contention panel не перестраиваются по видимому окну времени.
-
-**Потребность гоферов:** Стандартная фича в профилировщиках (Chrome DevTools, Instruments, gotraceui). Необходима для фокусировки на конкретном инциденте.
-
-**Задача:** Добавить brush-selection поверх существующего zoom. Передавать `[visibleStartNS, visibleEndNS]` как фильтр в API запросы goroutine list и metrics chart.
-
-**Критерий готовности:** Drag на timeline выделяет временной интервал; goroutine list и metrics chart обновляются по видимому диапазону.
+> **Реализовано:** «⌖ Select range» toggle в legend bar Timeline активирует brush mode в TimelineCanvas. Drag создаёт полупрозрачный cyan brush rect поверх rows canvas. По завершении drag вычисляется множество goroutine IDs, у которых есть сегмент в выбранном диапазоне [startNS, endNS]. Это множество передаётся в app.tsx как `brushFilterIds` → `displayGoroutines` сужается. MetricsChart получает `highlightRange` и рисует matching rect. «✕ Clear range» снимает фильтр. Zoom/pan работают независимо и сохраняются.
 
 ---
 
@@ -294,7 +286,7 @@
 | B-2 | Flight Recorder интеграция (Go 1.25+) | P1 | Интеграция | L | Открыта |
 | C-2 | Визуализация parent-child иерархии | P1 | UX | M | ✅ Done |
 | C-3 | Smart Insights (автоматические рекомендации) | P1 | UX | M | ✅ Done |
-| C-4 | Time Range Selection | P1 | UX | M | ⚠️ Partial |
+| C-4 | Time Range Selection | P1 | UX | M | ✅ Done |
 | C-5 | Документация для пользователей | P1 | UX | M | Открыта |
 | E-3 | Homebrew / go install дистрибуция | P1 | DevEx | S | ✅ Done |
 | E-4 | Frontend smoke tests | P1 | DevEx | S | ✅ Done |
