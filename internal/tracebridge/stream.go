@@ -154,6 +154,29 @@ func StreamBinaryTrace(ctx context.Context, in StreamBinaryTraceInput) error {
 	var pendingFlush int
 	const flushEvery = 64 // notify subscribers roughly every 64 kept events
 
+	// Time-based flush: even when fewer than flushEvery events arrive (e.g.
+	// when the TailReader is stalled at EOF), push UI updates every 200 ms so
+	// goroutines in blocking states are visible while the target is alive.
+	// Writer.Flush is idempotent (it only wakes SSE subscribers), so calling
+	// it from both the ticker and the event loop is safe.
+	// The goroutine is tied to streamDone (CC-2: goroutine lifetime to context).
+	streamDone := make(chan struct{})
+	defer close(streamDone)
+	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-streamDone:
+				return
+			case <-ticker.C:
+				in.Writer.Flush()
+			}
+		}
+	}()
+
 	for {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("trace stream cancelled: %w", err)
