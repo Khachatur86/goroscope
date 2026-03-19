@@ -153,7 +153,7 @@ body {
 
 .workspace {
   display: grid;
-  grid-template-columns: 280px 1fr 300px;
+  grid-template-columns: 280px 1fr 380px;
   gap: 1rem;
   min-height: 500px;
 }
@@ -1039,7 +1039,6 @@ body {
   background: rgba(15, 23, 42, 0.5);
   border-radius: 6px;
   min-width: 0; /* allow children to shrink below content width in flex/grid */
-  overflow: hidden;
 }
 
 .stack-frame[role="button"] {
@@ -1061,9 +1060,7 @@ body {
 .stack-path {
   font-size: 0.75rem;
   color: #94a3b8;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all; /* wrap long paths instead of truncating */
 }
 
 .metrics-chart {
