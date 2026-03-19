@@ -88,7 +88,7 @@ func buildCaptureFromReader(ctx context.Context, r io.Reader) (model.Capture, er
 		}
 
 		st := ev.StateTransition()
-		if st.Resource.Kind() != xtrace.ResourceGoroutine {
+		if st.Resource.Kind != xtrace.ResourceGoroutine {
 			continue
 		}
 
@@ -273,17 +273,15 @@ func xTimestamp(t xtrace.Time) time.Time {
 }
 
 // xFrames converts a golang.org/x/exp/trace.Stack into []model.StackFrame.
-// Iteration stops if the yield function returns false (caller does not need
-// early termination here, so we always return true).
+// Stack.Frames() returns a Go 1.22 range-over-function iterator.
 func xFrames(stack xtrace.Stack) []model.StackFrame {
 	var frames []model.StackFrame
-	stack.Frames(func(f xtrace.StackFrame) bool {
+	for f := range stack.Frames() {
 		frames = append(frames, model.StackFrame{
 			Func: f.Func,
 			File: f.File,
 			Line: int(f.Line),
 		})
-		return true
-	})
+	}
 	return frames
 }
