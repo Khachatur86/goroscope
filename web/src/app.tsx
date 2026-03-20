@@ -23,6 +23,7 @@ import { ResourceGraph } from "./resource-graph/ResourceGraph";
 import { GoroutineGroups } from "./groups/GoroutineGroups";
 import { SmartInsights } from "./insights/SmartInsights";
 import { DependencyGraph } from "./graph/DependencyGraph";
+import { ContentionHeatmap } from "./analysis/ContentionHeatmap";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
 /** Height of one row in the virtualised goroutine list (px). */
@@ -172,7 +173,7 @@ export function App() {
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
-  const [analysisTab, setAnalysisTab] = useState<"insights" | "hotspots" | "resources" | "deadlock" | "groups" | "graph">("insights");
+  const [analysisTab, setAnalysisTab] = useState<"insights" | "hotspots" | "resources" | "deadlock" | "groups" | "graph" | "heatmap">("insights");
   const [analysisOpen, setAnalysisOpen] = useState(true);
   const [brushFilterIds, setBrushFilterIds] = useState<Set<number> | null>(null);
   const [filters, setFilters] = useState<FiltersState>(() => {
@@ -968,6 +969,7 @@ export function App() {
                 { id: "deadlock",  label: "Deadlock"  },
                 { id: "groups",    label: "Groups"    },
                 { id: "graph",     label: "Graph"     },
+                { id: "heatmap",   label: "Heatmap"   },
               ] as const
             ).map(({ id, label }) => (
               <button
@@ -1034,6 +1036,14 @@ export function App() {
                 goroutines={goroutines}
                 selectedId={selectedId}
                 onSelectGoroutine={handleSelect}
+              />
+            )}
+            {analysisTab === "heatmap" && (
+              <ContentionHeatmap
+                segments={timelineSegments}
+                onSelectResource={(id) =>
+                  setFilters((f) => ({ ...f, search: id }))
+                }
               />
             )}
           </div>
