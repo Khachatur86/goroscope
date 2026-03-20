@@ -24,6 +24,7 @@ import { GoroutineGroups } from "./groups/GoroutineGroups";
 import { SmartInsights } from "./insights/SmartInsights";
 import { DependencyGraph } from "./graph/DependencyGraph";
 import { ContentionHeatmap } from "./analysis/ContentionHeatmap";
+import { CommandPalette, type Command } from "./palette/CommandPalette";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
 /** Height of one row in the virtualised goroutine list (px). */
@@ -548,6 +549,7 @@ export function App() {
   const [replayUploading, setReplayUploading] = useState(false);
   const [replayError, setReplayError] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState<Set<number> | null>(null);
 
   // Direct canvas composite export — no html2canvas needed.
@@ -579,6 +581,90 @@ export function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [compareOpen]);
+
+  // ── Global keyboard shortcuts ────────────────────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // ⌘K / Ctrl+K → open palette
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+        return;
+      }
+      // Only fire shortcuts when no input/textarea is focused and palette is closed.
+      const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || paletteOpen) return;
+
+      switch (e.key) {
+        case "Escape":
+          // Clear selection
+          setSelectedId(null);
+          setSelectedGoroutine(null);
+          setSelectedSegment(null);
+          break;
+        case "r":
+          // Refresh
+          if (!e.metaKey && !e.ctrlKey) loadData();
+          break;
+        case "z":
+          // Zoom to selected
+          if (selectedId !== null) setZoomToSelected(true);
+          break;
+        case "f":
+          // Toggle related-focus
+          if (selectedId !== null) setRelatedFocus((v) => !v);
+          break;
+        case "p":
+          // Save PNG
+          handleSavePng();
+          break;
+        case "1":
+          setAnalysisTab("insights");   setAnalysisOpen(true); break;
+        case "2":
+          setAnalysisTab("hotspots");   setAnalysisOpen(true); break;
+        case "3":
+          setAnalysisTab("resources");  setAnalysisOpen(true); break;
+        case "4":
+          setAnalysisTab("deadlock");   setAnalysisOpen(true); break;
+        case "5":
+          setAnalysisTab("groups");     setAnalysisOpen(true); break;
+        case "6":
+          setAnalysisTab("graph");      setAnalysisOpen(true); break;
+        case "7":
+          setAnalysisTab("heatmap");    setAnalysisOpen(true); break;
+        case "`":
+          setAnalysisOpen((v) => !v);  break;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paletteOpen, selectedId, handleSavePng]);
+
+  // ── Command palette command list ─────────────────────────────────────────
+  const paletteCommands = useMemo<Command[]>(() => [
+    // Navigation
+    { id: "tab-insights",   group: "Analysis tabs", icon: "💡", label: "Open Insights tab",   hint: "1", action: () => { setAnalysisTab("insights");  setAnalysisOpen(true); } },
+    { id: "tab-hotspots",   group: "Analysis tabs", icon: "🔥", label: "Open Hotspots tab",   hint: "2", action: () => { setAnalysisTab("hotspots");  setAnalysisOpen(true); } },
+    { id: "tab-resources",  group: "Analysis tabs", icon: "🔗", label: "Open Resources tab",  hint: "3", action: () => { setAnalysisTab("resources"); setAnalysisOpen(true); } },
+    { id: "tab-deadlock",   group: "Analysis tabs", icon: "🔴", label: "Open Deadlock tab",   hint: "4", action: () => { setAnalysisTab("deadlock");  setAnalysisOpen(true); } },
+    { id: "tab-groups",     group: "Analysis tabs", icon: "📦", label: "Open Groups tab",     hint: "5", action: () => { setAnalysisTab("groups");    setAnalysisOpen(true); } },
+    { id: "tab-graph",      group: "Analysis tabs", icon: "🕸️", label: "Open Graph tab",      hint: "6", action: () => { setAnalysisTab("graph");     setAnalysisOpen(true); } },
+    { id: "tab-heatmap",    group: "Analysis tabs", icon: "🌡️", label: "Open Heatmap tab",    hint: "7", action: () => { setAnalysisTab("heatmap");   setAnalysisOpen(true); } },
+    // Timeline
+    { id: "zoom-selected",  group: "Timeline", icon: "🔎", label: "Zoom to selected goroutine", hint: "Z", keywords: ["zoom"], action: () => { if (selectedId !== null) setZoomToSelected(true); } },
+    { id: "reset-zoom",     group: "Timeline", icon: "↩",  label: "Reset timeline zoom",                 keywords: ["zoom", "reset"], action: () => setZoomToSelected(false) },
+    { id: "related-focus",  group: "Timeline", icon: "👁",  label: "Toggle related-focus",      hint: "F", keywords: ["focus", "related", "filter"], action: () => { if (selectedId !== null) setRelatedFocus((v) => !v); } },
+    { id: "save-png",       group: "Timeline", icon: "🖼", label: "Save timeline as PNG",       hint: "P", keywords: ["export", "image", "screenshot"], action: handleSavePng },
+    // Data
+    { id: "refresh",        group: "Data",     icon: "♻",  label: "Refresh data",               hint: "R", keywords: ["reload", "refresh"], action: loadData },
+    { id: "open-capture",   group: "Data",     icon: "📂", label: "Open .gtrace capture",                 keywords: ["open", "file", "upload", "trace"], action: () => captureInputRef.current?.click() },
+    { id: "compare",        group: "Data",     icon: "⚖",  label: "Compare two captures",                keywords: ["diff", "compare", "traces"], action: () => setCompareOpen(true) },
+    // View
+    { id: "toggle-analysis",group: "View",     icon: "📊", label: "Toggle analysis panel",      hint: "`", keywords: ["collapse", "hide", "panel"], action: () => setAnalysisOpen((v) => !v) },
+    { id: "clear-selection",group: "View",     icon: "✕",  label: "Clear selection",             hint: "Esc", keywords: ["deselect", "clear"], action: () => { setSelectedId(null); setSelectedGoroutine(null); setSelectedSegment(null); } },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [selectedId, handleSavePng]);
 
   const handleExportJson = async () => {
     const segs = await fetchTimeline({
@@ -781,6 +867,14 @@ export function App() {
           >
             ● {streamStatus}
           </span>
+          <button
+            type="button"
+            className="action-button palette-trigger"
+            onClick={() => setPaletteOpen(true)}
+            title="Command palette (⌘K)"
+          >
+            ⌘K
+          </button>
           <button id="copy-link-btn" type="button" className="action-button secondary" onClick={handleCopyLink}>
             Link
           </button>
@@ -1049,6 +1143,14 @@ export function App() {
           </div>
         )}
       </section>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={paletteCommands}
+        goroutines={goroutines}
+        onSelectGoroutine={handleSelect}
+      />
     </div>
   );
 }
