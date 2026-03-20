@@ -1,5 +1,37 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
+
+// ── Annotation storage ────────────────────────────────────────────────────────
+
+/** A user note anchored to the start of a specific timeline segment. */
+type Annotation = {
+  goroutineId: number;
+  startNS: number;
+  text: string;
+};
+
+/** Popover state while editing or creating an annotation. */
+type PopoverState = {
+  /** Viewport coordinates for placement. */
+  clientX: number;
+  clientY: number;
+  goroutineId: number;
+  startNS: number;
+};
+
+const ANNOTATION_KEY = "goroscope:annotations";
+
+function loadAnnotations(): Annotation[] {
+  try {
+    return JSON.parse(localStorage.getItem(ANNOTATION_KEY) ?? "[]") as Annotation[];
+  } catch {
+    return [];
+  }
+}
+
+function persistAnnotations(anns: Annotation[]): void {
+  localStorage.setItem(ANNOTATION_KEY, JSON.stringify(anns));
+}
 
 const COLORS: Record<string, string> = {
   RUNNING: "#10cfb8",
@@ -158,6 +190,17 @@ export function TimelineCanvas({
   // Stored in state so renderAxis reacts to it; axis redraws are fast enough
   // for per-pixel mouse tracking.
   const [ghostTimeNS, setGhostTimeNS] = useState<number | null>(null);
+
+  // Annotations: persisted to localStorage; displayed as amber pins on rows canvas.
+  const [annotations, setAnnotations] = useState<Annotation[]>(loadAnnotations);
+  const [popover, setPopover] = useState<PopoverState | null>(null);
+  const [popoverDraft, setPopoverDraft] = useState("");
+
+  // Fast lookup: "goroutineId:startNS" → annotation text.
+  const annotationMap = useMemo(
+    () => new Map(annotations.map((a) => [`${a.goroutineId}:${a.startNS}`, a.text])),
+    [annotations]
+  );
 
   const fullMinStart = Math.min(...segments.map((s) => s.start_ns));
   const fullMaxEnd = Math.max(...segments.map((s) => s.end_ns));
@@ -535,6 +578,28 @@ export function TimelineCanvas({
         ctx.restore();
       }
     }
+
+    // Annotation pins: small downward-pointing amber triangle above each annotated segment.
+    for (const ann of annotations) {
+      const gIdx = goroutines.findIndex((g) => g.goroutine_id === ann.goroutineId);
+      if (gIdx < firstVisibleIndex || gIdx > lastVisibleIndex) continue;
+      const px = plotLeft + ((ann.startNS - visibleStart) / visibleSpan) * innerWidth;
+      if (px < plotLeft || px > plotLeft + innerWidth) continue;
+      const drawY = gIdx * METRICS.rowHeight - rowScrollTop;
+      const cx2 = px + 4; // slight right offset so pin sits on bar start
+      ctx.save();
+      ctx.fillStyle = "#fbbf24";
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(cx2 - 5, drawY + 1);
+      ctx.lineTo(cx2 + 5, drawY + 1);
+      ctx.lineTo(cx2, drawY + 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
   }, [
     goroutines,
     segments,
@@ -552,6 +617,7 @@ export function TimelineCanvas({
     brushRange,
     pxToNS,
     scrubTimeNS,
+    annotations,
   ]);
 
   useEffect(() => {
@@ -747,6 +813,44 @@ export function TimelineCanvas({
     }
   }, [onHoverSegment, isDragging, brushMode]);
 
+  // ── Annotation handlers ───────────────────────────────────────────────────
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const seg = hitTest(e.clientX, e.clientY);
+      if (!seg) return;
+      setPopoverDraft(annotationMap.get(`${seg.goroutine_id}:${seg.start_ns}`) ?? "");
+      setPopover({ clientX: e.clientX, clientY: e.clientY, goroutineId: seg.goroutine_id, startNS: seg.start_ns });
+    },
+    [hitTest, annotationMap]
+  );
+
+  const commitAnnotation = useCallback(
+    (goroutineId: number, startNS: number, text: string) => {
+      setAnnotations((prev) => {
+        const filtered = prev.filter((a) => !(a.goroutineId === goroutineId && a.startNS === startNS));
+        const next = text.trim() ? [...filtered, { goroutineId, startNS, text: text.trim() }] : filtered;
+        persistAnnotations(next);
+        return next;
+      });
+      setPopover(null);
+    },
+    []
+  );
+
+  // Close popover when the user clicks outside it.
+  useEffect(() => {
+    if (!popover) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (!(e.target as Element).closest(".annotation-popover")) {
+        setPopover(null);
+      }
+    };
+    window.addEventListener("mousedown", onMouseDown);
+    return () => window.removeEventListener("mousedown", onMouseDown);
+  }, [popover]);
+
   // ── Axis scrubber handlers ────────────────────────────────────────────────
 
   /** Convert axis canvas clientX → absolute NS timestamp. */
@@ -833,6 +937,7 @@ export function TimelineCanvas({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseLeave}
+            onContextMenu={handleContextMenu}
           />
         </div>
       </div>
@@ -849,6 +954,66 @@ export function TimelineCanvas({
         >
           {hoveredSegment.state} {formatDuration(hoveredSegment.end_ns - hoveredSegment.start_ns)}
           {hoveredSegment.reason && ` · ${hoveredSegment.reason}`}
+          {(() => {
+            const ann = annotationMap.get(`${hoveredSegment.goroutine_id}:${hoveredSegment.start_ns}`);
+            return ann
+              ? <span className="timeline-tooltip-annotation"> 📝 {ann}</span>
+              : <span className="timeline-tooltip-hint"> · right-click to annotate</span>;
+          })()}
+        </div>
+      )}
+      {popover && (
+        <div
+          className="annotation-popover"
+          style={{
+            position: "fixed",
+            left: Math.min(popover.clientX, window.innerWidth - 260),
+            top: Math.min(popover.clientY, window.innerHeight - 160),
+          }}
+        >
+          <div className="annotation-popover-title">
+            📝 G{popover.goroutineId} · note
+          </div>
+          <textarea
+            className="annotation-popover-input"
+            value={popoverDraft}
+            onChange={(e) => setPopoverDraft(e.target.value)}
+            placeholder="Add a note…"
+            rows={3}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                commitAnnotation(popover.goroutineId, popover.startNS, popoverDraft);
+              }
+              if (e.key === "Escape") setPopover(null);
+            }}
+          />
+          <div className="annotation-popover-actions">
+            <button
+              type="button"
+              className="annotation-btn annotation-btn-save"
+              onClick={() => commitAnnotation(popover.goroutineId, popover.startNS, popoverDraft)}
+            >
+              Save
+            </button>
+            {annotationMap.has(`${popover.goroutineId}:${popover.startNS}`) && (
+              <button
+                type="button"
+                className="annotation-btn annotation-btn-delete"
+                onClick={() => commitAnnotation(popover.goroutineId, popover.startNS, "")}
+              >
+                Delete
+              </button>
+            )}
+            <button
+              type="button"
+              className="annotation-btn annotation-btn-cancel"
+              onClick={() => setPopover(null)}
+            >
+              Cancel
+            </button>
+            <span className="annotation-popover-hint">⌘↵ save · ESC cancel</span>
+          </div>
         </div>
       )}
     </div>
