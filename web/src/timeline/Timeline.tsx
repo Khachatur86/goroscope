@@ -6,6 +6,16 @@ import { TimelineHeatmapCanvas } from "./TimelineHeatmapCanvas";
 import { MinimapCanvas } from "./MinimapCanvas";
 import { MetricsChart } from "./MetricsChart";
 
+/**
+ * Historical state snapshot for one goroutine at the scrub time.
+ * State and optional reason reflect the segment active at that moment.
+ */
+export type ScrubSnapshot = {
+  goroutine_id: number;
+  state: string;
+  reason?: string;
+};
+
 type FiltersState = {
   state: string;
   reason: string;
@@ -27,6 +37,18 @@ type Props = {
   highlightedIds?: Set<number> | null;
   /** Fired when brush selection changes — null means cleared. */
   onBrushFilterChange?: (ids: Set<number> | null) => void;
+  /**
+   * Time-scrubber: absolute NS timestamp of the user-selected moment.
+   * Draws an amber cursor on the timeline axis and goroutine rows.
+   */
+  scrubTimeNS?: number | null;
+  /** Fired when the user clicks the axis (set) or double-clicks (clear). */
+  onScrubChange?: (timeNS: number | null) => void;
+  /**
+   * Called whenever the scrub snapshot recomputes (scrubTimeNS or segments changed).
+   * Passes one entry per goroutine with its historical state at scrubTimeNS.
+   */
+  onScrubSnapshot?: (snapshot: ScrubSnapshot[]) => void;
 };
 
 const COLORS: Record<string, string> = {
@@ -48,6 +70,9 @@ export function Timeline({
   segmentsOverride,
   highlightedIds,
   onBrushFilterChange,
+  scrubTimeNS,
+  onScrubChange,
+  onScrubSnapshot,
 }: Props) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [processorSegments, setProcessorSegments] = useState<ProcessorSegment[]>([]);
@@ -87,6 +112,37 @@ export function Timeline({
       ),
     [segments, goroutines]
   );
+
+  // Compute the historical state of each goroutine at scrubTimeNS.
+  // Uses `segments` (all fetched, unfiltered by goroutine list) for accuracy.
+  const scrubSnapshot = useMemo<ScrubSnapshot[]>(() => {
+    if (scrubTimeNS == null || segments.length === 0) return [];
+    const goroutineIds = [...new Set(segments.map((s) => s.goroutine_id))];
+    const result: ScrubSnapshot[] = [];
+    for (const gid of goroutineIds) {
+      const segs = segments
+        .filter((s) => s.goroutine_id === gid)
+        .sort((a, b) => a.start_ns - b.start_ns);
+      // Segment that contains scrubTimeNS.
+      const active = segs.find((s) => s.start_ns <= scrubTimeNS && s.end_ns > scrubTimeNS);
+      if (active) {
+        result.push({ goroutine_id: gid, state: active.state, reason: active.reason || undefined });
+        continue;
+      }
+      // No covering segment — use the last segment that ended before T.
+      const lastBefore = [...segs].filter((s) => s.end_ns <= scrubTimeNS).pop();
+      if (lastBefore) {
+        result.push({ goroutine_id: gid, state: lastBefore.state, reason: lastBefore.reason || undefined });
+      }
+      // Goroutines with no segment before T were not yet created; skip.
+    }
+    return result;
+  }, [scrubTimeNS, segments]);
+
+  // Propagate snapshot to parent whenever it changes.
+  useEffect(() => {
+    onScrubSnapshot?.(scrubSnapshot);
+  }, [scrubSnapshot, onScrubSnapshot]);
 
   const fullMinStart = Math.min(...filteredSegments.map((s) => s.start_ns));
   const fullMaxEnd = Math.max(...filteredSegments.map((s) => s.end_ns));
@@ -196,6 +252,11 @@ export function Timeline({
               ✕ Clear range
             </button>
           )}
+          {scrubTimeNS != null && (
+            <span className="scrub-indicator" title="Click axis to move · double-click or ESC to clear">
+              ⏱ Scrubbing — ESC to clear
+            </span>
+          )}
         </div>
       </div>
       <MetricsChart segments={filteredSegments} highlightRange={brushRange} />
@@ -236,6 +297,8 @@ export function Timeline({
             brushMode={brushMode}
             brushRange={brushRange}
             onBrushChange={handleBrushChange}
+            scrubTimeNS={scrubTimeNS}
+            onScrubChange={onScrubChange}
           />
         </div>
       )}

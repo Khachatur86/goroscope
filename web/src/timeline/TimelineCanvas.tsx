@@ -92,6 +92,13 @@ type Props = {
   brushRange?: [number, number] | null;
   /** Fired when the user drags a new brush or clears it (null). */
   onBrushChange?: (range: [number, number] | null) => void;
+  /**
+   * Time-scrubber: absolute NS timestamp of the user-selected moment.
+   * Drawn as an amber cursor spanning both the axis and the goroutine rows.
+   */
+  scrubTimeNS?: number | null;
+  /** Fired when the user clicks the axis to set (or double-clicks to clear) the scrub time. */
+  onScrubChange?: (timeNS: number | null) => void;
 };
 
 export function TimelineCanvas({
@@ -109,6 +116,8 @@ export function TimelineCanvas({
   brushMode = false,
   brushRange,
   onBrushChange,
+  scrubTimeNS,
+  onScrubChange,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -144,6 +153,11 @@ export function TimelineCanvas({
   // Brush drag state (pixels from canvas left edge → converted to NS on commit)
   const [brushDragStartPx, setBrushDragStartPx] = useState<number | null>(null);
   const [brushDragCurrentPx, setBrushDragCurrentPx] = useState<number | null>(null);
+
+  // Ghost cursor: NS position of mouse hover over the axis (not committed).
+  // Stored in state so renderAxis reacts to it; axis redraws are fast enough
+  // for per-pixel mouse tracking.
+  const [ghostTimeNS, setGhostTimeNS] = useState<number | null>(null);
 
   const fullMinStart = Math.min(...segments.map((s) => s.start_ns));
   const fullMaxEnd = Math.max(...segments.map((s) => s.end_ns));
@@ -311,6 +325,57 @@ export function TimelineCanvas({
     ctx.moveTo(plotLeft - 0.5, METRICS.axisHeight - 18);
     ctx.lineTo(plotLeft - 0.5, height);
     ctx.stroke();
+
+    // ── Cursor overlay ───────────────────────────────────────────────────
+    // Ghost cursor: thin dashed sky-blue line following mouse hover on axis.
+    if (ghostTimeNS != null) {
+      const ratio = (ghostTimeNS - visibleStart) / visibleSpan;
+      const gx = plotLeft + ratio * innerWidth;
+      if (gx >= plotLeft && gx <= width - METRICS.rightPadding) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.55)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Time label above the axis baseline
+        const lbl = `T+${formatAxisLabel(ghostTimeNS - fullMinStart)}`;
+        ctx.font = '10px "IBM Plex Mono", monospace';
+        const lw = ctx.measureText(lbl).width;
+        const lx = Math.min(gx + 4, width - METRICS.rightPadding - lw - 2);
+        ctx.fillStyle = "rgba(56, 189, 248, 0.9)";
+        ctx.fillText(lbl, lx, 14);
+        ctx.restore();
+      }
+    }
+
+    // Scrub cursor: solid amber line at the committed scrub time.
+    if (scrubTimeNS != null) {
+      const ratio = (scrubTimeNS - visibleStart) / visibleSpan;
+      const sx = plotLeft + ratio * innerWidth;
+      if (sx >= plotLeft && sx <= width - METRICS.rightPadding) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(250, 204, 21, 0.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, height);
+        ctx.stroke();
+        // Label with background
+        const lbl = `⏱ T+${formatAxisLabel(scrubTimeNS - fullMinStart)}`;
+        ctx.font = 'bold 10px "IBM Plex Mono", monospace';
+        const lw = ctx.measureText(lbl).width + 8;
+        const lx = Math.min(sx + 4, width - METRICS.rightPadding - lw - 2);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+        ctx.fillRect(lx - 2, 2, lw, 16);
+        ctx.fillStyle = "rgba(250, 204, 21, 0.95)";
+        ctx.fillText(lbl, lx + 2, 14);
+        ctx.restore();
+      }
+    }
   }, [
     visibleStart,
     visibleSpan,
@@ -319,6 +384,8 @@ export function TimelineCanvas({
     processorIds,
     numPs,
     gTop,
+    ghostTimeNS,
+    scrubTimeNS,
   ]);
 
   const rowsCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -450,6 +517,24 @@ export function TimelineCanvas({
     } else if (brushRange) {
       drawBrush(brushRange[0], brushRange[1]);
     }
+
+    // Scrub cursor in rows area: dashed amber line spanning full height.
+    if (scrubTimeNS != null) {
+      const ratio = (scrubTimeNS - visibleStart) / visibleSpan;
+      const sx = plotLeft + ratio * innerWidth;
+      if (sx >= plotLeft && sx <= width - METRICS.rightPadding) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(250, 204, 21, 0.38)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
   }, [
     goroutines,
     segments,
@@ -466,6 +551,7 @@ export function TimelineCanvas({
     brushDragCurrentPx,
     brushRange,
     pxToNS,
+    scrubTimeNS,
   ]);
 
   useEffect(() => {
@@ -661,13 +747,66 @@ export function TimelineCanvas({
     }
   }, [onHoverSegment, isDragging, brushMode]);
 
+  // ── Axis scrubber handlers ────────────────────────────────────────────────
+
+  /** Convert axis canvas clientX → absolute NS timestamp. */
+  const axisXToNS = useCallback(
+    (clientX: number): number => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container) return visibleStart;
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const innerWidth = getInnerWidth(container.clientWidth);
+      const clamped = Math.max(0, Math.min(innerWidth, x - plotLeft));
+      return visibleStart + (clamped / innerWidth) * visibleSpan;
+    },
+    [visibleStart, visibleSpan]
+  );
+
+  const handleAxisMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container) { setGhostTimeNS(null); return; }
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const innerWidth = getInnerWidth(container.clientWidth);
+      if (x >= plotLeft && x <= plotLeft + innerWidth) {
+        setGhostTimeNS(visibleStart + ((x - plotLeft) / innerWidth) * visibleSpan);
+      } else {
+        setGhostTimeNS(null);
+      }
+    },
+    [visibleStart, visibleSpan]
+  );
+
+  const handleAxisMouseLeave = useCallback(() => {
+    setGhostTimeNS(null);
+  }, []);
+
+  const handleAxisClick = useCallback(
+    (e: React.MouseEvent) => {
+      onScrubChange?.(axisXToNS(e.clientX));
+    },
+    [axisXToNS, onScrubChange]
+  );
+
+  const handleAxisDoubleClick = useCallback(() => {
+    onScrubChange?.(null);
+  }, [onScrubChange]);
+
   return (
     <div ref={containerRef} className="timeline-canvas-container">
       <canvas
         ref={canvasRef}
         className="timeline-canvas timeline-canvas-axis"
         onWheel={handleWheel}
-        style={{ cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "default" }}
+        onMouseMove={handleAxisMouseMove}
+        onMouseLeave={handleAxisMouseLeave}
+        onClick={handleAxisClick}
+        onDoubleClick={handleAxisDoubleClick}
+        style={{ cursor: "crosshair" }}
       />
       <div
         ref={scrollContainerRef}

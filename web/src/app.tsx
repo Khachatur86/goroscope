@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { FixedSizeList, type ListChildComponentProps } from "react-window";
 import type { Goroutine, Session, DeadlockHint, TimelineSegment } from "./api/client";
+import type { ScrubSnapshot } from "./timeline/Timeline";
 import {
   fetchCurrentSession,
   fetchGoroutines,
@@ -140,6 +141,10 @@ export function App() {
     };
   });
 
+  // Time scrubber: declared early because scrubMap/listGoroutines useMemos reference them.
+  const [scrubTimeNS, setScrubTimeNS] = useState<number | null>(null);
+  const [scrubSnapshot, setScrubSnapshot] = useState<ScrubSnapshot[]>([]);
+
   // Memoised so that unrelated state changes (selectedId, inspectorTab, …)
   // do not trigger a full 200-goroutine re-sort on every render.
   const filteredGoroutines = useMemo(
@@ -175,6 +180,25 @@ export function App() {
       (g) => brushFilterIds.has(g.goroutine_id) || g.goroutine_id === selectedId
     );
   }
+
+  // When the time scrubber is active, merge historical states from the snapshot
+  // into the display list so the goroutine list reflects what each goroutine was
+  // doing at the scrubbed moment rather than its current live state.
+  const scrubMap = useMemo(
+    () => new Map(scrubSnapshot.map((s) => [s.goroutine_id, s])),
+    [scrubSnapshot]
+  );
+  const listGoroutines = useMemo(
+    () =>
+      scrubTimeNS == null
+        ? displayGoroutines
+        : displayGoroutines.map((g) => {
+            const snap = scrubMap.get(g.goroutine_id);
+            if (!snap) return g;
+            return { ...g, state: snap.state, reason: snap.reason ?? g.reason };
+          }),
+    [scrubTimeNS, displayGoroutines, scrubMap]
+  );
 
   const initialUrlId = useRef(parseGoroutineFromURL());
   useEffect(() => {
@@ -560,6 +584,12 @@ export function App() {
         jumpToInputRef.current?.focus();
         return;
       }
+      // ESC clears the scrub cursor when active.
+      if (e.key === "Escape" && scrubTimeNS != null) {
+        e.preventDefault();
+        setScrubTimeNS(null);
+        return;
+      }
       if (isInput) return;
       if (displayGoroutines.length === 0) return;
       if (e.key === "ArrowDown") {
@@ -590,7 +620,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, displayGoroutines, compareOpen]);
+  }, [selectedId, displayGoroutines, compareOpen, scrubTimeNS]);
 
   return (
     <div
@@ -736,16 +766,21 @@ export function App() {
             jumpToInputRef={jumpToInputRef}
             distinctLabelPairs={distinctLabelPairs(goroutines)}
           />
+          {scrubTimeNS != null && (
+            <div className="scrub-list-banner">
+              ⏱ Time snapshot active · ESC to clear
+            </div>
+          )}
           <div className="goroutine-list">
-            {displayGoroutines.length === 0 ? (
+            {listGoroutines.length === 0 ? (
               <p className="empty-message">No goroutines match the current filters.</p>
             ) : (
               <FixedSizeList
                 height={GOROUTINE_LIST_HEIGHT}
-                itemCount={displayGoroutines.length}
+                itemCount={listGoroutines.length}
                 itemSize={GOROUTINE_ITEM_HEIGHT}
                 width="100%"
-                itemData={{ goroutines: displayGoroutines, selectedId, onSelect: handleSelect }}
+                itemData={{ goroutines: listGoroutines, selectedId, onSelect: handleSelect }}
               >
                 {GoroutineRow}
               </FixedSizeList>
@@ -822,6 +857,9 @@ export function App() {
             viewMode={viewMode}
             highlightedIds={highlightedIds}
             onBrushFilterChange={setBrushFilterIds}
+            scrubTimeNS={scrubTimeNS}
+            onScrubChange={setScrubTimeNS}
+            onScrubSnapshot={setScrubSnapshot}
           />
         </section>
 
