@@ -69,6 +69,7 @@ const COLORS: Record<string, string> = {
 /** Imperative handle exposed by Timeline via ref. */
 export type TimelineHandle = {
   exportPng: () => void;
+  exportGif: (nFrames?: number, fpsHint?: number, onDone?: () => void) => void;
 };
 
 export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
@@ -96,6 +97,8 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   const timelineCanvasRef = useRef<TimelineCanvasHandle>(null);
   useImperativeHandle(ref, () => ({
     exportPng: () => timelineCanvasRef.current?.exportPng(),
+    exportGif: (nFrames, fpsHint, onDone) =>
+      timelineCanvasRef.current?.exportGif(nFrames, fpsHint, onDone),
   }), []);
 
   useEffect(() => {

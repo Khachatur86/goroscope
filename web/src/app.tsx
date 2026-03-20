@@ -550,12 +550,19 @@ export function App() {
   const [replayError, setReplayError] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [gifExporting, setGifExporting] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState<Set<number> | null>(null);
 
   // Direct canvas composite export — no html2canvas needed.
   const handleSavePng = useCallback(() => {
     timelineRef.current?.exportPng();
   }, []);
+
+  const handleSaveGif = useCallback(() => {
+    if (gifExporting) return;
+    setGifExporting(true);
+    timelineRef.current?.exportGif(24, 12, () => setGifExporting(false));
+  }, [gifExporting]);
 
   const handleFullscreen = () => {
     const el = timelinePanelRef.current;
@@ -656,6 +663,7 @@ export function App() {
     { id: "reset-zoom",     group: "Timeline", icon: "↩",  label: "Reset timeline zoom",                 keywords: ["zoom", "reset"], action: () => setZoomToSelected(false) },
     { id: "related-focus",  group: "Timeline", icon: "👁",  label: "Toggle related-focus",      hint: "F", keywords: ["focus", "related", "filter"], action: () => { if (selectedId !== null) setRelatedFocus((v) => !v); } },
     { id: "save-png",       group: "Timeline", icon: "🖼", label: "Save timeline as PNG",       hint: "P", keywords: ["export", "image", "screenshot"], action: handleSavePng },
+    { id: "save-gif",       group: "Timeline", icon: "🎞", label: "Export timeline as GIF",              keywords: ["export", "gif", "animation", "animated"], action: handleSaveGif },
     // Data
     { id: "refresh",        group: "Data",     icon: "♻",  label: "Refresh data",               hint: "R", keywords: ["reload", "refresh"], action: loadData },
     { id: "open-capture",   group: "Data",     icon: "📂", label: "Open .gtrace capture",                 keywords: ["open", "file", "upload", "trace"], action: () => captureInputRef.current?.click() },
@@ -664,7 +672,7 @@ export function App() {
     { id: "toggle-analysis",group: "View",     icon: "📊", label: "Toggle analysis panel",      hint: "`", keywords: ["collapse", "hide", "panel"], action: () => setAnalysisOpen((v) => !v) },
     { id: "clear-selection",group: "View",     icon: "✕",  label: "Clear selection",             hint: "Esc", keywords: ["deselect", "clear"], action: () => { setSelectedId(null); setSelectedGoroutine(null); setSelectedSegment(null); } },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [selectedId, handleSavePng]);
+  ], [selectedId, handleSavePng, handleSaveGif]);
 
   const handleExportJson = async () => {
     const segs = await fetchTimeline({
@@ -990,8 +998,17 @@ export function App() {
                 Reset zoom
               </button>
             )}
-            <button type="button" className="timeline-control-button" onClick={handleSavePng} title="Save timeline as PNG">
+            <button type="button" className="timeline-control-button" onClick={handleSavePng} title="Save timeline as PNG (P)">
               Save PNG
+            </button>
+            <button
+              type="button"
+              className={`timeline-control-button gif-export-btn ${gifExporting ? "gif-export-btn--busy" : ""}`}
+              onClick={handleSaveGif}
+              disabled={gifExporting}
+              title="Export timeline as animated GIF"
+            >
+              {gifExporting ? "GIF…" : "Save GIF"}
             </button>
             <button type="button" className="timeline-control-button" onClick={handleExportJson} title="Export timeline as JSON">
               Export JSON

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
+import { encodeAnimatedGIF, type GifFrame } from "../gif/encoder";
 
 // ── Annotation storage ────────────────────────────────────────────────────────
 
@@ -108,6 +109,13 @@ function goroutineHue(id: number): number {
 export type TimelineCanvasHandle = {
   /** Composites axis + rows canvases into a PNG and triggers a download. */
   exportPng: () => void;
+  /**
+   * Renders the current timeline as an animated GIF with a sweeping cursor.
+   * @param nFrames  Number of animation frames (default 24).
+   * @param fpsHint  Target playback speed (default 12 fps → 8 cs delay).
+   * @param onDone   Called when encoding is complete (success or error).
+   */
+  exportGif: (nFrames?: number, fpsHint?: number, onDone?: () => void) => void;
 };
 
 type Props = {
@@ -239,7 +247,108 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     }, "image/png");
   }, [goroutines.length]);
 
-  useImperativeHandle(ref, () => ({ exportPng }), [exportPng]);
+  // ── GIF export ─────────────────────────────────────────────────────────────
+  // Sweeps a cursor line across the composite image to produce an animation
+  // that shows the goroutine timeline progressing through time.
+  const exportGif = useCallback((
+    nFrames = 24,
+    fpsHint = 12,
+    onDone?: () => void,
+  ) => {
+    const axisCanvas = canvasRef.current;
+    const rowsCanvas = rowsCanvasRef.current;
+    if (!axisCanvas || !rowsCanvas) { onDone?.(); return; }
+
+    // Dimensions — use logical (1×) pixels so the GIF is a reasonable size.
+    const W      = axisCanvas.clientWidth;
+    const axisH  = axisCanvas.clientHeight;
+    const rowsH  = rowsCanvas.clientHeight;
+    const footerH = 18;
+    const totalH = axisH + rowsH + footerH;
+
+    if (W <= 0 || totalH <= 0) { onDone?.(); return; }
+
+    // Composite static content (axis + rows + footer) onto an off-screen canvas.
+    const base = document.createElement("canvas");
+    base.width  = W;
+    base.height = totalH;
+    const bctx = base.getContext("2d");
+    if (!bctx) { onDone?.(); return; }
+
+    bctx.fillStyle = "#0f172a";
+    bctx.fillRect(0, 0, W, totalH);
+    bctx.drawImage(axisCanvas, 0, 0, W, axisH);
+    bctx.drawImage(rowsCanvas, 0, axisH, W, rowsH);
+
+    // Footer
+    bctx.fillStyle = "#0f172a";
+    bctx.fillRect(0, axisH + rowsH, W, footerH);
+    bctx.fillStyle = "#475569";
+    bctx.font = "9px monospace";
+    bctx.textBaseline = "middle";
+    bctx.fillText(
+      `Goroscope · ${goroutines.length} goroutines`,
+      8,
+      axisH + rowsH + footerH / 2,
+    );
+
+    const baseData = bctx.getImageData(0, 0, W, totalH);
+    const delayCs  = Math.max(1, Math.round(100 / fpsHint));
+
+    // Build frames asynchronously via setTimeout to keep UI responsive.
+    const frames: GifFrame[] = [];
+    let fi = 0;
+
+    const buildNextFrame = () => {
+      if (fi >= nFrames) {
+        // All frames collected — encode and download.
+        try {
+          const gif  = encodeAnimatedGIF(frames, W, totalH);
+          // Copy into a plain Uint8Array to satisfy Blob's strict ArrayBuffer typing.
+          const copy = new Uint8Array(gif.length);
+          copy.set(gif);
+          const blob = new Blob([copy], { type: "image/gif" });
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement("a");
+          a.href     = url;
+          a.download = `goroscope-${Date.now()}.gif`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          console.error("GIF encoding failed:", e);
+        }
+        onDone?.();
+        return;
+      }
+
+      // Copy base pixels.
+      const data = new Uint8ClampedArray(baseData.data);
+
+      // Draw cursor: 2px-wide bright cyan vertical line in the rows area.
+      const xCursor = Math.round((fi / Math.max(nFrames - 1, 1)) * (W - 2));
+      const CURSOR_R = 16, CURSOR_G = 207, CURSOR_B = 184; // #10cfb8
+
+      for (let y = axisH; y < axisH + rowsH; y++) {
+        for (let dx = 0; dx < 2; dx++) {
+          const x   = Math.min(xCursor + dx, W - 1);
+          const idx = (y * W + x) * 4;
+          data[idx]     = CURSOR_R;
+          data[idx + 1] = CURSOR_G;
+          data[idx + 2] = CURSOR_B;
+          data[idx + 3] = 255;
+        }
+      }
+
+      frames.push({ pixels: data, delayCs });
+      fi++;
+      setTimeout(buildNextFrame, 0); // yield to UI thread between frames
+    };
+
+    buildNextFrame();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goroutines.length]);
+
+  useImperativeHandle(ref, () => ({ exportPng, exportGif }), [exportPng, exportGif]);
 
   // Brush drag state (pixels from canvas left edge → converted to NS on commit)
   const [brushDragStartPx, setBrushDragStartPx] = useState<number | null>(null);

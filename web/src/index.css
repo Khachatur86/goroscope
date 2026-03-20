@@ -2739,3 +2739,20 @@ body {
 .diff-snapshot-btn {
   font-size: 0.72rem;
 }
+
+/* ── GIF export button ─────────────────────────────────────────────────────── */
+
+.gif-export-btn {
+  font-family: monospace;
+}
+
+.gif-export-btn--busy {
+  opacity: 0.6;
+  cursor: wait;
+  animation: gif-pulse 1s ease-in-out infinite;
+}
+
+@keyframes gif-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 0.9; }
+}
