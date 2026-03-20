@@ -49,6 +49,11 @@ type Props = {
    * Passes one entry per goroutine with its historical state at scrubTimeNS.
    */
   onScrubSnapshot?: (snapshot: ScrubSnapshot[]) => void;
+  /**
+   * Called whenever the filtered segments array changes (new data, filter change, etc.).
+   * Used by the goroutine list to render per-row lifetime bars without a separate fetch.
+   */
+  onSegmentsChange?: (segments: TimelineSegment[]) => void;
 };
 
 const COLORS: Record<string, string> = {
@@ -73,6 +78,7 @@ export function Timeline({
   scrubTimeNS,
   onScrubChange,
   onScrubSnapshot,
+  onSegmentsChange,
 }: Props) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [processorSegments, setProcessorSegments] = useState<ProcessorSegment[]>([]);
@@ -143,6 +149,11 @@ export function Timeline({
   useEffect(() => {
     onScrubSnapshot?.(scrubSnapshot);
   }, [scrubSnapshot, onScrubSnapshot]);
+
+  // Propagate filtered segments so the goroutine sidebar can render lifetime bars.
+  useEffect(() => {
+    onSegmentsChange?.(filteredSegments);
+  }, [filteredSegments, onSegmentsChange]);
 
   const fullMinStart = Math.min(...filteredSegments.map((s) => s.start_ns));
   const fullMaxEnd = Math.max(...filteredSegments.map((s) => s.end_ns));

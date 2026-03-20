@@ -292,6 +292,8 @@ body {
   cursor: pointer;
   text-align: left;
   color: inherit;
+  position: relative;
+  overflow: hidden;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
@@ -320,6 +322,28 @@ body {
 .lane-item-title {
   font-weight: 600;
   min-width: 3rem;
+}
+
+/* Thin colour strip at the bottom of a goroutine list row showing lifetime. */
+.lifetime-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  pointer-events: none;
+  opacity: 0.82;
+  transition: opacity 0.2s ease;
+}
+
+.lifetime-bar--empty {
+  background: transparent;
+}
+
+.lane-item:hover .lifetime-bar,
+.lane-item.active .lifetime-bar {
+  opacity: 1;
+  height: 4px;
 }
 
 .lane-item-meta {

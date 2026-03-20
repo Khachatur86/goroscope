@@ -29,10 +29,57 @@ const GOROUTINE_ITEM_HEIGHT = 44;
 /** Visible height of the virtualised goroutine list (px). */
 const GOROUTINE_LIST_HEIGHT = 400;
 
+const LIFETIME_COLORS: Record<string, string> = {
+  RUNNING: "#10cfb8",
+  RUNNABLE: "#8394a8",
+  WAITING: "#f59e0b",
+  BLOCKED: "#f43f5e",
+  SYSCALL: "#4da6ff",
+  DONE: "#4b5563",
+};
+
+/** Thin colour strip at the bottom of a goroutine list row showing its full lifecycle. */
+function LifetimeBar({ segments }: { segments: TimelineSegment[] | undefined }) {
+  if (!segments || segments.length === 0) {
+    return <div className="lifetime-bar lifetime-bar--empty" />;
+  }
+  const minStart = Math.min(...segments.map((s) => s.start_ns));
+  const maxEnd = Math.max(...segments.map((s) => s.end_ns));
+  const span = Math.max(maxEnd - minStart, 1);
+  const sorted = [...segments].sort((a, b) => a.start_ns - b.start_ns);
+
+  // Build gradient stops, inserting gap colour for uncovered intervals.
+  const stops: string[] = [];
+  let cursor = 0;
+  for (const seg of sorted) {
+    const x1 = ((seg.start_ns - minStart) / span) * 100;
+    const x2 = ((seg.end_ns - minStart) / span) * 100;
+    if (x1 > cursor + 0.01) {
+      // Brief gap between segments (scheduling latency, filter holes, etc.)
+      stops.push(`#1e293b ${cursor.toFixed(2)}%`, `#1e293b ${x1.toFixed(2)}%`);
+    }
+    const color = LIFETIME_COLORS[seg.state] ?? "#94a3b8";
+    stops.push(`${color} ${x1.toFixed(2)}%`, `${color} ${x2.toFixed(2)}%`);
+    cursor = x2;
+  }
+  if (cursor < 99.99) {
+    stops.push(`#1e293b ${cursor.toFixed(2)}%`, `#1e293b 100%`);
+  }
+
+  return (
+    <div
+      className="lifetime-bar"
+      style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
+      title={`${segments.length} segments`}
+    />
+  );
+}
+
 type GoroutineRowData = {
   goroutines: Goroutine[];
   selectedId: number | null;
   onSelect: (id: number) => void;
+  segmentsByGoroutine: Map<number, TimelineSegment[]>;
 };
 
 function GoroutineRow({ index, style, data }: ListChildComponentProps<GoroutineRowData>) {
@@ -49,6 +96,7 @@ function GoroutineRow({ index, style, data }: ListChildComponentProps<GoroutineR
         <span className="lane-item-meta">
           {g.labels?.function ?? g.reason ?? "—"}
         </span>
+        <LifetimeBar segments={data.segmentsByGoroutine.get(g.goroutine_id)} />
       </button>
     </div>
   );
@@ -144,6 +192,18 @@ export function App() {
   // Time scrubber: declared early because scrubMap/listGoroutines useMemos reference them.
   const [scrubTimeNS, setScrubTimeNS] = useState<number | null>(null);
   const [scrubSnapshot, setScrubSnapshot] = useState<ScrubSnapshot[]>([]);
+
+  // Segments from the Timeline component — used to draw per-row lifetime bars.
+  const [timelineSegments, setTimelineSegments] = useState<TimelineSegment[]>([]);
+  const segmentsByGoroutine = useMemo(() => {
+    const map = new Map<number, TimelineSegment[]>();
+    for (const seg of timelineSegments) {
+      const list = map.get(seg.goroutine_id);
+      if (list) list.push(seg);
+      else map.set(seg.goroutine_id, [seg]);
+    }
+    return map;
+  }, [timelineSegments]);
 
   // Memoised so that unrelated state changes (selectedId, inspectorTab, …)
   // do not trigger a full 200-goroutine re-sort on every render.
@@ -796,7 +856,7 @@ export function App() {
                 itemCount={listGoroutines.length}
                 itemSize={GOROUTINE_ITEM_HEIGHT}
                 width="100%"
-                itemData={{ goroutines: listGoroutines, selectedId, onSelect: handleSelect }}
+                itemData={{ goroutines: listGoroutines, selectedId, onSelect: handleSelect, segmentsByGoroutine }}
               >
                 {GoroutineRow}
               </FixedSizeList>
@@ -876,6 +936,7 @@ export function App() {
             scrubTimeNS={scrubTimeNS}
             onScrubChange={setScrubTimeNS}
             onScrubSnapshot={setScrubSnapshot}
+            onSegmentsChange={setTimelineSegments}
           />
         </section>
 
