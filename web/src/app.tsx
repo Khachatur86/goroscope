@@ -172,7 +172,7 @@ export function App() {
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
-  const [analysisTab, setAnalysisTab] = useState<"hotspots" | "resources" | "deadlock" | "groups" | "graph">("hotspots");
+  const [analysisTab, setAnalysisTab] = useState<"insights" | "hotspots" | "resources" | "deadlock" | "groups" | "graph">("insights");
   const [analysisOpen, setAnalysisOpen] = useState(true);
   const [brushFilterIds, setBrushFilterIds] = useState<Set<number> | null>(null);
   const [filters, setFilters] = useState<FiltersState>(() => {
@@ -477,9 +477,6 @@ export function App() {
     }
   };
 
-  const blockedCount = (goroutines ?? []).filter((g) =>
-    ["BLOCKED", "WAITING", "SYSCALL"].includes(g.state)
-  ).length;
 
   const handleCopyLink = () => {
     const url = buildShareableURL(filters, selectedId);
@@ -714,22 +711,86 @@ export function App() {
         style={{ display: "none" }}
         aria-hidden
       />
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Local Go Concurrency Debugger</p>
-          <h1>Goroscope</h1>
-          <p className="subtitle">Inspect goroutines, blocking behavior, and stack snapshots on a live runtime timeline.</p>
+
+      {/* ── Compact top bar ──────────────────────────────────────────────── */}
+      <header className="topbar">
+        <div className="topbar-brand">
+          <span className="topbar-title">Goroscope</span>
+          <span className="topbar-legend">
+            <span className="legend-chip running">RUN</span>
+            <span className="legend-chip runnable">RUNNABLE</span>
+            <span className="legend-chip waiting">WAIT</span>
+            <span className="legend-chip blocked">BLOCK</span>
+            <span className="legend-chip syscall">SYSCALL</span>
+            <span className="legend-chip done">DONE</span>
+          </span>
         </div>
-        <div className="hero-actions">
+
+        <div className="topbar-stats">
+          <span className="topbar-stat" title={`Session: ${session?.name}`}>
+            <span className="topbar-stat-label">Session</span>
+            <strong>{session?.name ?? "—"}</strong>
+          </span>
+          <span className="topbar-stat-sep" />
+          <span className="topbar-stat">
+            <span className="topbar-stat-label">Goroutines</span>
+            <strong>
+              {filteredGoroutines.length === goroutines.length
+                ? goroutines.length
+                : `${filteredGoroutines.length}/${goroutines.length}`}
+            </strong>
+          </span>
+          <span className="topbar-stat-sep" />
+          <span
+            className={`topbar-stat topbar-stat-btn ${filters.minWaitNs ? "active" : ""}`}
+            role="button"
+            tabIndex={0}
+            title="Filter to long-blocked goroutines (≥1s)"
+            onClick={handleLongBlockedClick}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleLongBlockedClick()}
+          >
+            <span className="topbar-stat-label">Long blocked</span>
+            <strong>{insights.long_blocked_count}</strong>
+          </span>
+          <span className="topbar-stat-sep" />
+          <span
+            className={`topbar-stat topbar-stat-btn ${filters.showLeakOnly ? "active" : ""}`}
+            role="button"
+            tabIndex={0}
+            title="Filter to leak candidates (≥30s)"
+            onClick={handleLeakClick}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleLeakClick()}
+          >
+            <span className="topbar-stat-label">Leaks</span>
+            <strong>{insights.leak_candidates_count ?? 0}</strong>
+          </span>
+          {deadlockHints.length > 0 && (
+            <>
+              <span className="topbar-stat-sep" />
+              <span
+                className="topbar-stat topbar-stat-btn topbar-stat-warn"
+                role="button"
+                tabIndex={0}
+                title="View deadlock hints"
+                onClick={() => { setAnalysisTab("deadlock"); setAnalysisOpen(true); }}
+                onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setAnalysisTab("deadlock")}
+              >
+                <span className="topbar-stat-label">Deadlock</span>
+                <strong>{deadlockHints.length}</strong>
+              </span>
+            </>
+          )}
+        </div>
+
+        <div className="topbar-actions">
           <span
             className={`stream-status stream-status--${streamStatus}`}
             title={`Stream: ${streamStatus}`}
-            aria-label={`Stream status: ${streamStatus}`}
           >
             ● {streamStatus}
           </span>
           <button id="copy-link-btn" type="button" className="action-button secondary" onClick={handleCopyLink}>
-            Copy link
+            Link
           </button>
           <button type="button" className="action-button" onClick={loadData}>
             Refresh
@@ -739,9 +800,9 @@ export function App() {
             className="action-button secondary"
             onClick={handleOpenCapture}
             disabled={replayUploading}
-            title="Open .gtrace capture file (or drag-and-drop onto the page)"
+            title="Open .gtrace capture file (or drag-and-drop)"
           >
-            {replayUploading ? "Loading…" : "Open capture"}
+            {replayUploading ? "Loading…" : "Open"}
           </button>
           <button
             type="button"
@@ -753,6 +814,7 @@ export function App() {
           </button>
         </div>
       </header>
+
       {compareOpen && (
         <div className="compare-overlay">
           <CompareView onClose={() => setCompareOpen(false)} />
@@ -763,62 +825,6 @@ export function App() {
           {replayError}
         </div>
       )}
-
-      <SmartInsights refreshKey={dataRevision} onSelectGoroutine={handleSelect} />
-
-      <section className="legend-panel">
-        <span className="legend-chip running">RUNNING</span>
-        <span className="legend-chip runnable">RUNNABLE</span>
-        <span className="legend-chip waiting">WAITING</span>
-        <span className="legend-chip blocked">BLOCKED</span>
-        <span className="legend-chip syscall">SYSCALL</span>
-        <span className="legend-chip done">DONE</span>
-      </section>
-
-      <section className="summary-bar">
-        <div className="summary-card">
-          <span className="summary-label">Session</span>
-          <strong>{session?.name ?? "—"}</strong>
-          <span className="summary-meta">{session?.target ?? ""}</span>
-        </div>
-        <div className="summary-card">
-          <span className="summary-label">Status</span>
-          <strong>{session?.status ?? "—"}</strong>
-          <span className="summary-meta">{session?.started_at ? new Date(session.started_at).toLocaleString() : ""}</span>
-        </div>
-        <div className="summary-card">
-          <span className="summary-label">Goroutines</span>
-          <strong>{filteredGoroutines.length}</strong>
-          <span className="summary-meta">{blockedCount} blocked</span>
-        </div>
-        <div
-          className={`summary-card summary-card-action ${filters.minWaitNs ? "active" : ""}`}
-          role="button"
-          tabIndex={0}
-          onClick={handleLongBlockedClick}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleLongBlockedClick()}
-        >
-          <span className="summary-label">Long blocked</span>
-          <strong>{insights.long_blocked_count}</strong>
-          <span className="summary-meta">≥1s wait</span>
-        </div>
-        <div
-          className={`summary-card summary-card-action ${filters.showLeakOnly ? "active" : ""}`}
-          role="button"
-          tabIndex={0}
-          onClick={handleLeakClick}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleLeakClick()}
-        >
-          <span className="summary-label">Leak candidates</span>
-          <strong>{insights.leak_candidates_count ?? 0}</strong>
-          <span className="summary-meta">≥30s stuck</span>
-        </div>
-        <div className="summary-card">
-          <span className="summary-label">Deadlock hints</span>
-          <strong>{deadlockHints.length}</strong>
-          <span className="summary-meta">potential cycles</span>
-        </div>
-      </section>
 
       <main className="workspace">
         <aside className="panel lane-panel">
@@ -964,6 +970,7 @@ export function App() {
           <div className="analysis-tabs">
             {(
               [
+                { id: "insights",  label: "Insights"  },
                 { id: "hotspots",  label: "Hotspots"  },
                 { id: "resources", label: "Resources" },
                 { id: "deadlock",  label: "Deadlock"  },
@@ -1001,6 +1008,9 @@ export function App() {
 
         {analysisOpen && (
           <div className="analysis-panel-body">
+            {analysisTab === "insights" && (
+              <SmartInsights refreshKey={dataRevision} onSelectGoroutine={handleSelect} />
+            )}
             {analysisTab === "hotspots" && (
               <Hotspots
                 hotspots={hotspots}

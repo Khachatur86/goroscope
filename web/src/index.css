@@ -7,160 +7,182 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
   background: #0f172a;
   color: #e2e8f0;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
+/* ── Root app — fixed viewport, no page scroll ─────────────────────────────── */
 .app {
-  max-width: 1600px;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
-.hero {
+  height: 100vh;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Compact top bar ──────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
   align-items: center;
-  margin-bottom: 1rem;
+  gap: 1rem;
+  padding: 0 1rem;
+  height: 48px;
+  flex-shrink: 0;
+  background: #0f172a;
+  border-bottom: 1px solid #1e293b;
+  overflow: hidden;
 }
 
-.eyebrow {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  margin: 0 0 0.25rem 0;
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
 }
 
-.hero h1 {
-  margin: 0;
-  font-size: 1.5rem;
+.topbar-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #f1f5f9;
+  white-space: nowrap;
 }
 
-.hero .subtitle {
-  margin: 0.25rem 0 0 0;
-  font-size: 0.875rem;
-  color: #94a3b8;
+.topbar-legend {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
 }
 
+.topbar-stats {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.topbar-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.topbar-stat strong {
+  font-size: 0.85rem;
+}
+
+.topbar-stat-label {
+  font-size: 0.62rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.topbar-stat-sep {
+  width: 1px;
+  height: 24px;
+  background: #1e293b;
+  flex-shrink: 0;
+}
+
+.topbar-stat-btn {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.topbar-stat-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.topbar-stat-btn.active {
+  background: rgba(244, 63, 94, 0.12);
+}
+
+.topbar-stat-btn.active strong {
+  color: #f43f5e;
+}
+
+.topbar-stat-warn strong {
+  color: #f59e0b;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+/* ── Stream status ─────────────────────────────────────────────────────────── */
 .stream-status {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
-  padding: 0.25rem 0.6rem;
+  padding: 0.2rem 0.5rem;
   border-radius: 999px;
   border: 1px solid transparent;
   user-select: none;
+  white-space: nowrap;
 }
 
-.stream-status--connecting {
-  color: #94a3b8;
-  border-color: #334155;
-}
+.stream-status--connecting { color: #94a3b8; border-color: #334155; }
+.stream-status--live       { color: #34d399; border-color: #065f46; }
+.stream-status--disconnected { color: #f87171; border-color: #7f1d1d; }
 
-.stream-status--live {
-  color: #34d399;
-  border-color: #065f46;
-}
-
-.stream-status--disconnected {
-  color: #f87171;
-  border-color: #7f1d1d;
-}
-
+/* ── Action buttons ────────────────────────────────────────────────────────── */
 .action-button {
-  padding: 0.5rem 1rem;
+  padding: 0.3rem 0.7rem;
   background: #3b82f6;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 5px;
   cursor: pointer;
+  font-size: 0.78rem;
 }
 
-.action-button:hover {
-  background: #2563eb;
-}
-
-.summary-bar {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
-
-.summary-card {
-  padding: 0.75rem 1rem;
-  background: #1e293b;
-  border-radius: 8px;
-  min-width: 120px;
-}
-
-/* Smooth number updates in the summary bar */
-.summary-card strong {
-  transition: opacity 0.2s ease;
-}
-
-.summary-label {
-  display: block;
-  font-size: 0.75rem;
-  color: #94a3b8;
-}
-
-.summary-meta {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  margin-left: 0.5rem;
-}
-
-.summary-card-action {
-  cursor: pointer;
-}
-
-.summary-card-action:hover,
-.summary-card-action.active {
-  background: rgba(244, 63, 94, 0.15);
-}
-
-.hero-actions {
-  display: flex;
-  gap: 0.5rem;
-}
+.action-button:hover { background: #2563eb; }
 
 .action-button.secondary {
   background: #334155;
   color: #e2e8f0;
 }
 
-.action-button.secondary:hover {
-  background: #475569;
-}
+.action-button.secondary:hover { background: #475569; }
 
-.legend-panel {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-}
-
+/* ── Legend chips (used in topbar and elsewhere) ───────────────────────────── */
 .legend-chip {
-  font-size: 0.65rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+  font-size: 0.6rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
   color: #0f172a;
+  font-weight: 600;
 }
 
-.legend-chip.running { background: #10cfb8; }
+.legend-chip.running  { background: #10cfb8; }
 .legend-chip.runnable { background: #8394a8; }
-.legend-chip.waiting { background: #f59e0b; }
-.legend-chip.blocked { background: #f43f5e; }
-.legend-chip.syscall { background: #4da6ff; }
-.legend-chip.done { background: #4b5563; }
+.legend-chip.waiting  { background: #f59e0b; }
+.legend-chip.blocked  { background: #f43f5e; }
+.legend-chip.syscall  { background: #4da6ff; }
+.legend-chip.done     { background: #4b5563; color: #94a3b8; }
 
+/* ── Workspace: fills remaining vertical space ─────────────────────────────── */
 .workspace {
+  flex: 1;
+  min-height: 0;          /* critical: lets grid shrink below natural size */
   display: grid;
   grid-template-columns: 280px 1fr 300px;
-  gap: 1rem;
-  min-height: 500px;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem 0;
+  overflow: hidden;
 }
 
 .panel {
@@ -168,6 +190,7 @@ body {
   border-radius: 8px;
   padding: 1rem;
   overflow: auto;
+  min-height: 0;          /* lets panel shrink inside flex/grid */
 }
 
 .panel h2 {
@@ -696,11 +719,10 @@ body {
 /* ── Analysis panel (bottom, session-wide) ─────────────────────────────────── */
 
 .analysis-panel {
-  margin-top: 1rem;
+  flex-shrink: 0;
   background: #1e293b;
-  border-radius: 8px;
+  border-top: 1px solid #273549;
   overflow: hidden;
-  border: 1px solid #273549;
 }
 
 .analysis-panel-header {
@@ -756,9 +778,9 @@ body {
 }
 
 .analysis-panel-body {
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   overflow: auto;
-  max-height: 420px;
+  height: 240px;
 }
 
 .hotspot-row {
