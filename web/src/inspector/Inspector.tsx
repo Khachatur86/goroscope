@@ -10,6 +10,11 @@ type Props = {
   onSelectGoroutine?: (id: number) => void;
   onHighlightBranch?: (ids: Set<number> | null) => void;
   highlightActive?: boolean;
+  /**
+   * When true the segmentOverride was synthesised from the time scrubber
+   * rather than a user click. Changes badge text and stack section label.
+   */
+  isScrubActive?: boolean;
 };
 
 function formatDuration(ns: number): string {
@@ -29,7 +34,7 @@ function formatTimestamp(s?: string): string {
   }
 }
 
-export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive }: Props) {
+export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive, isScrubActive }: Props) {
   const [segmentStack, setSegmentStack] = useState<Goroutine["last_stack"] | null>(null);
 
   useEffect(() => {
@@ -78,8 +83,11 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
       <div className="inspector-section">
         <div className={`state-pill ${state}`}>{state}</div>
         {segmentOverride && (
-          <span className="inspector-segment-hint" title="State at clicked segment">
-            @ segment
+          <span
+            className={`inspector-segment-hint${isScrubActive ? " inspector-segment-hint--scrub" : ""}`}
+            title={isScrubActive ? "Historical state at scrub point" : "State at clicked segment"}
+          >
+            {isScrubActive ? "⏱ scrub" : "@ segment"}
           </span>
         )}
       </div>
@@ -151,7 +159,11 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
       <div className="inspector-section">
         <div className="inspector-stack-header">
           <span className="inspector-label">
-            {segmentOverride && segmentStack ? "Stack at segment" : "Latest Stack"}
+            {segmentOverride && segmentStack
+              ? isScrubActive
+                ? "Stack at ⏱ scrub point"
+                : "Stack at segment"
+              : "Latest Stack"}
           </span>
           {frames.length > 0 && (
             <button type="button" className="inspector-copy-stack" onClick={copyStack}>

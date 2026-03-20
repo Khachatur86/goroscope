@@ -188,6 +188,22 @@ export function App() {
     () => new Map(scrubSnapshot.map((s) => [s.goroutine_id, s])),
     [scrubSnapshot]
   );
+
+  // Synthetic TimelineSegment passed to Inspector when scrubbing.
+  // start_ns = scrubTimeNS so fetchStackAt fetches the closest stack ≤ T.
+  const scrubSegmentOverride = useMemo<TimelineSegment | null>(() => {
+    if (scrubTimeNS == null || selectedId == null) return null;
+    const snap = scrubMap.get(selectedId);
+    return {
+      goroutine_id: selectedId,
+      start_ns: scrubTimeNS,
+      end_ns: scrubTimeNS + 1,
+      state: snap?.state ?? "",
+      reason: snap?.reason ?? "",
+      resource_id: "",
+    };
+  }, [scrubTimeNS, selectedId, scrubMap]);
+
   const listGoroutines = useMemo(
     () =>
       scrubTimeNS == null
@@ -908,7 +924,8 @@ export function App() {
             <Inspector
               goroutine={selectedGoroutine}
               goroutines={goroutines}
-              segmentOverride={selectedSegment}
+              segmentOverride={scrubSegmentOverride ?? selectedSegment}
+              isScrubActive={scrubTimeNS != null}
               onSelectGoroutine={handleSelect}
               onHighlightBranch={setHighlightedIds}
               highlightActive={highlightedIds !== null}

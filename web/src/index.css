@@ -346,6 +346,11 @@ body {
   margin-left: 0.5rem;
 }
 
+.inspector-segment-hint--scrub {
+  color: #facc15;
+  font-family: "IBM Plex Mono", monospace;
+}
+
 .inspector-section {
   margin-bottom: 1rem;
 }
