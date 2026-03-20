@@ -95,6 +95,11 @@ body {
   min-width: 120px;
 }
 
+/* Smooth number updates in the summary bar */
+.summary-card strong {
+  transition: opacity 0.2s ease;
+}
+
 .summary-label {
   display: block;
   font-size: 0.75rem;
@@ -287,6 +292,7 @@ body {
   cursor: pointer;
   text-align: left;
   color: inherit;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .lane-item:hover,
@@ -300,6 +306,8 @@ body {
   padding: 0.2rem 0.4rem;
   border-radius: 4px;
   flex-shrink: 0;
+  /* Smooth colour transition when a goroutine changes state live */
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .state-pill.RUNNING { background: #10cfb8; color: #0f172a; }

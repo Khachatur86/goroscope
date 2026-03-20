@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { FixedSizeList, type ListChildComponentProps } from "react-window";
 import type { Goroutine, Session, DeadlockHint, TimelineSegment } from "./api/client";
 import {
@@ -140,8 +140,13 @@ export function App() {
     };
   });
 
-  const filteredGoroutines = filterAndSortGoroutines(goroutines, filters);
-  const hotspots = computeSpawnHotspots(goroutines);
+  // Memoised so that unrelated state changes (selectedId, inspectorTab, …)
+  // do not trigger a full 200-goroutine re-sort on every render.
+  const filteredGoroutines = useMemo(
+    () => filterAndSortGoroutines(goroutines, filters),
+    [goroutines, filters]
+  );
+  const hotspots = useMemo(() => computeSpawnHotspots(goroutines), [goroutines]);
   let displayGoroutines =
     selectedId && !filteredGoroutines.some((g) => g.goroutine_id === selectedId)
       ? (() => {
@@ -189,8 +194,9 @@ export function App() {
 
   const hasGoroutineInURL = parseGoroutineFromURL() !== null;
 
-  const loadData = useCallback(async () => {
-    const goroutineParams =
+  // goroutineParams is shared between the full load and the live-refresh path.
+  const goroutineParams = useMemo(
+    () =>
       hasGoroutineInURL
         ? undefined
         : {
@@ -199,7 +205,13 @@ export function App() {
             search: filters.search || undefined,
             min_wait_ns: filters.minWaitNs || undefined,
             label: filters.labelFilter || undefined,
-          };
+          },
+    [hasGoroutineInURL, filters.state, filters.reason, filters.search, filters.minWaitNs, filters.labelFilter]
+  );
+
+  // loadData fetches all endpoints (session, goroutines, resources, insights,
+  // deadlock hints).  Used for initial load, manual Refresh, and filter changes.
+  const loadData = useCallback(async () => {
     const [sess, gs, res, contentionData, ins, deadlock] = await Promise.all([
       fetchCurrentSession(),
       fetchGoroutines(goroutineParams),
@@ -223,10 +235,33 @@ export function App() {
     setInsights(ins ?? { long_blocked_count: 0, leak_candidates_count: 0 });
     setDeadlockHints(deadlock?.hints ?? []);
     setDataRevision((v) => v + 1);
-  }, [hasGoroutineInURL, filters.state, filters.reason, filters.search, filters.minWaitNs, filters.labelFilter]);
+  }, [goroutineParams, filters.minWaitNs]);
+
+  // refreshLive fetches only goroutines — the hot path called on every SSE
+  // "update" event.  Skipping the 5 slower endpoints (resources, contention,
+  // insights, deadlock) reduces React renders per second and eliminates the
+  // DOM jitter visible with 200+ live goroutines.  The slower endpoints are
+  // kept fresh by the periodic full reload in loadData (every 5 s).
+  const refreshLive = useCallback(async () => {
+    const gs = await fetchGoroutines(goroutineParams).catch(() => null);
+    if (!gs) return;
+    const gsSafe = Array.isArray(gs) ? gs : [];
+    setGoroutines(gsSafe);
+    const urlId = parseGoroutineFromURL();
+    if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
+      setSelectedId(urlId);
+    }
+    setDataRevision((v) => v + 1);
+  }, [goroutineParams]);
 
   useEffect(() => {
+    // Initial full load on mount.
     loadData();
+
+    // Periodic full refresh every 5 s keeps slow data (resources, insights,
+    // deadlock hints) reasonably fresh without hammering the API on every
+    // goroutine state change.
+    const fullRefreshTimer = setInterval(loadData, 5000);
 
     let source: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -241,8 +276,11 @@ export function App() {
         setStreamStatus("live");
       });
 
+      // SSE "update" uses the lightweight goroutines-only refresh so that
+      // fast-changing live data (state, reason) does not pull 5 extra
+      // endpoints on every 200 ms tick.
       source.addEventListener("update", () => {
-        loadData();
+        refreshLive();
       });
 
       source.onerror = () => {
@@ -259,10 +297,11 @@ export function App() {
 
     return () => {
       alive = false;
+      clearInterval(fullRefreshTimer);
       source?.close();
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
     };
-  }, [loadData]);
+  }, [loadData, refreshLive]);
 
   const initialGoroutineFromUrl = useRef<number | null>(parseGoroutineFromURL());
   useEffect(() => {

@@ -276,12 +276,22 @@ func (b *streamBuilder) appendEvent(ev xtrace.Event, st xtrace.StateTransition, 
 		if slot, ok := b.activePSlots[goID]; ok {
 			startWall := xTimestamp(xtrace.Time(slot.startNS))
 			if timestamp.After(startWall) {
-				b.rawPSegments = append(b.rawPSegments, model.ProcessorSegment{
+				seg := model.ProcessorSegment{
 					ProcessorID: slot.processorID,
 					GoroutineID: goID,
 					StartNS:     startWall.UnixNano(),
 					EndNS:       timestamp.UnixNano(),
-				})
+				}
+				if b.keptGoroutine[goID] {
+					// Goroutine is already classified as user code: emit the
+					// segment immediately so the GMP strip is populated during
+					// streaming, not only at trace EOF.
+					b.writer.AddProcessorSegments([]model.ProcessorSegment{seg})
+				} else {
+					// Not yet classified — accumulate for the EOF pass that
+					// filters by keptGoroutine (existing behaviour).
+					b.rawPSegments = append(b.rawPSegments, seg)
+				}
 			}
 			delete(b.activePSlots, goID)
 		}

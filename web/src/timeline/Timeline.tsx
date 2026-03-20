@@ -71,11 +71,14 @@ export function Timeline({
       .catch(() => setSegments([]));
   }, [goroutines, filters.state, filters.reason, filters.search, segmentsOverride]);
 
+  // Re-fetch processor segments whenever goroutines are refreshed so that the
+  // GMP strip is populated during live streaming, not only after the traced
+  // process exits and the batch EOF flush runs.
   useEffect(() => {
     fetchProcessorTimeline()
       .then(setProcessorSegments)
       .catch(() => setProcessorSegments([]));
-  }, []);
+  }, [goroutines]);
 
   const filteredSegments = useMemo(
     () =>
