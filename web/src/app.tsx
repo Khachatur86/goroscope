@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { FixedSizeList, type ListChildComponentProps } from "react-window";
 import type { Goroutine, Session, DeadlockHint, TimelineSegment } from "./api/client";
-import type { ScrubSnapshot } from "./timeline/Timeline";
+import type { ScrubSnapshot, TimelineHandle } from "./timeline/Timeline";
 import {
   fetchCurrentSession,
   fetchGoroutines,
@@ -539,6 +539,7 @@ export function App() {
 
   const jumpToInputRef = useRef<HTMLInputElement>(null);
   const timelinePanelRef = useRef<HTMLElement>(null);
+  const timelineRef = useRef<TimelineHandle>(null);
   const captureInputRef = useRef<HTMLInputElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [streamStatus, setStreamStatus] = useState<"connecting" | "live" | "disconnected">("connecting");
@@ -548,20 +549,10 @@ export function App() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState<Set<number> | null>(null);
 
-  const handleSavePng = async () => {
-    const el = timelinePanelRef.current;
-    if (!el) return;
-    try {
-      const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(el, { backgroundColor: "#1a1d21", scale: 2 });
-      const a = document.createElement("a");
-      a.href = canvas.toDataURL("image/png");
-      a.download = `goroscope-timeline-${Date.now()}.png`;
-      a.click();
-    } catch (err) {
-      console.error("Save PNG failed:", err);
-    }
-  };
+  // Direct canvas composite export — no html2canvas needed.
+  const handleSavePng = useCallback(() => {
+    timelineRef.current?.exportPng();
+  }, []);
 
   const handleFullscreen = () => {
     const el = timelinePanelRef.current;
@@ -933,6 +924,7 @@ export function App() {
             </button>
           </div>
           <Timeline
+            ref={timelineRef}
             goroutines={displayGoroutines}
             selectedId={selectedId}
             onSelectGoroutine={handleSelectFromTimeline}

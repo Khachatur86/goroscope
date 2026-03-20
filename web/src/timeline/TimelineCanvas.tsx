@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 
 // ── Annotation storage ────────────────────────────────────────────────────────
@@ -104,6 +104,12 @@ function goroutineHue(id: number): number {
   return hues[Number(id) % hues.length];
 }
 
+/** Imperative handle exposed by TimelineCanvas via ref. */
+export type TimelineCanvasHandle = {
+  /** Composites axis + rows canvases into a PNG and triggers a download. */
+  exportPng: () => void;
+};
+
 type Props = {
   goroutines: Goroutine[];
   segments: TimelineSegment[];
@@ -133,7 +139,7 @@ type Props = {
   onScrubChange?: (timeNS: number | null) => void;
 };
 
-export function TimelineCanvas({
+export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function TimelineCanvas({
   goroutines,
   segments,
   processorSegments = [],
@@ -150,7 +156,7 @@ export function TimelineCanvas({
   onBrushChange,
   scrubTimeNS,
   onScrubChange,
-}: Props) {
+}: Props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [internalZoom, setInternalZoom] = useState(1);
@@ -181,6 +187,59 @@ export function TimelineCanvas({
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [rowScrollTop, setRowScrollTop] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Export ────────────────────────────────────────────────────────────────────
+  // Composites axis canvas + rows canvas into a single PNG and downloads it.
+  const exportPng = useCallback(() => {
+    const axisCanvas = canvasRef.current;
+    const rowsCanvas = rowsCanvasRef.current;
+    if (!axisCanvas || !rowsCanvas) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const W = axisCanvas.clientWidth;
+    const axisH = axisCanvas.clientHeight;
+    const rowsH = rowsCanvas.clientHeight;
+    const footerH = 22;
+    const totalH = axisH + rowsH + footerH;
+
+    const out = document.createElement("canvas");
+    out.width = Math.round(W * dpr);
+    out.height = Math.round(totalH * dpr);
+
+    const ctx = out.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, W, totalH);
+
+    ctx.drawImage(axisCanvas, 0, 0, W, axisH);
+    ctx.drawImage(rowsCanvas, 0, axisH, W, rowsH);
+
+    // Footer strip
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, axisH + rowsH, W, footerH);
+    ctx.fillStyle = "#475569";
+    ctx.font = "10px monospace";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      `Goroscope  ·  ${new Date().toLocaleString()}  ·  ${goroutines.length} goroutines`,
+      8,
+      axisH + rowsH + footerH / 2
+    );
+
+    out.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `goroscope-${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }, [goroutines.length]);
+
+  useImperativeHandle(ref, () => ({ exportPng }), [exportPng]);
 
   // Brush drag state (pixels from canvas left edge → converted to NS on commit)
   const [brushDragStartPx, setBrushDragStartPx] = useState<number | null>(null);
@@ -1018,4 +1077,4 @@ export function TimelineCanvas({
       )}
     </div>
   );
-}
+});

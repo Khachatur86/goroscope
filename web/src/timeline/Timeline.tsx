@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 import { fetchTimeline, fetchProcessorTimeline } from "../api/client";
 import { TimelineCanvas } from "./TimelineCanvas";
+import type { TimelineCanvasHandle } from "./TimelineCanvas";
 import { TimelineHeatmapCanvas } from "./TimelineHeatmapCanvas";
 import { MinimapCanvas } from "./MinimapCanvas";
 import { MetricsChart } from "./MetricsChart";
@@ -65,7 +66,12 @@ const COLORS: Record<string, string> = {
   DONE: "#4b5563",
 };
 
-export function Timeline({
+/** Imperative handle exposed by Timeline via ref. */
+export type TimelineHandle = {
+  exportPng: () => void;
+};
+
+export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   goroutines,
   selectedId,
   onSelectGoroutine,
@@ -79,13 +85,18 @@ export function Timeline({
   onScrubChange,
   onScrubSnapshot,
   onSegmentsChange,
-}: Props) {
+}: Props, ref) {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [processorSegments, setProcessorSegments] = useState<ProcessorSegment[]>([]);
   const [canvasZoomLevel, setCanvasZoomLevel] = useState(1);
   const [canvasPanOffsetNS, setCanvasPanOffsetNS] = useState(0);
   const [brushMode, setBrushMode] = useState(false);
   const [brushRange, setBrushRange] = useState<[number, number] | null>(null);
+
+  const timelineCanvasRef = useRef<TimelineCanvasHandle>(null);
+  useImperativeHandle(ref, () => ({
+    exportPng: () => timelineCanvasRef.current?.exportPng(),
+  }), []);
 
   useEffect(() => {
     if (segmentsOverride !== undefined) {
@@ -292,6 +303,7 @@ export function Timeline({
       ) : (
         <div className="timeline-canvas-wrapper">
           <TimelineCanvas
+            ref={timelineCanvasRef}
             goroutines={goroutines}
             segments={filteredSegments}
             processorSegments={processorSegments}
@@ -323,4 +335,4 @@ export function Timeline({
       )}
     </div>
   );
-}
+});
