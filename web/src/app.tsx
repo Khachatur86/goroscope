@@ -22,6 +22,7 @@ import { CompareView } from "./compare/CompareView";
 import { ResourceGraph } from "./resource-graph/ResourceGraph";
 import { GoroutineGroups } from "./groups/GoroutineGroups";
 import { SmartInsights } from "./insights/SmartInsights";
+import { DependencyGraph } from "./graph/DependencyGraph";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
 /** Height of one row in the virtualised goroutine list (px). */
@@ -171,7 +172,7 @@ export function App() {
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
-  const [inspectorTab, setInspectorTab] = useState<"inspector" | "hotspots" | "resources" | "deadlock" | "groups">("inspector");
+  const [inspectorTab, setInspectorTab] = useState<"inspector" | "hotspots" | "resources" | "deadlock" | "groups" | "graph">("inspector");
   const [brushFilterIds, setBrushFilterIds] = useState<Set<number> | null>(null);
   const [filters, setFilters] = useState<FiltersState>(() => {
     const fromUrl = parseFiltersFromURL();
@@ -979,6 +980,13 @@ export function App() {
               >
                 Groups
               </button>
+              <button
+                type="button"
+                className={`inspector-tab ${inspectorTab === "graph" ? "active" : ""}`}
+                onClick={() => setInspectorTab("graph")}
+              >
+                Graph
+              </button>
             </div>
           </div>
           {inspectorTab === "inspector" && (
@@ -1017,6 +1025,13 @@ export function App() {
           )}
           {inspectorTab === "groups" && (
             <GoroutineGroups onSelectGoroutine={handleSelect} />
+          )}
+          {inspectorTab === "graph" && (
+            <DependencyGraph
+              goroutines={goroutines}
+              selectedId={selectedId}
+              onSelectGoroutine={handleSelect}
+            />
           )}
         </aside>
       </main>
