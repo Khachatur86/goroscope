@@ -100,6 +100,28 @@ export async function fetchStackAt(goroutineId: number, ns: number): Promise<Sta
   }
 }
 
+/** One stack snapshot as returned by GET /api/v1/goroutines/{id}/stacks */
+export type StackSnapshot = {
+  goroutine_id: number;
+  timestamp: string;
+  frames: Array<{ func: string; file: string; line: number }>;
+};
+
+export type StacksResponse = {
+  goroutine_id: number;
+  stacks: StackSnapshot[];
+};
+
+/** Fetch all historical stack snapshots for a goroutine (for flame graph). */
+export async function fetchStacks(goroutineId: number): Promise<StackSnapshot[]> {
+  try {
+    const res = await fetchJson<StacksResponse>(`/api/v1/goroutines/${goroutineId}/stacks`);
+    return res?.stacks ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchTimeline(params?: {
   state?: string;
   reason?: string;

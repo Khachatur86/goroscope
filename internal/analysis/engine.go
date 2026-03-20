@@ -340,6 +340,29 @@ func (e *Engine) GetStackAt(goroutineID int64, ns int64) *model.StackSnapshot {
 	return &out
 }
 
+// GetStacksFor returns all historical stack snapshots for the given goroutine,
+// sorted by timestamp ascending. Used to build per-goroutine flame graphs.
+func (e *Engine) GetStacksFor(goroutineID int64) []model.StackSnapshot {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	var out []model.StackSnapshot
+	for i := range e.stacks {
+		s := &e.stacks[i]
+		if s.GoroutineID != goroutineID {
+			continue
+		}
+		cp := *s
+		cp.Frames = append([]model.StackFrame(nil), s.Frames...)
+		out = append(out, cp)
+	}
+	// Sort ascending by timestamp so callers get a chronological sequence.
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Timestamp.Before(out[j].Timestamp)
+	})
+	return out
+}
+
 // LeakCandidates returns goroutines that have been in WAITING or BLOCKED
 // state for longer than thresholdNS. These may indicate goroutine leaks.
 func (e *Engine) LeakCandidates(thresholdNS int64) []model.Goroutine {

@@ -86,6 +86,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/goroutines/{id}/children", s.handleGoroutineChildren)
 	mux.HandleFunc("/api/v1/goroutines/{id}", s.handleGoroutineByID)
 	mux.HandleFunc("/api/v1/goroutines/{id}/stack-at", s.handleGoroutineStackAt)
+	mux.HandleFunc("/api/v1/goroutines/{id}/stacks", s.handleGoroutineStacks)
 	mux.HandleFunc("/api/v1/insights", s.handleInsights)
 	mux.HandleFunc("/api/v1/smart-insights", s.handleSmartInsights)
 	mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
@@ -364,6 +365,21 @@ func (s *Server) handleGoroutineStackAt(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+// handleGoroutineStacks returns all historical stack snapshots for a goroutine.
+// Clients use this to build per-goroutine flame graphs.
+func (s *Server) handleGoroutineStacks(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid goroutine id"})
+		return
+	}
+	stacks := s.engine.GetStacksFor(id)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"goroutine_id": id,
+		"stacks":       stacks,
+	})
 }
 
 func (s *Server) handleGoroutineChildren(w http.ResponseWriter, r *http.Request) {

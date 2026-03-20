@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Goroutine, TimelineSegment } from "../api/client";
 import { fetchStackAt } from "../api/client";
 import { SpawnTree } from "./SpawnTree";
+import { FlameGraph } from "./FlameGraph";
 
 type Props = {
   goroutine: Goroutine | null;
@@ -36,6 +37,7 @@ function formatTimestamp(s?: string): string {
 
 export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive, isScrubActive }: Props) {
   const [segmentStack, setSegmentStack] = useState<Goroutine["last_stack"] | null>(null);
+  const [flameOpen, setFlameOpen] = useState(false);
 
   useEffect(() => {
     if (!segmentOverride || !goroutine) {
@@ -198,6 +200,23 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
         ) : (
           <div className="empty-message">No stack snapshot yet.</div>
         )}
+      </div>
+
+      {/* ── Flame graph ─────────────────────────────────────────── */}
+      <div className="inspector-section">
+        <button
+          type="button"
+          className="flame-toggle-btn"
+          onClick={() => setFlameOpen((v) => !v)}
+          aria-expanded={flameOpen}
+        >
+          <span className="flame-toggle-icon">{flameOpen ? "▾" : "▸"}</span>
+          Flame graph
+          <span className="flame-toggle-hint">
+            {flameOpen ? "hide" : "aggregated samples"}
+          </span>
+        </button>
+        {flameOpen && <FlameGraph goroutineId={goroutine.goroutine_id} />}
       </div>
     </div>
   );
