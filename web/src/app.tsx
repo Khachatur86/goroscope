@@ -172,7 +172,8 @@ export function App() {
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
-  const [inspectorTab, setInspectorTab] = useState<"inspector" | "hotspots" | "resources" | "deadlock" | "groups" | "graph">("inspector");
+  const [analysisTab, setAnalysisTab] = useState<"hotspots" | "resources" | "deadlock" | "groups" | "graph">("hotspots");
+  const [analysisOpen, setAnalysisOpen] = useState(true);
   const [brushFilterIds, setBrushFilterIds] = useState<Set<number> | null>(null);
   const [filters, setFilters] = useState<FiltersState>(() => {
     const fromUrl = parseFiltersFromURL();
@@ -944,97 +945,98 @@ export function App() {
         <aside className="panel inspector-panel">
           <div className="inspector-panel-header">
             <h2>Inspector</h2>
-            <div className="inspector-tabs">
-              <button
-                type="button"
-                className={`inspector-tab ${inspectorTab === "inspector" ? "active" : ""}`}
-                onClick={() => setInspectorTab("inspector")}
-              >
-                Details
-              </button>
-              <button
-                type="button"
-                className={`inspector-tab ${inspectorTab === "hotspots" ? "active" : ""}`}
-                onClick={() => setInspectorTab("hotspots")}
-              >
-                Hotspots
-              </button>
-              <button
-                type="button"
-                className={`inspector-tab ${inspectorTab === "resources" ? "active" : ""}`}
-                onClick={() => setInspectorTab("resources")}
-              >
-                Resources
-              </button>
-              <button
-                type="button"
-                className={`inspector-tab ${inspectorTab === "deadlock" ? "active" : ""}`}
-                onClick={() => setInspectorTab("deadlock")}
-              >
-                Deadlock
-              </button>
-              <button
-                type="button"
-                className={`inspector-tab ${inspectorTab === "groups" ? "active" : ""}`}
-                onClick={() => setInspectorTab("groups")}
-              >
-                Groups
-              </button>
-              <button
-                type="button"
-                className={`inspector-tab ${inspectorTab === "graph" ? "active" : ""}`}
-                onClick={() => setInspectorTab("graph")}
-              >
-                Graph
-              </button>
-            </div>
           </div>
-          {inspectorTab === "inspector" && (
-            <Inspector
-              goroutine={selectedGoroutine}
-              goroutines={goroutines}
-              segmentOverride={scrubSegmentOverride ?? selectedSegment}
-              isScrubActive={scrubTimeNS != null}
-              onSelectGoroutine={handleSelect}
-              onHighlightBranch={setHighlightedIds}
-              highlightActive={highlightedIds !== null}
-            />
-          )}
-          {inspectorTab === "hotspots" && (
-            <Hotspots
-              hotspots={hotspots}
-              activeHotspotIds={filters.hotspotIds ?? null}
-              onFilterByHotspot={(ids) =>
-                setFilters((f) => ({ ...f, hotspotIds: ids }))
-              }
-              onClearHotspotFilter={() =>
-                setFilters((f) => ({ ...f, hotspotIds: null }))
-              }
-            />
-          )}
-          {inspectorTab === "resources" && (
-            <ResourceGraph
-              resources={resources}
-              contention={contention}
-              selectedId={selectedId}
-              onSelectGoroutine={handleSelect}
-            />
-          )}
-          {inspectorTab === "deadlock" && (
-            <DeadlockHints hints={deadlockHints} onSelectGoroutine={handleSelect} />
-          )}
-          {inspectorTab === "groups" && (
-            <GoroutineGroups onSelectGoroutine={handleSelect} />
-          )}
-          {inspectorTab === "graph" && (
-            <DependencyGraph
-              goroutines={goroutines}
-              selectedId={selectedId}
-              onSelectGoroutine={handleSelect}
-            />
-          )}
+          <Inspector
+            goroutine={selectedGoroutine}
+            goroutines={goroutines}
+            segmentOverride={scrubSegmentOverride ?? selectedSegment}
+            isScrubActive={scrubTimeNS != null}
+            onSelectGoroutine={handleSelect}
+            onHighlightBranch={setHighlightedIds}
+            highlightActive={highlightedIds !== null}
+          />
         </aside>
       </main>
+
+      {/* ── Analysis panel (session-wide) ──────────────────────────────── */}
+      <section className="analysis-panel">
+        <div className="analysis-panel-header">
+          <div className="analysis-tabs">
+            {(
+              [
+                { id: "hotspots",  label: "Hotspots"  },
+                { id: "resources", label: "Resources" },
+                { id: "deadlock",  label: "Deadlock"  },
+                { id: "groups",    label: "Groups"    },
+                { id: "graph",     label: "Graph"     },
+              ] as const
+            ).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                className={`analysis-tab ${analysisTab === id ? "active" : ""}`}
+                onClick={() => {
+                  if (analysisTab === id && analysisOpen) {
+                    setAnalysisOpen(false);
+                  } else {
+                    setAnalysisTab(id);
+                    setAnalysisOpen(true);
+                  }
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="analysis-collapse-btn"
+            onClick={() => setAnalysisOpen((v) => !v)}
+            title={analysisOpen ? "Collapse analysis panel" : "Expand analysis panel"}
+            aria-expanded={analysisOpen}
+          >
+            {analysisOpen ? "▾" : "▴"}
+          </button>
+        </div>
+
+        {analysisOpen && (
+          <div className="analysis-panel-body">
+            {analysisTab === "hotspots" && (
+              <Hotspots
+                hotspots={hotspots}
+                activeHotspotIds={filters.hotspotIds ?? null}
+                onFilterByHotspot={(ids) =>
+                  setFilters((f) => ({ ...f, hotspotIds: ids }))
+                }
+                onClearHotspotFilter={() =>
+                  setFilters((f) => ({ ...f, hotspotIds: null }))
+                }
+              />
+            )}
+            {analysisTab === "resources" && (
+              <ResourceGraph
+                resources={resources}
+                contention={contention}
+                selectedId={selectedId}
+                onSelectGoroutine={handleSelect}
+              />
+            )}
+            {analysisTab === "deadlock" && (
+              <DeadlockHints hints={deadlockHints} onSelectGoroutine={handleSelect} />
+            )}
+            {analysisTab === "groups" && (
+              <GoroutineGroups onSelectGoroutine={handleSelect} />
+            )}
+            {analysisTab === "graph" && (
+              <DependencyGraph
+                goroutines={goroutines}
+                selectedId={selectedId}
+                onSelectGoroutine={handleSelect}
+              />
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

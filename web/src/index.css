@@ -158,7 +158,7 @@ body {
 
 .workspace {
   display: grid;
-  grid-template-columns: 280px 1fr 380px;
+  grid-template-columns: 280px 1fr 300px;
   gap: 1rem;
   min-height: 500px;
 }
@@ -690,34 +690,75 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
-  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.inspector-tabs {
+/* ── Analysis panel (bottom, session-wide) ─────────────────────────────────── */
+
+.analysis-panel {
+  margin-top: 1rem;
+  background: #1e293b;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #273549;
+}
+
+.analysis-panel-header {
   display: flex;
-  gap: 0.25rem;
+  align-items: center;
+  padding: 0 0.5rem;
+  border-bottom: 1px solid #273549;
+  background: #172032;
+  gap: 0;
 }
 
-.inspector-tab {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.8rem;
-  background: #334155;
-  border: 1px solid #475569;
-  border-radius: 4px;
-  color: #94a3b8;
+.analysis-tabs {
+  display: flex;
+  flex: 1;
+  gap: 0;
+}
+
+.analysis-tab {
+  padding: 0.45rem 1rem;
+  font-size: 0.78rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #64748b;
   cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
 }
 
-.inspector-tab:hover {
-  background: #475569;
-  color: #e2e8f0;
+.analysis-tab:hover {
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.inspector-tab.active {
-  background: rgba(96, 165, 250, 0.2);
-  border-color: #60a5fa;
+.analysis-tab.active {
   color: #e2e8f0;
+  border-bottom-color: #60a5fa;
+}
+
+.analysis-collapse-btn {
+  background: none;
+  border: none;
+  color: #475569;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.45rem 0.75rem;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.analysis-collapse-btn:hover {
+  color: #94a3b8;
+}
+
+.analysis-panel-body {
+  padding: 1rem;
+  overflow: auto;
+  max-height: 420px;
 }
 
 .hotspot-row {
@@ -2099,7 +2140,7 @@ body {
 .dep-graph-svg {
   flex: 1;
   width: 100%;
-  height: 460px;
+  height: 360px;
   display: block;
   cursor: grab;
 }
