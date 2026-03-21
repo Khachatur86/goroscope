@@ -146,6 +146,7 @@ func (p *Poller) poll(ctx context.Context, endpoint string) error {
 			GoroutineID: g.id,
 			State:       g.state,
 			Reason:      g.reason,
+			ResourceID:  g.resourceID,
 		})
 
 		// Emit a stack snapshot if we have frames.

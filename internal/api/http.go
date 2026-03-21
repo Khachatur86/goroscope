@@ -541,7 +541,7 @@ func (s *Server) handleSmartInsights(w http.ResponseWriter, r *http.Request) {
 	segments := s.engine.Timeline()
 	edges := s.engine.ResourceGraph()
 	if len(edges) == 0 {
-		edges = analysis.DeriveResourceEdgesFromTimeline(segments, goroutines)
+		edges = analysis.DeriveCurrentContentionEdges(goroutines)
 	}
 
 	insights := analysis.GenerateInsights(analysis.GenerateInsightsInput{
@@ -655,14 +655,13 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeadlockHints(w http.ResponseWriter, _ *http.Request) {
+	goroutines := s.engine.ListGoroutines()
 	edges := s.engine.ResourceGraph()
 	if len(edges) == 0 {
-		timeline := s.engine.Timeline()
-		goroutines := s.engine.ListGoroutines()
-		edges = analysis.DeriveResourceEdgesFromTimeline(timeline, goroutines)
+		edges = analysis.DeriveCurrentContentionEdges(goroutines)
 	}
 
-	hints := analysis.FindDeadlockHints(edges, s.engine.ListGoroutines())
+	hints := analysis.FindDeadlockHints(edges, goroutines)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hints": hints,
 	})

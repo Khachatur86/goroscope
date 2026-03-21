@@ -26,9 +26,45 @@ func BuildResourceEdges(events []model.Event) []model.ResourceEdge {
 	return edges
 }
 
+// DeriveCurrentContentionEdges builds resource edges from goroutines that are
+// currently blocked on a shared resource. Only live state is considered (not
+// historical segments), so the result reflects actual in-progress contention
+// and stays stable between polling cycles.
+// Used as the primary fallback when capture.Resources is empty.
+func DeriveCurrentContentionEdges(goroutines []model.Goroutine) []model.ResourceEdge {
+	byResource := make(map[string][]int64)
+	for _, g := range goroutines {
+		if g.ResourceID != "" && isBlockedState(g.State) {
+			byResource[g.ResourceID] = append(byResource[g.ResourceID], g.ID)
+		}
+	}
+
+	var edges []model.ResourceEdge
+	for resourceID, ids := range byResource {
+		for i := 0; i < len(ids); i++ {
+			for j := i + 1; j < len(ids); j++ {
+				edges = append(edges, model.ResourceEdge{
+					FromGoroutineID: ids[i],
+					ToGoroutineID:   ids[j],
+					ResourceID:      resourceID,
+					Kind:            "contention",
+				})
+				edges = append(edges, model.ResourceEdge{
+					FromGoroutineID: ids[j],
+					ToGoroutineID:   ids[i],
+					ResourceID:      resourceID,
+					Kind:            "contention",
+				})
+			}
+		}
+	}
+
+	return edges
+}
+
 // DeriveResourceEdgesFromTimeline builds resource edges from timeline segments.
 // Goroutines that share a resource_id (e.g. same channel or mutex) get edges.
-// Used when capture.Resources is empty (e.g. from runtime trace).
+// Kept for offline/replay analysis where historical co-occurrence is useful.
 func DeriveResourceEdgesFromTimeline(
 	segments []model.TimelineSegment,
 	goroutines []model.Goroutine,

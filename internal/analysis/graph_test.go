@@ -6,6 +6,37 @@ import (
 	"github.com/Khachatur86/goroscope/internal/model"
 )
 
+func TestDeriveCurrentContentionEdges(t *testing.T) {
+	goroutines := []model.Goroutine{
+		{ID: 1, State: model.StateBlocked, ResourceID: "chan:0x1"},
+		{ID: 2, State: model.StateBlocked, ResourceID: "chan:0x1"},
+		{ID: 3, State: model.StateBlocked, ResourceID: "mutex:0x2"},
+		{ID: 4, State: model.StateRunning, ResourceID: "chan:0x1"}, // running — not included
+	}
+
+	edges := DeriveCurrentContentionEdges(goroutines)
+
+	has12 := false
+	for _, e := range edges {
+		if (e.FromGoroutineID == 1 && e.ToGoroutineID == 2) || (e.FromGoroutineID == 2 && e.ToGoroutineID == 1) {
+			has12 = true
+		}
+		// G4 is running, must not appear
+		if e.FromGoroutineID == 4 || e.ToGoroutineID == 4 {
+			t.Errorf("running goroutine G4 should not produce edges, got %+v", e)
+		}
+	}
+	if !has12 {
+		t.Error("expected edge between G1 and G2 (chan:0x1)")
+	}
+	// G3 has no peer blocked on mutex:0x2, so no edges expected
+	for _, e := range edges {
+		if e.FromGoroutineID == 3 || e.ToGoroutineID == 3 {
+			t.Errorf("G3 has no peer, should produce no edge, got %+v", e)
+		}
+	}
+}
+
 func TestDeriveResourceEdgesFromTimeline(t *testing.T) {
 	segments := []model.TimelineSegment{
 		{GoroutineID: 1, ResourceID: "chan:0x1", State: model.StateBlocked},

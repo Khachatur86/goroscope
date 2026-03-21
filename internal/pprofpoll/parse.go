@@ -7,19 +7,40 @@ package pprofpoll
 import (
 	"bufio"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/Khachatur86/goroscope/internal/model"
 )
 
+// firstHexArgRE matches the first 0x-prefixed hex argument inside a function
+// call signature, e.g. "sync.runtime_SemacquireMutex(0xc000a86f34?, 0x0?)".
+var firstHexArgRE = regexp.MustCompile(`\(0x([0-9a-fA-F]+)`)
+
+// resourceFunctions maps runtime blocking function names to the resource type
+// prefix used in ResourceID strings (e.g. "mutex", "chan", "rwmutex").
+// Only functions where the first argument is the resource pointer are listed.
+var resourceFunctions = map[string]string{
+	"sync.runtime_SemacquireMutex":    "mutex",
+	"sync.runtime_SemacquireRWMutex":  "rwmutex",
+	"sync.runtime_SemacquireRWMutexR": "rwmutex",
+	"runtime.chansend":                "chan",
+	"runtime.chansend1":               "chan",
+	"runtime.chanrecv":                "chan",
+	"runtime.chanrecv1":               "chan",
+	"runtime.chanrecv2":               "chan",
+	"runtime.semacquire":              "mutex",
+}
+
 // goroutineInfo is the intermediate result of parsing one goroutine block.
 type goroutineInfo struct {
-	id       int64
-	parentID int64
-	state    model.GoroutineState
-	reason   model.BlockingReason
-	frames   []model.StackFrame
+	id         int64
+	parentID   int64
+	state      model.GoroutineState
+	reason     model.BlockingReason
+	resourceID string // extracted from blocking frame arguments, e.g. "mutex:0xc000a86f34"
+	frames     []model.StackFrame
 }
 
 // parseGoroutineDump parses the text output of
@@ -45,6 +66,7 @@ func parseGoroutineDump(body string) ([]goroutineInfo, error) {
 
 	flush := func() {
 		if current != nil {
+			current.resourceID = extractResourceID(current.frames)
 			results = append(results, *current)
 			current = nil
 		}
@@ -196,6 +218,35 @@ func parseCreatedBy(line string) int64 {
 		return 0
 	}
 	return id
+}
+
+// extractResourceID scans blocking stack frames for a known runtime function
+// and returns a typed resource address like "mutex:0xc000a86f34" or
+// "chan:0xc000100060". Returns "" when no identifiable resource address is found.
+// The Go 1.21+ "?" suffix on uncertain values is handled by the regex char class
+// (it only matches hex digits, so the suffix is naturally excluded).
+func extractResourceID(frames []model.StackFrame) string {
+	for _, frame := range frames {
+		// frame.Func may be "sync.runtime_SemacquireMutex(0xc000a86f34?, 0x0?, 0x1?)"
+		funcName := frame.Func
+		if idx := strings.IndexByte(funcName, '('); idx >= 0 {
+			funcName = funcName[:idx]
+		}
+		prefix, ok := resourceFunctions[funcName]
+		if !ok {
+			continue
+		}
+		m := firstHexArgRE.FindStringSubmatch(frame.Func)
+		if len(m) < 2 {
+			continue
+		}
+		addr := "0x" + m[1]
+		if addr == "0x0" {
+			continue // nil pointer, not a real resource
+		}
+		return prefix + ":" + addr
+	}
+	return ""
 }
 
 // parseFileLine creates a StackFrame from a function name and a "file:line +0x…" string.

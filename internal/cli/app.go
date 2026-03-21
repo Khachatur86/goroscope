@@ -447,7 +447,7 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	edges := engine.ResourceGraph()
 	goroutines := engine.ListGoroutines()
 	if len(edges) == 0 {
-		edges = analysis.DeriveResourceEdgesFromTimeline(engine.Timeline(), goroutines)
+		edges = analysis.DeriveCurrentContentionEdges(goroutines)
 	}
 
 	hints := analysis.FindDeadlockHints(edges, goroutines)

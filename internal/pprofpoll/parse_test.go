@@ -108,6 +108,73 @@ func TestParseGoroutineDump_ParentID(t *testing.T) {
 	}
 }
 
+func TestParseGoroutineDump_ResourceID(t *testing.T) {
+	t.Parallel()
+
+	gs, _ := parseGoroutineDump(sampleDump)
+	byID := make(map[int64]goroutineInfo, len(gs))
+	for _, g := range gs {
+		byID[g.id] = g
+	}
+
+	// G42 blocks on sync.runtime_SemacquireMutex(0xc000a86f34?, ...)
+	if rid := byID[42].resourceID; rid != "mutex:0xc000a86f34" {
+		t.Errorf("goroutine 42: want resourceID mutex:0xc000a86f34, got %q", rid)
+	}
+	// G1 is running — no resource
+	if rid := byID[1].resourceID; rid != "" {
+		t.Errorf("goroutine 1: want empty resourceID, got %q", rid)
+	}
+}
+
+func TestExtractResourceID(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		desc   string
+		frames []model.StackFrame
+		want   string
+	}{
+		{
+			desc:   "mutex via SemacquireMutex",
+			frames: []model.StackFrame{{Func: "sync.runtime_SemacquireMutex(0xc000a86f34?, 0x0?, 0x1?)"}},
+			want:   "mutex:0xc000a86f34",
+		},
+		{
+			desc:   "chan recv",
+			frames: []model.StackFrame{{Func: "runtime.chanrecv(0xc000036060, 0x0, 0x1)"}},
+			want:   "chan:0xc000036060",
+		},
+		{
+			desc:   "chan send",
+			frames: []model.StackFrame{{Func: "runtime.chansend(0xc000100080, 0xc000012340, 0x1)"}},
+			want:   "chan:0xc000100080",
+		},
+		{
+			desc:   "nil address skipped, fallback to second frame",
+			frames: []model.StackFrame{{Func: "runtime.chanrecv(0x0, 0x0, 0x0)"}, {Func: "runtime.chansend(0xc000100080, 0x0, 0x1)"}},
+			want:   "chan:0xc000100080",
+		},
+		{
+			desc:   "no blocking frame",
+			frames: []model.StackFrame{{Func: "main.doWork(0xc000a00000)"}},
+			want:   "",
+		},
+		{
+			desc:   "empty frames",
+			frames: nil,
+			want:   "",
+		},
+	}
+
+	for _, c := range cases {
+		got := extractResourceID(c.frames)
+		if got != c.want {
+			t.Errorf("%s: want %q, got %q", c.desc, c.want, got)
+		}
+	}
+}
+
 func TestParseGoroutineDump_Frames(t *testing.T) {
 	t.Parallel()
 
