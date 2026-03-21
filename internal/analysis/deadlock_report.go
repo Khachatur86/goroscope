@@ -107,7 +107,7 @@ func topUserFrame(frames []model.StackFrame) *model.StackFrame {
 	for i := range frames {
 		f := &frames[i]
 		fn := f.Func
-		if strings.HasPrefix(fn, "runtime.") || strings.HasPrefix(fn, "runtime/") {
+		if strings.HasPrefix(fn, "runtime.") || strings.HasPrefix(fn, "runtime/") || strings.HasPrefix(fn, "sync.") {
 			continue
 		}
 		return f

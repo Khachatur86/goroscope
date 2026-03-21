@@ -84,6 +84,9 @@ func (p *Poller) PollOnce(ctx context.Context) error {
 // context cancellation causes Run to return.
 func (p *Poller) Run(ctx context.Context, stderr io.Writer) {
 	endpoint := strings.TrimRight(p.in.TargetURL, "/") + "/debug/pprof/goroutine?debug=2"
+	if stderr == nil {
+		stderr = io.Discard
+	}
 
 	ticker := time.NewTicker(p.in.Interval)
 	defer ticker.Stop()
