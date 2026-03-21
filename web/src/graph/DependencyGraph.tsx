@@ -56,6 +56,8 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
   // Keeps the previous simulation alive so we can harvest node positions
   // before the next rebuild — prevents nodes from jumping on every poll.
   const simRef = useRef<d3.Simulation<NodeDatum, LinkDatum> | null>(null);
+  // Stable reference to the D3 zoom behavior so fitToView can use it.
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
   // ── Diff state ──────────────────────────────────────────────────────────
   const [baseGoroutines, setBaseGoroutines] = useState<Goroutine[] | null>(null);
@@ -185,6 +187,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
       .on("zoom", (event) => { g.attr("transform", event.transform); });
 
     svg.call(zoom).on("dblclick.zoom", null);
+    zoomRef.current = zoom;
 
     // ── Links ───────────────────────────────────────────────────────────────
     const link = g
@@ -317,6 +320,11 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
           .attr("y2", (d) => (d.target as NodeDatum).y ?? 0);
 
         nodeGroup.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+      })
+      .on("end", () => {
+        // Auto-fit only on the first layout (no saved positions).
+        // Subsequent polls preserve the user's zoom/pan.
+        if (!hasKnownPositions) fitToView();
       });
 
     simRef.current = sim;
@@ -338,16 +346,38 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
       .attr("stroke", (d) => (d.id === selectedId ? "#f8fafc" : "none"));
   }, [selectedId]);
 
-  const handleResetZoom = useCallback(() => {
+  const fitToView = useCallback(() => {
     const svgEl = svgRef.current;
-    if (!svgEl) return;
+    const zoom  = zoomRef.current;
+    const sim   = simRef.current;
+    if (!svgEl || !zoom || !sim) return;
+
+    const nodes = sim.nodes();
+    if (nodes.length === 0) return;
+
+    const padding = 48;
+    const w = svgEl.clientWidth  || 600;
+    const h = svgEl.clientHeight || 460;
+
+    const xs = nodes.map((n) => n.x ?? 0);
+    const ys = nodes.map((n) => n.y ?? 0);
+    const x0 = Math.min(...xs) - NODE_RADIUS;
+    const x1 = Math.max(...xs) + NODE_RADIUS;
+    const y0 = Math.min(...ys) - NODE_RADIUS;
+    const y1 = Math.max(...ys) + NODE_RADIUS;
+
+    const scale = Math.min(
+      (w - 2 * padding) / (x1 - x0 || 1),
+      (h - 2 * padding) / (y1 - y0 || 1),
+      2, // cap zoom-in so a single node doesn't fill the screen
+    );
+    const tx = w / 2 - scale * ((x0 + x1) / 2);
+    const ty = h / 2 - scale * ((y0 + y1) / 2);
+
     d3.select(svgEl)
       .transition()
       .duration(400)
-      .call(
-        d3.zoom<SVGSVGElement, unknown>().transform as any,
-        d3.zoomIdentity,
-      );
+      .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
   }, []);
 
   return (
@@ -390,10 +420,10 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
         <button
           type="button"
           className="timeline-control-button"
-          onClick={handleResetZoom}
-          title="Reset zoom to center"
+          onClick={fitToView}
+          title="Fit all nodes into view"
         >
-          ⊙ Reset
+          ⊙ Fit
         </button>
       </div>
 
