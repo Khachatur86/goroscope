@@ -5,20 +5,32 @@ import { vi } from "vitest";
 // In jsdom, canvas APIs are not implemented, so we provide a minimal no-op surface.
 const ctx2dMock: Partial<CanvasRenderingContext2D> = {
   setTransform: vi.fn(),
+  scale: vi.fn(),
   clearRect: vi.fn(),
   fillRect: vi.fn(),
   strokeRect: vi.fn(),
   beginPath: vi.fn(),
   moveTo: vi.fn(),
   lineTo: vi.fn(),
+  arc: vi.fn(),
+  closePath: vi.fn(),
   stroke: vi.fn(),
+  fill: vi.fn(),
   fillText: vi.fn(),
+  strokeText: vi.fn(),
   measureText: vi.fn(() => ({ width: 100 })),
+  save: vi.fn(),
+  restore: vi.fn(),
+  clip: vi.fn(),
+  rect: vi.fn(),
   // These are assigned to from components; keep them defined to avoid TS/Runtime surprises.
   fillStyle: "#000",
   strokeStyle: "#000",
   font: "10px sans-serif",
   lineWidth: 1,
+  globalAlpha: 1,
+  textBaseline: "alphabetic",
+  textAlign: "start",
 };
 
 Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
