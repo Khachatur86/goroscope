@@ -104,6 +104,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 	mux.HandleFunc("/api/v1/replay/load", s.handleReplayLoad)
 	mux.HandleFunc("/api/v1/compare", s.handleCompare)
+	mux.HandleFunc("/api/v1/memory", s.handleMemoryStats)
 
 	if isLocalhostAddr(s.addr) {
 		mux.Handle("/debug/pprof/", http.StripPrefix("/debug/pprof", http.HandlerFunc(pprof.Index)))
@@ -665,6 +666,13 @@ func (s *Server) handleDeadlockHints(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hints": hints,
 	})
+}
+
+// handleMemoryStats returns the current in-memory data volumes and the
+// configured retention policy.
+// GET /api/v1/memory
+func (s *Server) handleMemoryStats(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.engine.MemoryStats())
 }
 
 // handleReplayLoad accepts a .gtrace file upload and loads it into the engine.

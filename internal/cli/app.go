@@ -141,6 +141,8 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	sessionName := fs.String("session-name", "attach", "Session name shown in the UI")
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
+	maxSegments := fs.Int("max-segments", 500_000, "Maximum closed timeline segments to retain in memory (0 = unlimited)")
+	maxStacks := fs.Int("max-stacks", 200, "Maximum stack snapshots to retain per goroutine (0 = unlimited)")
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -159,7 +161,10 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
-	engine := analysis.NewEngine()
+	engine := analysis.NewEngine(analysis.WithRetention(analysis.RetentionPolicy{
+		MaxClosedSegments:     *maxSegments,
+		MaxStacksPerGoroutine: *maxStacks,
+	}))
 	sessions := session.NewManager()
 
 	poller := pprofpoll.NewPoller(pprofpoll.PollInput{

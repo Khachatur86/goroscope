@@ -9,6 +9,41 @@ import (
 	"github.com/Khachatur86/goroscope/internal/model"
 )
 
+// RetentionPolicy bounds the amount of history the Engine retains in memory.
+// Zero values disable the corresponding limit.
+type RetentionPolicy struct {
+	// MaxClosedSegments caps the total number of closed timeline segments.
+	// When the cap is exceeded, the oldest segments are evicted first.
+	// A value of 0 means unlimited. Default: 500 000.
+	MaxClosedSegments int
+	// MaxStacksPerGoroutine caps the number of historical stack snapshots
+	// retained per goroutine. When the cap is exceeded, the oldest snapshots
+	// for that goroutine are evicted.
+	// A value of 0 means unlimited. Default: 200.
+	MaxStacksPerGoroutine int
+}
+
+// DefaultRetentionPolicy returns a RetentionPolicy with sensible defaults
+// that keep memory usage well below 256 MB for most workloads.
+func DefaultRetentionPolicy() RetentionPolicy {
+	return RetentionPolicy{
+		MaxClosedSegments:     500_000,
+		MaxStacksPerGoroutine: 200,
+	}
+}
+
+// Option is a functional option for NewEngine.
+type Option func(*Engine)
+
+// WithRetention configures the engine's data-retention policy.
+// Use DefaultRetentionPolicy() for production defaults.
+// Pass a zero-value RetentionPolicy to disable all limits.
+func WithRetention(p RetentionPolicy) Option {
+	return func(e *Engine) {
+		e.retention = p
+	}
+}
+
 // Engine processes goroutine events and maintains timeline state.
 type Engine struct {
 	mu                sync.RWMutex
@@ -22,6 +57,8 @@ type Engine struct {
 	dataVersion       uint64                // incremented on any state change, for ETag
 	stacks            []model.StackSnapshot // historical stacks for stack-at-segment lookup
 
+	retention RetentionPolicy
+
 	subsMu      sync.Mutex
 	subscribers map[chan struct{}]struct{}
 }
@@ -33,14 +70,39 @@ type activeSegment struct {
 	ResourceID string
 }
 
-// NewEngine returns an empty, ready-to-use Engine.
-func NewEngine() *Engine {
-	return &Engine{
+// MemoryStats reports the current in-memory data volumes held by the Engine.
+// All counts are point-in-time snapshots taken under the read lock.
+type MemoryStats struct {
+	// ClosedSegments is the number of completed timeline segments retained.
+	ClosedSegments int `json:"closed_segments"`
+	// ActiveSegments is the number of currently open (in-progress) segments.
+	ActiveSegments int `json:"active_segments"`
+	// Goroutines is the number of goroutines tracked.
+	Goroutines int `json:"goroutines"`
+	// StackSnapshots is the total number of historical stack snapshots retained.
+	StackSnapshots int `json:"stack_snapshots"`
+	// ProcessorSegments is the number of GMP processor segments retained.
+	ProcessorSegments int `json:"processor_segments"`
+	// MaxClosedSegments is the configured cap (0 = unlimited).
+	MaxClosedSegments int `json:"max_closed_segments"`
+	// MaxStacksPerGoroutine is the configured cap (0 = unlimited).
+	MaxStacksPerGoroutine int `json:"max_stacks_per_goroutine"`
+}
+
+// NewEngine returns an empty, ready-to-use Engine configured with the given
+// options. If no WithRetention option is supplied, DefaultRetentionPolicy is used.
+func NewEngine(opts ...Option) *Engine {
+	e := &Engine{
 		stateMachine:   NewStateMachine(),
 		goroutines:     make(map[int64]model.Goroutine),
 		activeSegments: make(map[int64]activeSegment),
 		subscribers:    make(map[chan struct{}]struct{}),
+		retention:      DefaultRetentionPolicy(),
 	}
+	for _, o := range opts {
+		o(e)
+	}
+	return e
 }
 
 // Subscribe returns a channel that receives a signal whenever the engine state
@@ -403,6 +465,74 @@ func (e *Engine) ResourceGraph() []model.ResourceEdge {
 	return out
 }
 
+// MemoryStats returns point-in-time counts of the data held by the Engine.
+// It acquires the read lock, so it is safe to call from any goroutine.
+func (e *Engine) MemoryStats() MemoryStats {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return MemoryStats{
+		ClosedSegments:        len(e.closedSegments),
+		ActiveSegments:        len(e.activeSegments),
+		Goroutines:            len(e.goroutines),
+		StackSnapshots:        len(e.stacks),
+		ProcessorSegments:     len(e.processorSegments),
+		MaxClosedSegments:     e.retention.MaxClosedSegments,
+		MaxStacksPerGoroutine: e.retention.MaxStacksPerGoroutine,
+	}
+}
+
+// trimClosedSegmentsLocked drops the oldest closed segments when the
+// configured cap is exceeded. Must be called with e.mu held for write.
+//
+// A 10 % hysteresis band avoids trimming on every single call: trimming only
+// triggers when the slice is more than 10 % over the cap, and then it trims
+// back down to exactly the cap.
+func (e *Engine) trimClosedSegmentsLocked() {
+	max := e.retention.MaxClosedSegments
+	if max <= 0 {
+		return
+	}
+	// Trigger at 110 % of cap to amortise the cost over many appends.
+	if len(e.closedSegments) <= max+(max/10) {
+		return
+	}
+	drop := len(e.closedSegments) - max
+	copy(e.closedSegments, e.closedSegments[drop:])
+	e.closedSegments = e.closedSegments[:len(e.closedSegments)-drop]
+}
+
+// trimStacksForGoroutineLocked drops the oldest stack snapshots for the given
+// goroutine when MaxStacksPerGoroutine is exceeded.
+// Must be called with e.mu held for write.
+func (e *Engine) trimStacksForGoroutineLocked(goroutineID int64) {
+	maxPer := e.retention.MaxStacksPerGoroutine
+	if maxPer <= 0 {
+		return
+	}
+	// Count how many snapshots exist for this goroutine, newest-first.
+	count := 0
+	for i := len(e.stacks) - 1; i >= 0; i-- {
+		if e.stacks[i].GoroutineID == goroutineID {
+			count++
+		}
+	}
+	if count <= maxPer {
+		return
+	}
+	// Remove the oldest (count - maxPer) snapshots for this goroutine.
+	toRemove := count - maxPer
+	removed := 0
+	out := e.stacks[:0]
+	for _, s := range e.stacks {
+		if s.GoroutineID == goroutineID && removed < toRemove {
+			removed++
+			continue
+		}
+		out = append(out, s)
+	}
+	e.stacks = out
+}
+
 func (e *Engine) resetLocked(session *model.Session) {
 	e.session = session.Clone()
 	e.goroutines = make(map[int64]model.Goroutine)
@@ -444,6 +574,7 @@ func (e *Engine) applyEventLocked(event model.Event) {
 		next.ParentID = event.ParentID
 	}
 	e.updateSegmentsLocked(event.GoroutineID, current, next, event)
+	e.trimClosedSegmentsLocked()
 	e.goroutines[next.ID] = next
 	e.dataVersion++
 }
@@ -472,6 +603,7 @@ func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot, appendTo
 	e.goroutines[goroutine.ID] = goroutine
 	if appendToHistory {
 		e.stacks = append(e.stacks, stackCopy)
+		e.trimStacksForGoroutineLocked(snapshot.GoroutineID)
 	}
 	e.dataVersion++
 }
