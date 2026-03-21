@@ -61,6 +61,8 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
   const simRef = useRef<d3.Simulation<NodeDatum, LinkDatum> | null>(null);
   // Stable reference to the D3 zoom behavior so fitToView can use it.
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  // Tracks the goroutine ID set from the previous render to detect topology changes.
+  const prevNodeIDsRef = useRef<Set<number>>(new Set());
 
   const [expanded, setExpanded] = useState(false);
 
@@ -110,6 +112,30 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
   useEffect(() => {
     const svgEl = svgRef.current;
     if (!svgEl) return;
+
+    // ── Topology check ──────────────────────────────────────────────────────
+    // If the set of goroutine IDs hasn't changed, only state/colors differ.
+    // Skip the full rebuild and just repaint node colours — this prevents the
+    // simulation from restarting and nodes from slowly drifting on every poll.
+    const newNodeIDs = new Set(effectiveGoroutines.map((g) => g.goroutine_id));
+    const topologyUnchanged =
+      newNodeIDs.size === prevNodeIDsRef.current.size &&
+      [...newNodeIDs].every((id) => prevNodeIDsRef.current.has(id));
+
+    if (topologyUnchanged && simRef.current) {
+      prevNodeIDsRef.current = newNodeIDs;
+      const stateMap = new Map(effectiveGoroutines.map((g) => [g.goroutine_id, g.state]));
+      d3.select(svgEl)
+        .selectAll<SVGGElement, NodeDatum>(".dep-nodes g")
+        .each(function(d) {
+          const s = stateMap.get(d.id);
+          if (s) d.state = s;
+        })
+        .select<SVGCircleElement>(".dep-node-circle")
+        .attr("fill", nodeColor);
+      return;
+    }
+    prevNodeIDsRef.current = newNodeIDs;
 
     const width  = svgEl.clientWidth  || 600;
     const height = svgEl.clientHeight || 460;
