@@ -5,8 +5,9 @@ version: 2
 # ── Pre-release hooks ──────────────────────────────────────────────────────────
 before:
   hooks:
-    # Build the React UI so web/dist/ is ready to bundle into archives.
-    - make web
+    # Build the React UI and embed it into internal/api/reactui/ so that
+    # the compiled binary is fully self-contained (no web/dist alongside it).
+    - make embed-web
 
 # ── Builds ────────────────────────────────────────────────────────────────────
 builds:
@@ -40,14 +41,11 @@ archives:
       - goos: windows
         formats:
           - zip
-    # Bundle the React UI and docs alongside the binary so users can run
-    # `goroscope run -ui=react -ui-path=web/dist`.
+    # The React UI is embedded in the binary via embed.FS (make embed-web).
+    # Archives only need the README and LICENSE — no separate web/dist dir.
     files:
       - README.md
       - LICENSE
-      - src: web/dist/**
-        dst: web/dist
-        strip_parent: false
 
 # ── Checksums ─────────────────────────────────────────────────────────────────
 checksum:
@@ -92,7 +90,7 @@ release:
     brew install Khachatur86/goroscope/goroscope
     ```
 
-    **go install** (vanilla UI, no React build required):
+    **go install** (React UI baked in — fully self-contained):
     ```sh
     go install github.com/Khachatur86/goroscope/cmd/goroscope@{{.Tag}}
     ```
@@ -120,8 +118,6 @@ brews:
     commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
     install: |
       bin.install "goroscope"
-      # Bundle React UI alongside the binary for -ui=react support.
-      (prefix/"web/dist").install Dir["web/dist/*"]
     test: |
       system "#{bin}/goroscope", "version"
 

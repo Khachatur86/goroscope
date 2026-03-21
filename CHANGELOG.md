@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-21
+
+### Added
+
+- **pprof attach mode** (`goroscope attach`): zero-code-change attach to any live Go process via `/debug/pprof/goroutine?debug=2`. Polls every 2 s (configurable), accumulates incremental goroutine history, live-updates the UI over SSE.
+- **Self-contained binary**: React UI is now embedded via `embed.FS` (`make embed-web` / `make build-dist`). No `web/dist/` directory required at runtime — a single `goroscope` binary serves the full UI.
+- **Lock contention heatmap**: canvas grid of resources × time buckets, coloured by peak waiter count (dark-slate → crimson). Click any resource row to filter the timeline.
+- **Command palette** (⌘K): fuzzy search across all commands and goroutines; keyboard shortcuts shown inline. Global hotkeys: 1–7 switch analysis tabs, `` ` `` toggles panel, Z zoom, F focus, P save PNG, R refresh.
+- **Diff-mode in dependency graph**: snapshot current goroutine set, then compare — new goroutines highlighted green, disappeared red, `+N / −N` badges.
+- **Animated GIF export**: pure-TypeScript GIF89a encoder (median-cut palette, LZW compression). Sweeping-cursor animation of the timeline exported with one click.
+- **Flame graph**: per-goroutine stack navigator built from historical stack snapshots; click-through to parent frames.
+- **Timeline annotations**: right-click any segment to add a sticky note anchored to that goroutine and time.
+- **Goroutine lifetime bar**: per-row sparkline showing the full lifecycle of each goroutine in the timeline.
+- **Time scrubber**: click the time axis to inspect all goroutine states at any moment; Inspector shows historical stack at that timestamp.
+- **Full-viewport layout**: no page scroll; panel sizes are drag-adjustable within the viewport.
+
+### Changed
+
+- `.goreleaser.yaml`: pre-release hook changed from `make web` to `make embed-web`; `web/dist/` removed from release archives (UI is baked into the binary). Homebrew formula updated accordingly.
+- Release footer updated: `go install` now delivers the full React UI with no extra steps.
+- Go toolchain bumped to 1.25.8.
+
+---
+
 ## [0.1.0] - 2025-03-18
 
 ### Added
