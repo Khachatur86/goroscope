@@ -1,10 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0] - 2026-03-21
 
 ### Added
 
 - Timeline webview includes **Compare** button — compare two .gtrace captures (baseline vs compare, diff overlay, filter by status, sync scroll, keyboard nav)
+- Extension now published automatically to VS Code Marketplace and Open VSX on every tagged release via CI
 
 ## [0.1.0] - 2026-03-18
 

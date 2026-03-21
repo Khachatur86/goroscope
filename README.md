@@ -1,5 +1,11 @@
 # Goroscope
 
+[![CI](https://github.com/Khachatur86/goroscope/actions/workflows/ci.yml/badge.svg)](https://github.com/Khachatur86/goroscope/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Khachatur86/goroscope)](https://goreportcard.com/report/github.com/Khachatur86/goroscope)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Khachatur86/goroscope.svg)](https://pkg.go.dev/github.com/Khachatur86/goroscope)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/goroscope.goroscope?label=VS%20Code)](https://marketplace.visualstudio.com/items?itemName=goroscope.goroscope)
+[![Open VSX](https://img.shields.io/open-vsx/v/goroscope/goroscope?label=Open%20VSX)](https://open-vsx.org/extension/goroscope/goroscope)
+
 **Goroscope** is a local Go concurrency debugger. It visualizes goroutines, blocking, channels, and mutex interactions on an interactive timeline — with live updates while your process runs and zero data leaving your machine.
 
 ## 2-minute quickstart

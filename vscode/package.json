@@ -2,7 +2,7 @@
   "name": "goroscope",
   "displayName": "Goroscope",
   "description": "Local Go concurrency debugger - inspect goroutines, blocking behavior, and stack snapshots",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "goroscope",
   "icon": "media/icon.png",
   "repository": {
