@@ -179,7 +179,7 @@ func TestRun_PollsMultipleTimes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	defer cancel()
 
-	_ = p.Run(ctx, nil)
+	p.Run(ctx, nil)
 
 	// At 20 ms interval over ~80 ms we expect at least 3 polls.
 	if eng.loadCount() < 3 {
@@ -231,7 +231,7 @@ main.newWorker()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
-	_ = p.Run(ctx, nil)
+	p.Run(ctx, nil)
 
 	// After two polls the event list should contain:
 	// • creates for 4 original goroutines (goroutines 1, 18, 42, 99)
