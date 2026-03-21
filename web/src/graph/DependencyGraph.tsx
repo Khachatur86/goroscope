@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import * as d3 from "d3";
 import type { Goroutine } from "../api/client";
 
@@ -25,6 +26,8 @@ type Props = {
   goroutines: Goroutine[];
   selectedId: number | null;
   onSelectGoroutine: (id: number) => void;
+  /** Internal flag: true when rendered inside the expand modal (prevents recursion). */
+  _modal?: boolean;
 };
 
 interface NodeDatum extends d3.SimulationNodeDatum {
@@ -45,7 +48,7 @@ function nodeColor(d: NodeDatum): string {
 }
 
 /** Goroutine spawn-tree as a D3 force-directed DAG, with optional diff overlay. */
-export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: Props) {
+export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _modal = false }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const onSelectRef = useRef(onSelectGoroutine);
   onSelectRef.current = onSelectGoroutine;
@@ -58,6 +61,8 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
   const simRef = useRef<d3.Simulation<NodeDatum, LinkDatum> | null>(null);
   // Stable reference to the D3 zoom behavior so fitToView can use it.
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+
+  const [expanded, setExpanded] = useState(false);
 
   // ── Diff state ──────────────────────────────────────────────────────────
   const [baseGoroutines, setBaseGoroutines] = useState<Goroutine[] | null>(null);
@@ -379,6 +384,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
   }, []);
 
   return (
+    <>
     <div className="dep-graph-container">
       <div className="dep-graph-toolbar">
         <span className="dep-graph-hint">
@@ -423,6 +429,17 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
         >
           ⊙ Fit
         </button>
+
+        {!_modal && (
+          <button
+            type="button"
+            className="timeline-control-button"
+            onClick={() => setExpanded(true)}
+            title="Open graph in full-screen window"
+          >
+            ⤢ Expand
+          </button>
+        )}
       </div>
 
       {/* Diff legend */}
@@ -445,5 +462,34 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
 
       <svg ref={svgRef} className="dep-graph-svg" />
     </div>
+
+    {expanded && !_modal && createPortal(
+      <div
+        className="dep-graph-overlay"
+        onClick={(e) => { if (e.target === e.currentTarget) setExpanded(false); }}
+      >
+        <div className="dep-graph-modal">
+          <div className="dep-graph-modal-header">
+            <span className="dep-graph-modal-title">Goroutine Spawn Tree</span>
+            <button
+              type="button"
+              className="timeline-control-button dep-graph-modal-close"
+              onClick={() => setExpanded(false)}
+              title="Close"
+            >
+              ✕ Close
+            </button>
+          </div>
+          <DependencyGraph
+            goroutines={goroutines}
+            selectedId={selectedId}
+            onSelectGoroutine={onSelectGoroutine}
+            _modal={true}
+          />
+        </div>
+      </div>,
+      document.body,
+    )}
+    </>
   );
 }

@@ -2171,6 +2171,47 @@ body {
   cursor: grabbing;
 }
 
+.dep-graph-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dep-graph-modal {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  width: 90vw;
+  height: 85vh;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.dep-graph-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+
+.dep-graph-modal-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.dep-graph-modal-close {
+  margin-left: auto;
+}
+
 /* ── Flame Graph ───────────────────────────────────────────────────────────── */
 
 .flame-toggle-btn {
