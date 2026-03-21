@@ -165,12 +165,12 @@ func (r DeadlockReport) WriteGitHubAnnotations(w io.Writer) {
 				"Potential deadlock in cycle #%d: G%d blocked on %s. %s",
 				c.Index, g.ID, g.BlockedOn, c.BlameChain,
 			)
-			fmt.Fprintf(w, "::warning file=%s,line=%d::%s\n", file, line, escapeAnnotation(msg))
+			_, _ = fmt.Fprintf(w, "::warning file=%s,line=%d::%s\n", file, line, escapeAnnotation(msg))
 			annotated = true
 		}
 		if !annotated {
 			// No frame info: emit a generic annotation.
-			fmt.Fprintf(w, "::warning ::%s\n", escapeAnnotation(
+			_, _ = fmt.Fprintf(w, "::warning ::%s\n", escapeAnnotation(
 				fmt.Sprintf("Potential deadlock in cycle #%d: %s", c.Index, c.BlameChain),
 			))
 		}
@@ -336,11 +336,11 @@ func (g WaitForGraph) WriteDOT(w io.Writer) {
 		}
 	}
 
-	fmt.Fprintln(w, `digraph wait_for_graph {`)
-	fmt.Fprintln(w, `  rankdir=LR;`)
-	fmt.Fprintln(w, `  node [shape=box, style=filled, fontname="monospace", fontsize=11];`)
-	fmt.Fprintln(w, `  edge [fontsize=10];`)
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, `digraph wait_for_graph {`)
+	_, _ = fmt.Fprintln(w, `  rankdir=LR;`)
+	_, _ = fmt.Fprintln(w, `  node [shape=box, style=filled, fontname="monospace", fontsize=11];`)
+	_, _ = fmt.Fprintln(w, `  edge [fontsize=10];`)
+	_, _ = fmt.Fprintln(w)
 
 	// Emit nodes.
 	nodeIDs := make([]int64, 0, len(g.Nodes))
@@ -355,10 +355,10 @@ func (g WaitForGraph) WriteDOT(w io.Writer) {
 		if inCycle[id] {
 			color = `"#c00000"` // red for deadlocked
 		}
-		fmt.Fprintf(w, "  G%d [label=%q, fillcolor=%s, fontcolor=%s];\n",
+		_, _ = fmt.Fprintf(w, "  G%d [label=%q, fillcolor=%s, fontcolor=%s];\n",
 			id, label, color, fontColor)
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 
 	// Emit edges.
 	for _, e := range g.Edges {
@@ -371,20 +371,20 @@ func (g WaitForGraph) WriteDOT(w io.Writer) {
 		if inCycleEdge {
 			color = `"#c00000"`
 		}
-		fmt.Fprintf(w, "  G%d -> G%d [label=%q, color=%s];\n",
+		_, _ = fmt.Fprintf(w, "  G%d -> G%d [label=%q, color=%s];\n",
 			e.From, e.To, label, color)
 	}
 
 	if len(g.Cycles) > 0 {
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 		for i, c := range g.Cycles {
 			ids := make([]string, len(c))
 			for j, id := range c {
 				ids[j] = fmt.Sprintf("G%d", id)
 			}
-			fmt.Fprintf(w, "  // cycle #%d: %s\n", i+1, strings.Join(ids, " → "))
+			_, _ = fmt.Fprintf(w, "  // cycle #%d: %s\n", i+1, strings.Join(ids, " → "))
 		}
 	}
 
-	fmt.Fprintln(w, `}`)
+	_, _ = fmt.Fprintln(w, `}`)
 }
