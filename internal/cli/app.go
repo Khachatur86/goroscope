@@ -120,6 +120,18 @@ func openBrowserURL(url string) {
 	_ = cmd.Start()
 }
 
+// scheduleOpenBrowser spawns a goroutine that opens the browser after a short
+// delay, but respects ctx cancellation (CC-2: goroutine lifetime tied to context).
+func scheduleOpenBrowser(ctx context.Context, delay time.Duration, url string) {
+	go func() {
+		select {
+		case <-time.After(delay):
+			openBrowserURL(url)
+		case <-ctx.Done():
+		}
+	}()
+}
+
 // attachCommand implements `goroscope attach <url>`.
 // It polls the target's /debug/pprof/goroutine endpoint, feeds the data into
 // the engine, and serves the UI — no changes to the target process required.
@@ -193,10 +205,7 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	_, _ = fmt.Fprintf(stdout, "goroscope attach: UI at %s  (polling every %s)\n", uiURL, *interval)
 
 	if *openBrowser {
-		go func() {
-			time.Sleep(300 * time.Millisecond)
-			openBrowserURL(uiURL)
-		}()
+		scheduleOpenBrowser(ctx, 300*time.Millisecond, uiURL)
 	}
 
 	return server.Serve(ctx)
@@ -406,12 +415,23 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		Goroutines: goroutines,
 	})
 
+	// buildWFG is a lazy helper that computes the wait-for graph at most once,
+	// avoiding a duplicate O(E+G) pass when both --dot-out and --format=dot are set.
+	var cachedWFG *analysis.WaitForGraph
+	buildWFG := func() analysis.WaitForGraph {
+		if cachedWFG == nil {
+			wfg := analysis.BuildWaitForGraph(analysis.BuildWaitForGraphInput{
+				Edges:      edges,
+				Goroutines: goroutines,
+			})
+			cachedWFG = &wfg
+		}
+		return *cachedWFG
+	}
+
 	// Optionally write the wait-for graph as DOT.
 	if *dotOut != "" {
-		wfg := analysis.BuildWaitForGraph(analysis.BuildWaitForGraphInput{
-			Edges:      edges,
-			Goroutines: goroutines,
-		})
+		wfg := buildWFG()
 		dotWriter := stdout
 		if *dotOut != "-" {
 			f, ferr := openForWrite(*dotOut)
@@ -436,11 +456,7 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		report.WriteGitHubAnnotations(stdout)
 	case "dot":
 		// Convenience: --format=dot prints DOT to stdout (same as --dot-out=-)
-		wfg := analysis.BuildWaitForGraph(analysis.BuildWaitForGraphInput{
-			Edges:      edges,
-			Goroutines: goroutines,
-		})
-		wfg.WriteDOT(stdout)
+		buildWFG().WriteDOT(stdout)
 	default: // "text"
 		report.WriteText(stdout)
 	}
@@ -688,10 +704,7 @@ func serveCaptureSession(ctx context.Context, addr, sessionName, target string, 
 	_, _ = fmt.Fprintf(stdout, "goroscope scaffold serving %q at %s\n", target, url)
 
 	if openBrowser {
-		go func() {
-			time.Sleep(500 * time.Millisecond)
-			openBrowserURL(url)
-		}()
+		scheduleOpenBrowser(ctx, 500*time.Millisecond, url)
 	}
 
 	return server.Serve(ctx)
@@ -724,10 +737,7 @@ func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 	_, _ = fmt.Fprintf(in.Stdout, "goroscope live run serving %q at %s\n", in.Target, url)
 
 	if in.OpenBrowser {
-		go func() {
-			time.Sleep(500 * time.Millisecond)
-			openBrowserURL(url)
-		}()
+		scheduleOpenBrowser(ctx, 500*time.Millisecond, url)
 	}
 
 	return server.Serve(ctx)

@@ -498,6 +498,12 @@ func (e *Engine) trimClosedSegmentsLocked() {
 	}
 	drop := len(e.closedSegments) - max
 	copy(e.closedSegments, e.closedSegments[drop:])
+	// Zero the tail so the GC can reclaim strings (ResourceID, Reason) held
+	// by the evicted elements; without this the backing array keeps them alive.
+	tail := e.closedSegments[len(e.closedSegments)-drop:]
+	for i := range tail {
+		tail[i] = model.TimelineSegment{}
+	}
 	e.closedSegments = e.closedSegments[:len(e.closedSegments)-drop]
 }
 
@@ -529,6 +535,11 @@ func (e *Engine) trimStacksForGoroutineLocked(goroutineID int64) {
 			continue
 		}
 		out = append(out, s)
+	}
+	// Zero the tail so the GC can reclaim Frames slices held by evicted
+	// snapshots; the filter loop leaves stale references at [len(out):len(e.stacks)].
+	for i := len(out); i < len(e.stacks); i++ {
+		e.stacks[i] = model.StackSnapshot{}
 	}
 	e.stacks = out
 }
