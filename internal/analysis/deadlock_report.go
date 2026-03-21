@@ -119,25 +119,25 @@ func topUserFrame(frames []model.StackFrame) *model.StackFrame {
 // Each cycle prints its blame chain and the top stack frame for each goroutine.
 func (r DeadlockReport) WriteText(w io.Writer) {
 	if r.Total == 0 {
-		fmt.Fprintln(w, "No deadlock hints found.")
+		_, _ = fmt.Fprintln(w, "No deadlock hints found.")
 		return
 	}
-	fmt.Fprintf(w, "⚠  %d potential deadlock cycle(s) found\n\n", r.Total)
+	_, _ = fmt.Fprintf(w, "⚠  %d potential deadlock cycle(s) found\n\n", r.Total)
 	for _, c := range r.Cycles {
-		fmt.Fprintf(w, "── Cycle #%d ──────────────────────────────────────────\n", c.Index)
-		fmt.Fprintf(w, "   %s\n\n", c.BlameChain)
+		_, _ = fmt.Fprintf(w, "── Cycle #%d ──────────────────────────────────────────\n", c.Index)
+		_, _ = fmt.Fprintf(w, "   %s\n\n", c.BlameChain)
 		for _, g := range c.Goroutines {
-			fmt.Fprintf(w, "   G%d  state=%s", g.ID, g.State)
+			_, _ = fmt.Fprintf(w, "   G%d  state=%s", g.ID, g.State)
 			if g.BlockedOn != "" {
-				fmt.Fprintf(w, "  blocked-on=%s", g.BlockedOn)
+				_, _ = fmt.Fprintf(w, "  blocked-on=%s", g.BlockedOn)
 			}
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 			if g.TopFrame != nil {
-				fmt.Fprintf(w, "       %s\n", g.TopFrame.Func)
-				fmt.Fprintf(w, "       %s:%d\n", g.TopFrame.File, g.TopFrame.Line)
+				_, _ = fmt.Fprintf(w, "       %s\n", g.TopFrame.Func)
+				_, _ = fmt.Fprintf(w, "       %s:%d\n", g.TopFrame.File, g.TopFrame.Line)
 			}
 		}
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
 }
 

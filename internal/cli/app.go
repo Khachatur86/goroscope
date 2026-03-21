@@ -479,7 +479,7 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 			if ferr != nil {
 				return fmt.Errorf("open dot-out %s: %w", *dotOut, ferr)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			dotWriter = f
 		}
 		wfg.WriteDOT(dotWriter)
@@ -704,7 +704,7 @@ type writeCloser struct{ *os.File }
 // openForWrite creates or truncates the file at path and returns it as a
 // WriteCloser.  The caller is responsible for calling Close.
 func openForWrite(path string) (*writeCloser, error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644) //nolint:gosec // path is caller-supplied CLI argument
 	if err != nil {
 		return nil, err
 	}

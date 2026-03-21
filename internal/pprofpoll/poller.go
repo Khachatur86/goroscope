@@ -224,4 +224,3 @@ func (p *Poller) nextStackSeq() uint64 {
 	p.seqStack++
 	return p.seqStack
 }
-
