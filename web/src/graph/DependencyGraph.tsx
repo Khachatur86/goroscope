@@ -323,8 +323,9 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
       })
       .on("end", () => {
         // Auto-fit only on the first layout (no saved positions).
-        // Subsequent polls preserve the user's zoom/pan.
-        if (!hasKnownPositions) fitToView();
+        // Wrap in rAF so the browser has finished painting all nodes
+        // before we measure getBBox() / getBoundingClientRect().
+        if (!hasKnownPositions) requestAnimationFrame(() => fitToView());
       });
 
     simRef.current = sim;
@@ -349,30 +350,27 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
   const fitToView = useCallback(() => {
     const svgEl = svgRef.current;
     const zoom  = zoomRef.current;
-    const sim   = simRef.current;
-    if (!svgEl || !zoom || !sim) return;
+    if (!svgEl || !zoom) return;
 
-    const nodes = sim.nodes();
-    if (nodes.length === 0) return;
+    // Use getBBox() on the zoom group — it includes node circles AND text
+    // labels and is not affected by the current zoom transform.
+    const g = svgEl.querySelector<SVGGElement>(".dep-zoom-group");
+    if (!g) return;
+    const bbox = g.getBBox();
+    if (bbox.width === 0 && bbox.height === 0) return;
 
     const padding = 48;
-    const w = svgEl.clientWidth  || 600;
-    const h = svgEl.clientHeight || 460;
-
-    const xs = nodes.map((n) => n.x ?? 0);
-    const ys = nodes.map((n) => n.y ?? 0);
-    const x0 = Math.min(...xs) - NODE_RADIUS;
-    const x1 = Math.max(...xs) + NODE_RADIUS;
-    const y0 = Math.min(...ys) - NODE_RADIUS;
-    const y1 = Math.max(...ys) + NODE_RADIUS;
+    // getBoundingClientRect gives the actual rendered SVG size after CSS layout.
+    const { width: w, height: h } = svgEl.getBoundingClientRect();
+    if (w === 0 || h === 0) return;
 
     const scale = Math.min(
-      (w - 2 * padding) / (x1 - x0 || 1),
-      (h - 2 * padding) / (y1 - y0 || 1),
+      (w - 2 * padding) / bbox.width,
+      (h - 2 * padding) / bbox.height,
       2, // cap zoom-in so a single node doesn't fill the screen
     );
-    const tx = w / 2 - scale * ((x0 + x1) / 2);
-    const ty = h / 2 - scale * ((y0 + y1) / 2);
+    const tx = w / 2 - scale * (bbox.x + bbox.width  / 2);
+    const ty = h / 2 - scale * (bbox.y + bbox.height / 2);
 
     d3.select(svgEl)
       .transition()
