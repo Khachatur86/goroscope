@@ -498,13 +498,13 @@ func (e *Engine) trimClosedSegmentsLocked() {
 	}
 	drop := len(e.closedSegments) - max
 	copy(e.closedSegments, e.closedSegments[drop:])
-	// Zero the tail so the GC can reclaim strings (ResourceID, Reason) held
-	// by the evicted elements; without this the backing array keeps them alive.
-	tail := e.closedSegments[len(e.closedSegments)-drop:]
-	for i := range tail {
-		tail[i] = model.TimelineSegment{}
+	// Zero the tail before reslicing so the GC can reclaim strings
+	// (ResourceID, Reason) held by evicted elements. Zeroing first makes the
+	// intent impossible to break by swapping the reslice line above.
+	for i := max; i < len(e.closedSegments); i++ {
+		e.closedSegments[i] = model.TimelineSegment{}
 	}
-	e.closedSegments = e.closedSegments[:len(e.closedSegments)-drop]
+	e.closedSegments = e.closedSegments[:max]
 }
 
 // trimStacksForGoroutineLocked drops the oldest stack snapshots for the given
@@ -528,6 +528,7 @@ func (e *Engine) trimStacksForGoroutineLocked(goroutineID int64) {
 	// Remove the oldest (count - maxPer) snapshots for this goroutine.
 	toRemove := count - maxPer
 	removed := 0
+	origLen := len(e.stacks)
 	out := e.stacks[:0]
 	for _, s := range e.stacks {
 		if s.GoroutineID == goroutineID && removed < toRemove {
@@ -536,9 +537,10 @@ func (e *Engine) trimStacksForGoroutineLocked(goroutineID int64) {
 		}
 		out = append(out, s)
 	}
-	// Zero the tail so the GC can reclaim Frames slices held by evicted
-	// snapshots; the filter loop leaves stale references at [len(out):len(e.stacks)].
-	for i := len(out); i < len(e.stacks); i++ {
+	// Zero the tail before reassigning so the GC can reclaim Frames slices
+	// held by evicted snapshots. Using origLen (captured before the filter
+	// loop) makes the bounds explicit and independent of the assignment below.
+	for i := len(out); i < origLen; i++ {
 		e.stacks[i] = model.StackSnapshot{}
 	}
 	e.stacks = out

@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,23 +115,48 @@ func openBrowserURL(url string) {
 	case "darwin":
 		cmd = exec.Command("open", url)
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		// Use rundll32 instead of "cmd /c start" to avoid shell metacharacter
+		// interpretation (H-1: command injection via crafted --addr values).
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
-	_ = cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return
+	}
+	// Reap the child process to avoid zombies on Unix.
+	go func() { _ = cmd.Wait() }()
 }
 
 // scheduleOpenBrowser spawns a goroutine that opens the browser after a short
 // delay, but respects ctx cancellation (CC-2: goroutine lifetime tied to context).
+// Uses time.NewTimer so the timer is stopped immediately on cancellation and not
+// held until expiry (M-4: time.After leak).
 func scheduleOpenBrowser(ctx context.Context, delay time.Duration, url string) {
 	go func() {
+		t := time.NewTimer(delay)
+		defer t.Stop()
 		select {
-		case <-time.After(delay):
+		case <-t.C:
 			openBrowserURL(url)
 		case <-ctx.Done():
 		}
 	}()
+}
+
+// warnIfNotLoopback prints a warning to w when addr binds to a non-loopback
+// interface, which exposes the goroscope UI and all analysis data to the network
+// (H-2: unintended network exposure via --addr flag).
+func warnIfNotLoopback(addr string, w io.Writer) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return // invalid addr will fail at bind time with a clearer error
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		_, _ = fmt.Fprintf(w, "warning: --addr %q binds to a non-loopback interface; "+
+			"goroutine stacks and analysis data will be accessible to remote hosts\n", addr)
+	}
 }
 
 // attachCommand implements `goroscope attach <url>`.
@@ -157,7 +184,7 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	maxStacks := fs.Int("max-stacks", 200, "Maximum stack snapshots to retain per goroutine (0 = unlimited)")
 
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -167,6 +194,8 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return fmt.Errorf("missing target URL; usage: goroscope attach <url>")
 	}
 	targetURL := fs.Arg(0)
+
+	warnIfNotLoopback(*addr, stderr)
 
 	uiPathResolved := resolveUIPath(*ui, *uiPath)
 	if uiPathResolved == "" && *ui == "react" {
@@ -232,7 +261,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -275,7 +304,7 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -291,7 +320,11 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
-	return serveCaptureSession(ctx, *addr, "collector", "collector", capture, stdout, *openBrowser, uiPathResolved)
+	return serveCaptureSession(ctx, serveCaptureInput{
+		Addr: *addr, SessionName: "collector", Target: "collector",
+		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
+		Stdout: stdout, Stderr: stderr,
+	})
 }
 
 func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -308,7 +341,7 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -324,7 +357,11 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
-	return serveCaptureSession(ctx, *addr, "ui-demo", "demo://ui", capture, stdout, *openBrowser, uiPathResolved)
+	return serveCaptureSession(ctx, serveCaptureInput{
+		Addr: *addr, SessionName: "ui-demo", Target: "demo://ui",
+		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
+		Stdout: stdout, Stderr: stderr,
+	})
 }
 
 func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -342,7 +379,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -363,7 +400,11 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
-	return serveCaptureSession(ctx, *addr, "replay", target, capture, stdout, *openBrowser, uiPathResolved)
+	return serveCaptureSession(ctx, serveCaptureInput{
+		Addr: *addr, SessionName: "replay", Target: target,
+		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
+		Stdout: stdout, Stderr: stderr,
+	})
 }
 
 func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -383,7 +424,7 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	dotOut := fs.String("dot-out", "", "Write the wait-for graph as a DOT file (Graphviz); - for stdout")
 
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -503,7 +544,7 @@ func testCommand(ctx context.Context, args []string, stdout, stderr io.Writer) e
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -582,7 +623,11 @@ func runTestCapture(ctx context.Context, in testCaptureInput) error {
 		sessionName = "test " + strings.Join(in.GoTestArgs, " ")
 	}
 
-	return serveCaptureSession(ctx, in.Addr, sessionName, tracePath, capture, in.Stdout, in.OpenBrowser, in.UIPath)
+	return serveCaptureSession(ctx, serveCaptureInput{
+		Addr: in.Addr, SessionName: sessionName, Target: tracePath,
+		Capture: capture, OpenBrowser: in.OpenBrowser, UIPath: in.UIPath,
+		Stdout: in.Stdout, Stderr: in.Stderr,
+	})
 }
 
 func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -595,7 +640,7 @@ func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -693,17 +738,32 @@ type serveLiveRunInput struct {
 	Stderr       io.Writer
 }
 
-func serveCaptureSession(ctx context.Context, addr, sessionName, target string, capture model.Capture, stdout io.Writer, openBrowser bool, uiPath string) error {
+// serveCaptureInput holds all parameters for serveCaptureSession (CS-5: input
+// struct for functions with more than 2 arguments).
+type serveCaptureInput struct {
+	Addr        string
+	SessionName string
+	Target      string
+	Capture     model.Capture
+	OpenBrowser bool
+	UIPath      string
+	Stdout      io.Writer
+	Stderr      io.Writer
+}
+
+func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
+	warnIfNotLoopback(in.Addr, in.Stderr)
+
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
-	current := sessions.StartSession(sessionName, target)
-	engine.LoadCapture(current, tracebridge.BindCaptureSession(capture, current.ID))
+	current := sessions.StartSession(in.SessionName, in.Target)
+	engine.LoadCapture(current, tracebridge.BindCaptureSession(in.Capture, current.ID))
 
-	server := api.NewServer(addr, engine, sessions, uiPath)
-	url := "http://" + addr
-	_, _ = fmt.Fprintf(stdout, "goroscope scaffold serving %q at %s\n", target, url)
+	server := api.NewServer(in.Addr, engine, sessions, in.UIPath)
+	url := "http://" + in.Addr
+	_, _ = fmt.Fprintf(in.Stdout, "goroscope scaffold serving %q at %s\n", in.Target, url)
 
-	if openBrowser {
+	if in.OpenBrowser {
 		scheduleOpenBrowser(ctx, 500*time.Millisecond, url)
 	}
 
@@ -711,6 +771,8 @@ func serveCaptureSession(ctx context.Context, addr, sessionName, target string, 
 }
 
 func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
+	warnIfNotLoopback(in.Addr, in.Stderr)
+
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
 	current := sessions.StartSession(in.SessionName, in.Target)
