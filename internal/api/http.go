@@ -72,11 +72,19 @@ func (s *Server) Serve(ctx context.Context) error {
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	if s.uiPath != "" {
+	switch {
+	case s.uiPath != "":
+		// Explicit external path (dev mode: make run-react).
 		mux.Handle("/", s.handleReactUI())
-	} else {
-		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(uiFileSystem()))))
-		mux.HandleFunc("/", s.handleIndex)
+	default:
+		// Always try the embedded React bundle first; fall back to vanilla UI
+		// when the bundle has not been built yet (placeholder index.html only).
+		if reactFS, ok := reactUIFileSystem(); ok {
+			mux.Handle("/", serveEmbeddedReactSPA(reactFS))
+		} else {
+			mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(uiFileSystem()))))
+			mux.HandleFunc("/", s.handleIndex)
+		}
 	}
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/api/v1/sessions", s.handleSessions)

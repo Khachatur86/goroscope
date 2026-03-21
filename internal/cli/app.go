@@ -19,6 +19,7 @@ import (
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/api"
 	"github.com/Khachatur86/goroscope/internal/model"
+	"github.com/Khachatur86/goroscope/internal/pprofpoll"
 	"github.com/Khachatur86/goroscope/internal/session"
 	"github.com/Khachatur86/goroscope/internal/tracebridge"
 	"github.com/Khachatur86/goroscope/internal/version"
@@ -32,6 +33,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 
 	switch args[0] {
+	case "attach":
+		return attachCommand(ctx, args[1:], stdout, stderr)
 	case "run":
 		return runCommand(ctx, args[1:], stdout, stderr)
 	case "collect":
@@ -61,6 +64,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Goroscope — local Go concurrency debugger")
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintln(w, "  goroscope attach [flags] <url>")
 	_, _ = fmt.Fprintln(w, "  goroscope run [flags] <package-or-binary>")
 	_, _ = fmt.Fprintln(w, "  goroscope test [flags] [packages] [go-test-flags]")
 	_, _ = fmt.Fprintln(w, "  goroscope collect [flags]")
@@ -72,6 +76,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  goroscope help")
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Commands:")
+	_, _ = fmt.Fprintln(w, "  attach    Attach to any running Go process via /debug/pprof (zero code changes)")
 	_, _ = fmt.Fprintln(w, "  run       Run a Go program with live trace capture (target must use agent)")
 	_, _ = fmt.Fprintln(w, "  test      Run 'go test' with tracing, then open the UI with the result")
 	_, _ = fmt.Fprintln(w, "  collect   Load demo data and serve UI")
@@ -113,6 +118,83 @@ func openBrowserURL(url string) {
 		cmd = exec.Command("xdg-open", url)
 	}
 	_ = cmd.Start()
+}
+
+// attachCommand implements `goroscope attach <url>`.
+// It polls the target's /debug/pprof/goroutine endpoint, feeds the data into
+// the engine, and serves the UI — no changes to the target process required.
+func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("attach", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope attach [flags] <url>\n\n")
+		_, _ = fmt.Fprintf(stderr, "Attach to any running Go process that exposes /debug/pprof.\n")
+		_, _ = fmt.Fprintf(stderr, "The URL should be the base address, e.g. http://localhost:6060\n\n")
+		_, _ = fmt.Fprintf(stderr, "Example:\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope attach http://localhost:6060 --open-browser\n\n")
+		fs.PrintDefaults()
+	}
+
+	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address for the goroscope UI")
+	openBrowser := fs.Bool("open-browser", false, "Open the default browser when ready")
+	interval := fs.Duration("interval", 2*time.Second, "Poll interval")
+	sessionName := fs.String("session-name", "attach", "Session name shown in the UI")
+	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
+	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+
+	if fs.NArg() == 0 {
+		return fmt.Errorf("missing target URL; usage: goroscope attach <url>")
+	}
+	targetURL := fs.Arg(0)
+
+	uiPathResolved := resolveUIPath(*ui, *uiPath)
+	if uiPathResolved == "" && *ui == "react" {
+		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
+	}
+
+	engine := analysis.NewEngine()
+	sessions := session.NewManager()
+
+	poller := pprofpoll.NewPoller(pprofpoll.PollInput{
+		TargetURL:   targetURL,
+		Interval:    *interval,
+		Engine:      engine,
+		Sessions:    sessions,
+		SessionName: *sessionName,
+	})
+
+	_, _ = fmt.Fprintf(stdout, "goroscope attach: connecting to %s ...\n", targetURL)
+
+	// Verify the target is reachable with a single synchronous poll.
+	verifyCtx, verifyCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer verifyCancel()
+	if err := poller.PollOnce(verifyCtx); err != nil {
+		return fmt.Errorf("attach: cannot reach %s: %w", targetURL, err)
+	}
+	_, _ = fmt.Fprintf(stdout, "goroscope attach: connected. Starting polling loop.\n")
+
+	// Start continuous polling in the background.
+	go poller.Run(ctx, stderr)
+
+	server := api.NewServer(*addr, engine, sessions, uiPathResolved)
+	uiURL := "http://" + *addr
+	_, _ = fmt.Fprintf(stdout, "goroscope attach: UI at %s  (polling every %s)\n", uiURL, *interval)
+
+	if *openBrowser {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			openBrowserURL(uiURL)
+		}()
+	}
+
+	return server.Serve(ctx)
 }
 
 func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {

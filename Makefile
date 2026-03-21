@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit
+.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist
 
 build:
 	mkdir -p bin
@@ -47,6 +47,15 @@ bench:
 
 web:
 	cd web && npm install && npm run build
+
+# embed-web: build the React UI and copy it into the Go embed directory so that
+# the next `make build` (or `make build-dist`) produces a self-contained binary.
+embed-web: web
+	rm -rf internal/api/reactui/assets
+	cp -r web/dist/. internal/api/reactui/
+
+# build-dist: single-command release build — React bundle baked into the binary.
+build-dist: embed-web build
 
 ui-react: build web
 	./bin/goroscope ui -ui=react -ui-path=web/dist -open-browser

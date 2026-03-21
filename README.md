@@ -1,31 +1,48 @@
-# goroscope
+# Goroscope
 
-Goroscope is a local Go concurrency debugger that captures runtime trace events and visualizes goroutines, blocking, channels, and mutex interactions on an interactive timeline.
+**Goroscope** is a local Go concurrency debugger. It visualizes goroutines, blocking, channels, and mutex interactions on an interactive timeline — with live updates while your process runs and zero data leaving your machine.
 
-## Install
+## 2-minute quickstart
 
-**Homebrew (macOS / Linux):**
+### Attach to any running Go process (zero code changes)
 
-```bash
-brew install Khachatur86/goroscope/goroscope
+Most Go services already expose `/debug/pprof`. If yours does not, add one import:
+
+```go
+import _ "net/http/pprof"
 ```
 
-The Homebrew formula bundles the React UI — `goroscope ui -ui=react` works out of the box.
-
-**go install** (vanilla UI, no React build required):
+Then attach:
 
 ```bash
 go install github.com/Khachatur86/goroscope/cmd/goroscope@latest
+goroscope attach -addr http://localhost:6060 -open-browser
 ```
 
-The binary embeds the vanilla UI and is fully self-contained. The React UI requires the `web/dist/` directory; use the Homebrew formula or a release archive if you need it.
+Goroscope polls `/debug/pprof/goroutine?debug=2` every 2 s, accumulates the full goroutine history, and serves the UI at **http://localhost:7070**.
 
-**Release archives** (Linux / macOS / Windows, React UI included):
+### Instrument with the agent library
 
-Download the archive for your OS/arch from [Releases](https://github.com/Khachatur86/goroscope/releases), extract it, and put the `goroscope` binary on your `PATH`. Each archive contains `web/dist/` so you can run:
+```go
+import "github.com/Khachatur86/goroscope/agent"
+
+func main() {
+    stop := agent.Start(agent.Config{Addr: ":7070", OpenBrowser: true})
+    defer stop()
+    // … rest of main
+}
+```
 
 ```bash
-goroscope ui -ui=react -ui-path=web/dist -open-browser
+go run ./yourprogram   # UI opens automatically
+```
+
+## Install
+
+**go install** (single self-contained binary with React UI baked in):
+
+```bash
+go install github.com/Khachatur86/goroscope/cmd/goroscope@latest
 ```
 
 **Build from source:**
@@ -33,29 +50,12 @@ goroscope ui -ui=react -ui-path=web/dist -open-browser
 ```bash
 git clone https://github.com/Khachatur86/goroscope
 cd goroscope
-make build          # vanilla UI only
-make web && make build  # includes React UI
-# Binary: bin/goroscope
+make build-dist     # builds React UI, embeds it, compiles Go → bin/goroscope
+# Or for development:
+make build          # Go only (shows vanilla UI until make embed-web is run)
 ```
 
-Build with version: `make build VERSION=1.0.0`
-
-## Quick Start
-
-```bash
-goroscope ui --open-browser
-```
-
-Or without the flag: open `http://127.0.0.1:7070` manually.
-
-**React UI** (same port 7070):
-
-```bash
-make web
-goroscope ui -ui=react -open-browser
-```
-
-Or `make ui-react` (builds + web + runs).
+Build with version: `make build-dist VERSION=1.2.0`
 
 ## Current Status
 
@@ -96,10 +96,11 @@ This starts the local UI immediately, runs the target, and refreshes the timelin
 
 | Command   | Description                                      |
 |-----------|--------------------------------------------------|
+| `attach`  | Attach to any live Go process via `/debug/pprof` |
 | `run`     | Run a Go program with live trace capture         |
 | `test`    | Run `go test` with tracing, open UI with result  |
 | `collect` | Load demo data and serve UI                      |
-| `ui`      | Load demo data and serve UI                      |
+| `ui`      | Open the UI (no trace loaded)                    |
 | `replay`  | Load .gtrace or raw Go trace (e.g. go test -trace) and serve UI |
 | `check`   | Analyze capture for deadlock hints; exit 1 if found (for CI) |
 | `export`  | Export timeline segments to CSV or JSON (for pandas, analysis) |
@@ -165,15 +166,37 @@ Open the UI with `?goroutine=123` to auto-select that goroutine. The URL updates
 
 **Compare captures**: Click "Compare" in the header, select two .gtrace files (baseline and compare), then view the split-panel diff (improved / regressed / unchanged).
 
+## Attach flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-addr` | `http://localhost:6060` | Target pprof base URL |
+| `-interval` | `2s` | Poll interval |
+| `-session-name` | `attach` | Session label shown in the UI |
+| `-open-browser` | `false` | Open browser automatically |
+
 ## Development
 
-Before committing, run:
-
 ```bash
-make pre-commit
+# Backend only (vanilla embedded UI)
+make build && make run
+
+# Full release build (React UI baked in)
+make build-dist
+
+# React dev server (hot-reload on :5173, proxied to :7070)
+cd web && npm install && npm run dev
+
+# React UI dev mode via goroscope
+make run-react          # builds React + starts goroscope with -ui-path=web/dist
+
+# Tests and lint
+make test-race          # go test -race ./...
+make lint               # golangci-lint
+make pre-commit         # fmt + vet + test-race + lint
 ```
 
-This runs `go fmt`, `go vet`, `go test -race`, and `golangci-lint`. Use `make lint-fix` to auto-fix what lint can fix.
+Use `make lint-fix` to auto-fix what lint can fix.
 
 ## Layout
 
@@ -184,8 +207,11 @@ examples/trace_demo     Example: channels + mutex
 examples/worker_pool    Example: worker pool pattern
 examples/http_demo      Example: agent.WithRequestID for HTTP handlers
 internal/api            Local REST API, SSE stream, and embedded UI assets
+internal/api/reactui/   Embedded React bundle (generated by make embed-web)
+internal/api/ui/        Vanilla embedded UI (fallback when React not built)
 internal/analysis       Goroutine state engine and timeline construction
 internal/model          Core domain types
+internal/pprofpoll      pprof attach mode poller and parser
 internal/session        Session lifecycle
 internal/tracebridge    Runtime trace execution, parsing, and replay
 vscode/                 VS Code extension
