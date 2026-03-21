@@ -82,7 +82,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  collect   Load demo data and serve UI")
 	_, _ = fmt.Fprintln(w, "  ui        Load demo data and serve UI")
 	_, _ = fmt.Fprintln(w, "  replay    Load a .gtrace capture file and serve UI")
-	_, _ = fmt.Fprintln(w, "  check     Analyze capture for deadlock hints; exit 1 if found (for CI)")
+	_, _ = fmt.Fprintln(w, "  check     Analyze capture for deadlock hints; exit 1 if found (--format text|json|github|dot)")
 	_, _ = fmt.Fprintln(w, "  export    Export timeline segments to CSV or JSON (for pandas, analysis)")
 	_, _ = fmt.Fprintln(w, "  version   Print version")
 	_, _ = fmt.Fprintln(w, "  help      Show this help")
@@ -361,11 +361,18 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		_, _ = fmt.Fprintf(stderr, "Usage: goroscope check <capture-file>\n\n")
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope check [flags] <capture-file>\n\n")
 		_, _ = fmt.Fprintf(stderr, "Load a .gtrace capture, run deadlock analysis, and exit with code 1 if\n")
-		_, _ = fmt.Fprintf(stderr, "potential deadlocks are found. Use in CI: goroscope run -save out.gtrace ./tests; goroscope check out.gtrace\n\n")
+		_, _ = fmt.Fprintf(stderr, "potential deadlocks are found.\n\n")
+		_, _ = fmt.Fprintf(stderr, "Example (CI pipeline):\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope run -save out.gtrace ./tests\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope check out.gtrace\n\n")
 		fs.PrintDefaults()
 	}
+
+	format := fs.String("format", "text", "Output format: text | json | github | dot")
+	dotOut := fs.String("dot-out", "", "Write the wait-for graph as a DOT file (Graphviz); - for stdout")
+
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return nil
@@ -388,20 +395,58 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	engine.LoadCapture(current, tracebridge.BindCaptureSession(capture, current.ID))
 
 	edges := engine.ResourceGraph()
-	if len(edges) == 0 {
-		edges = analysis.DeriveResourceEdgesFromTimeline(engine.Timeline(), engine.ListGoroutines())
-	}
 	goroutines := engine.ListGoroutines()
-	hints := analysis.FindDeadlockHints(edges, goroutines)
-
-	if len(hints) == 0 {
-		_, _ = fmt.Fprintln(stdout, "No deadlock hints found.")
-		return nil
+	if len(edges) == 0 {
+		edges = analysis.DeriveResourceEdgesFromTimeline(engine.Timeline(), goroutines)
 	}
 
-	_, _ = fmt.Fprintf(stderr, "goroscope check: %d potential deadlock(s) found\n", len(hints))
-	for i, h := range hints {
-		_, _ = fmt.Fprintf(stderr, "  #%d: goroutines %v, resources %v\n", i+1, h.GoroutineIDs, h.ResourceIDs)
+	hints := analysis.FindDeadlockHints(edges, goroutines)
+	report := analysis.BuildDeadlockReport(analysis.BuildDeadlockReportInput{
+		Hints:      hints,
+		Goroutines: goroutines,
+	})
+
+	// Optionally write the wait-for graph as DOT.
+	if *dotOut != "" {
+		wfg := analysis.BuildWaitForGraph(analysis.BuildWaitForGraphInput{
+			Edges:      edges,
+			Goroutines: goroutines,
+		})
+		dotWriter := stdout
+		if *dotOut != "-" {
+			f, ferr := openForWrite(*dotOut)
+			if ferr != nil {
+				return fmt.Errorf("open dot-out %s: %w", *dotOut, ferr)
+			}
+			defer f.Close()
+			dotWriter = f
+		}
+		wfg.WriteDOT(dotWriter)
+		if *dotOut != "-" {
+			_, _ = fmt.Fprintf(stderr, "wait-for graph written to %s\n", *dotOut)
+		}
+	}
+
+	switch *format {
+	case "json":
+		if werr := report.WriteJSON(stdout); werr != nil {
+			return fmt.Errorf("write json: %w", werr)
+		}
+	case "github":
+		report.WriteGitHubAnnotations(stdout)
+	case "dot":
+		// Convenience: --format=dot prints DOT to stdout (same as --dot-out=-)
+		wfg := analysis.BuildWaitForGraph(analysis.BuildWaitForGraphInput{
+			Edges:      edges,
+			Goroutines: goroutines,
+		})
+		wfg.WriteDOT(stdout)
+	default: // "text"
+		report.WriteText(stdout)
+	}
+
+	if report.Total == 0 {
+		return nil
 	}
 	return fmt.Errorf("deadlock hints found: %w", errDeadlockHints)
 }
@@ -590,6 +635,19 @@ func writeExportJSON(w io.Writer, segments []model.TimelineSegment) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(map[string]any{"segments": segments})
+}
+
+// writeCloser wraps an *os.File to satisfy io.WriteCloser.
+type writeCloser struct{ *os.File }
+
+// openForWrite creates or truncates the file at path and returns it as a
+// WriteCloser.  The caller is responsible for calling Close.
+func openForWrite(path string) (*writeCloser, error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	return &writeCloser{f}, nil
 }
 
 func resolveUIPath(ui, uiPath string) string {
