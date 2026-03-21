@@ -53,6 +53,10 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
 
+  // Keeps the previous simulation alive so we can harvest node positions
+  // before the next rebuild — prevents nodes from jumping on every poll.
+  const simRef = useRef<d3.Simulation<NodeDatum, LinkDatum> | null>(null);
+
   // ── Diff state ──────────────────────────────────────────────────────────
   const [baseGoroutines, setBaseGoroutines] = useState<Goroutine[] | null>(null);
   const diffActive = baseGoroutines !== null;
@@ -104,17 +108,37 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
     const height = svgEl.clientHeight || 460;
 
     const svg = d3.select(svgEl);
+
+    // Harvest positions from the previous simulation so existing nodes don't
+    // jump when the graph is rebuilt on the next poll cycle.
+    const savedPos = new Map<number, { x: number; y: number }>();
+    if (simRef.current) {
+      for (const n of simRef.current.nodes()) {
+        if (n.x !== undefined && n.y !== undefined) {
+          savedPos.set(n.id, { x: n.x, y: n.y });
+        }
+      }
+      simRef.current.stop();
+    }
+
     svg.selectAll("*").remove();
 
     // ── Data ────────────────────────────────────────────────────────────────
     const idSet = new Set(effectiveGoroutines.map((g) => g.goroutine_id));
 
-    const nodes: NodeDatum[] = effectiveGoroutines.map((g) => ({
-      id:    g.goroutine_id,
-      state: g.state,
-      fn:    g.labels?.["function"] ?? "",
-      diff:  diffMap.get(g.goroutine_id) ?? "unchanged",
-    }));
+    const nodes: NodeDatum[] = effectiveGoroutines.map((g) => {
+      const pos = savedPos.get(g.goroutine_id);
+      return {
+        id:    g.goroutine_id,
+        state: g.state,
+        fn:    g.labels?.["function"] ?? "",
+        diff:  diffMap.get(g.goroutine_id) ?? "unchanged",
+        // Restore previous position so the node doesn't jump; new nodes
+        // get undefined and will be placed by the simulation.
+        x: pos?.x,
+        y: pos?.y,
+      };
+    });
 
     const links: LinkDatum[] = effectiveGoroutines
       .filter((g) => g.parent_id && idSet.has(g.parent_id))
@@ -267,8 +291,14 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
       });
 
     // ── Simulation ──────────────────────────────────────────────────────────
+    // Use a low alpha when most nodes already have saved positions so they
+    // don't visibly rearrange. New nodes (no saved position) will still
+    // settle in naturally because the simulation runs long enough.
+    const hasKnownPositions = nodes.some((n) => n.x !== undefined);
+
     const sim = d3
       .forceSimulation<NodeDatum>(nodes)
+      .alpha(hasKnownPositions ? 0.15 : 0.8)
       .force(
         "link",
         d3.forceLink<NodeDatum, LinkDatum>(links)
@@ -289,6 +319,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine }: P
         nodeGroup.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
       });
 
+    simRef.current = sim;
     return () => { sim.stop(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveGoroutines, diffMap]);
