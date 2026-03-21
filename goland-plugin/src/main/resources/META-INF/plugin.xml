@@ -1,0 +1,104 @@
+<idea-plugin>
+    <id>com.goroscope.plugin</id>
+    <name>Goroscope</name>
+    <vendor url="https://github.com/Khachatur86/goroscope">Goroscope</vendor>
+
+    <description><![CDATA[
+        <p>
+            <b>Goroscope</b> is a local Go concurrency debugger. It visualises goroutines,
+            blocking behaviour, channels, and mutex interactions on an interactive timeline —
+            with live updates while your process runs and zero data leaving your machine.
+        </p>
+
+        <h3>Features</h3>
+        <ul>
+            <li>Attach to any running Go process that exposes <code>/debug/pprof</code></li>
+            <li>Instrument with the agent library for zero-config integration</li>
+            <li>Interactive timeline: zoom, filter by state, search goroutines</li>
+            <li>Click any stack frame to jump to the source line in the editor</li>
+            <li>Session status panel in the tool window</li>
+            <li>Actions: Run Current Package, Attach to Session, Stop Session, Open Timeline</li>
+        </ul>
+
+        <h3>Requirements</h3>
+        <ul>
+            <li>GoLand 2024.1 or later</li>
+            <li><code>goroscope</code> binary — install with
+                <code>go install github.com/Khachatur86/goroscope/cmd/goroscope@latest</code></li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <!-- Optional GoLand dependency: enables Go-specific features if available. -->
+    <depends optional="true" config-file="goland-optional.xml">org.jetbrains.plugins.go</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool window shown in the IDE side panel. -->
+        <toolWindow
+            id="Goroscope"
+            displayName="Goroscope"
+            anchor="right"
+            factoryClass="com.goroscope.plugin.GoroscopeToolWindowFactory"
+            icon="/icons/goroscope.svg"/>
+
+        <!-- Application-level service: manages the goroscope subprocess. -->
+        <applicationService
+            serviceImplementation="com.goroscope.plugin.GoroscopeService"/>
+
+        <!-- Settings page under Tools → Goroscope. -->
+        <applicationConfigurable
+            parentId="tools"
+            displayName="Goroscope"
+            id="com.goroscope.plugin.settings"
+            instance="com.goroscope.plugin.GoroscopeConfigurable"/>
+
+        <!-- Persistent settings storage. -->
+        <applicationService
+            serviceImplementation="com.goroscope.plugin.GoroscopeSettings"/>
+    </extensions>
+
+    <actions>
+        <!-- Action group added to the Tools menu and to the Goroscope tool window toolbar. -->
+        <group id="GoroscopeActions" text="Goroscope" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
+
+        <action
+            id="goroscope.runCurrentPackage"
+            class="com.goroscope.plugin.actions.RunCurrentPackageAction"
+            text="Run Current Package"
+            description="Run goroscope for the package of the current file"
+            icon="AllIcons.Actions.Execute">
+            <add-to-group group-id="GoroscopeActions" anchor="first"/>
+        </action>
+
+        <action
+            id="goroscope.attachToSession"
+            class="com.goroscope.plugin.actions.AttachToSessionAction"
+            text="Attach to Session"
+            description="Attach to a running Go process via pprof and open the timeline"
+            icon="AllIcons.Debugger.AttachToProcess">
+            <add-to-group group-id="GoroscopeActions" anchor="after"
+                          relative-to-action="goroscope.runCurrentPackage"/>
+        </action>
+
+        <action
+            id="goroscope.openTimeline"
+            class="com.goroscope.plugin.actions.OpenTimelineAction"
+            text="Open Timeline"
+            description="Open the Goroscope timeline in the tool window"
+            icon="AllIcons.Actions.Show">
+            <add-to-group group-id="GoroscopeActions" anchor="after"
+                          relative-to-action="goroscope.attachToSession"/>
+        </action>
+
+        <action
+            id="goroscope.stopSession"
+            class="com.goroscope.plugin.actions.StopSessionAction"
+            text="Stop Session"
+            description="Stop the goroscope process started by the plugin"
+            icon="AllIcons.Actions.Suspend">
+            <add-to-group group-id="GoroscopeActions" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

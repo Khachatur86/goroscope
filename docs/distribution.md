@@ -107,24 +107,71 @@ This triggers:
 |----------|--------------|
 | `release.yml` | GoReleaser: builds binaries, creates GitHub Release, updates Homebrew tap |
 | `publish-vscode.yml` | Packages and publishes the VS Code extension to VS Marketplace + Open VSX |
+| `publish-goland.yml` | Builds the GoLand plugin and publishes to JetBrains Marketplace |
 
 ---
 
-## 5 — Token rotation
+## 5 — JetBrains Marketplace (GoLand Plugin)
+
+### 5.1 Create a JetBrains Marketplace account
+
+1. Visit <https://plugins.jetbrains.com> and sign in with your JetBrains account.
+2. Navigate to **Upload plugin** and create a new plugin listing for **Goroscope**.
+3. Note the **Plugin ID** assigned by JetBrains (used in `plugin.xml` as `<id>`).
+
+### 5.2 Create a Marketplace token
+
+1. Go to <https://plugins.jetbrains.com/author/me/tokens>.
+2. Click **Generate token** and set a descriptive name (e.g. `goroscope-ci`).
+3. Copy the token immediately.
+
+### 5.3 Add secret to GitHub
+
+```
+Settings → Secrets and variables → Actions → New repository secret
+  Name:  JETBRAINS_MARKETPLACE_TOKEN
+  Value: <your JetBrains Marketplace token>
+```
+
+### 5.4 Build the plugin locally (for testing)
+
+```bash
+cd goland-plugin
+./gradlew buildPlugin
+# Output: build/distributions/goroscope-goland-*.zip
+```
+
+Install the `.zip` manually: GoLand → Settings → Plugins → ⚙ → Install Plugin from Disk.
+
+### 5.5 Launch a sandbox IDE
+
+```bash
+cd goland-plugin
+./gradlew runIde
+```
+
+This downloads GoLand sandbox edition and launches it with the plugin pre-installed.
+
+---
+
+## 6 — Token rotation
 
 | Secret | Rotation period | Action |
 |--------|-----------------|--------|
 | `VSCE_PAT` | ≤ 1 year (Azure PAT max) | Regenerate in Azure DevOps, update GitHub secret |
 | `OVSX_PAT` | No expiry (rotate annually) | Regenerate on open-vsx.org, update GitHub secret |
 | `HOMEBREW_TAP_TOKEN` | No expiry (rotate annually) | Regenerate fine-grained PAT, update GitHub secret |
+| `JETBRAINS_MARKETPLACE_TOKEN` | No expiry (rotate annually) | Regenerate on plugins.jetbrains.com, update GitHub secret |
 
 ---
 
-## 6 — Verifying a release
+## 7 — Verifying a release
 
 After a successful release:
 
 - **Binary**: `go install github.com/Khachatur86/goroscope/cmd/goroscope@latest` installs the new version.
 - **Homebrew**: `brew upgrade goroscope` installs the new version.
 - **VS Marketplace**: search `goroscope` in the Extensions panel or visit <https://marketplace.visualstudio.com/items?itemName=goroscope.goroscope>.
+- **Open VSX**: visit <https://open-vsx.org/extension/goroscope/goroscope>.
+- **JetBrains Marketplace**: search "Goroscope" in GoLand Plugins or visit <https://plugins.jetbrains.com/plugin/goroscope>.
 - **Open VSX**: visit <https://open-vsx.org/extension/goroscope/goroscope>.

@@ -1,0 +1,7 @@
+<!-- Extensions that are only active when the Go plugin is installed. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Go-aware run configuration for launching goroscope alongside go run / go test. -->
+        <!-- Reserved for future expansion: GoLand-specific run configuration type. -->
+    </extensions>
+</idea-plugin>
