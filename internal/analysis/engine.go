@@ -535,7 +535,7 @@ func (e *Engine) ExportCapture() model.Capture {
 		return events[i].Timestamp.Before(events[j].Timestamp)
 	})
 	for i := range events {
-		events[i].Seq = uint64(i + 1)
+		events[i].Seq = uint64(i) + 1
 	}
 
 	stacks := make([]model.StackSnapshot, len(e.stacks))
