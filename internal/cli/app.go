@@ -23,6 +23,7 @@ import (
 	"github.com/Khachatur86/goroscope/internal/model"
 	"github.com/Khachatur86/goroscope/internal/pprofpoll"
 	"github.com/Khachatur86/goroscope/internal/session"
+	"github.com/Khachatur86/goroscope/internal/store"
 	"github.com/Khachatur86/goroscope/internal/tracebridge"
 	"github.com/Khachatur86/goroscope/internal/version"
 )
@@ -51,6 +52,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return exportCommand(ctx, args[1:], stdout, stderr)
 	case "test":
 		return testCommand(ctx, args[1:], stdout, stderr)
+	case "history":
+		return historyCommand(args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return nil
@@ -86,6 +89,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  replay    Load a .gtrace capture file and serve UI")
 	_, _ = fmt.Fprintln(w, "  check     Analyze capture for deadlock hints; exit 1 if found (--format text|json|github|dot)")
 	_, _ = fmt.Fprintln(w, "  export    Export timeline segments to CSV or JSON (for pandas, analysis)")
+	_, _ = fmt.Fprintln(w, "  history   List saved captures from ~/.goroscope/captures/")
 	_, _ = fmt.Fprintln(w, "  version   Print version")
 	_, _ = fmt.Fprintln(w, "  help      Show this help")
 	_, _ = fmt.Fprintln(w, "")
@@ -182,6 +186,9 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 	maxSegments := fs.Int("max-segments", 500_000, "Maximum closed timeline segments to retain in memory (0 = unlimited)")
 	maxStacks := fs.Int("max-stacks", 200, "Maximum stack snapshots to retain per goroutine (0 = unlimited)")
+	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS; required for non-loopback --addr)")
+	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
+	token := fs.String("token", "", "Bearer token required for all API requests (empty = no auth)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -194,8 +201,6 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return fmt.Errorf("missing target URL; usage: goroscope attach <url>")
 	}
 	targetURL := fs.Arg(0)
-
-	warnIfNotLoopback(*addr, stderr)
 
 	uiPathResolved := resolveUIPath(*ui, *uiPath)
 	if uiPathResolved == "" && *ui == "react" {
@@ -229,8 +234,13 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	// Start continuous polling in the background.
 	go poller.Run(ctx, stderr)
 
-	server := api.NewServer(*addr, engine, sessions, uiPathResolved)
-	uiURL := "http://" + *addr
+	cfg := api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token}
+	server := api.NewServer(*addr, engine, sessions, uiPathResolved, cfg)
+	scheme := "http"
+	if *tlsCert != "" {
+		scheme = "https"
+	}
+	uiURL := scheme + "://" + *addr
 	_, _ = fmt.Fprintf(stdout, "goroscope attach: UI at %s  (polling every %s)\n", uiURL, *interval)
 
 	if *openBrowser {
@@ -259,6 +269,9 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	savePath := fs.String("save", "", "Save capture to file when session completes (e.g. ./captures/run.gtrace)")
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
+	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
+	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
+	token := fs.String("token", "", "Bearer token required for all API requests (empty = no auth)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -285,6 +298,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		PollInterval: *pollInterval,
 		SavePath:     *savePath,
 		UIPath:       uiPathResolved,
+		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
 		Stdout:       stdout,
 		Stderr:       stderr,
 	})
@@ -303,6 +317,9 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
+	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
+	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
+	token := fs.String("token", "", "Bearer token required for all API requests")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -323,6 +340,7 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "collector", Target: "collector",
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
+		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
 		Stdout: stdout, Stderr: stderr,
 	})
 }
@@ -340,6 +358,9 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
+	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
+	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
+	token := fs.String("token", "", "Bearer token required for all API requests")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -360,6 +381,7 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "ui-demo", Target: "demo://ui",
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
+		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
 		Stdout: stdout, Stderr: stderr,
 	})
 }
@@ -378,6 +400,9 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
+	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
+	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
+	token := fs.String("token", "", "Bearer token required for all API requests")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -403,6 +428,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "replay", Target: target,
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
+		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
 		Stdout: stdout, Stderr: stderr,
 	})
 }
@@ -510,6 +536,90 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 
 var errDeadlockHints = fmt.Errorf("potential deadlocks detected")
 
+// historyCommand implements `goroscope history`.
+// It lists captures saved automatically by the run and test commands.
+func historyCommand(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("history", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintf(stderr, "Usage: goroscope history\n\n")
+		_, _ = fmt.Fprintf(stderr, "List captures saved automatically to ~/.goroscope/captures/.\n")
+		_, _ = fmt.Fprintf(stderr, "Replay any entry with: goroscope replay <path>\n\n")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+
+	dir, err := store.DefaultDir()
+	if err != nil {
+		return fmt.Errorf("history: %w", err)
+	}
+	s, err := store.New(dir)
+	if err != nil {
+		return fmt.Errorf("history: %w", err)
+	}
+
+	entries, err := s.List()
+	if err != nil {
+		return fmt.Errorf("history: %w", err)
+	}
+
+	if len(entries) == 0 {
+		_, _ = fmt.Fprintln(stdout, "No saved captures. Run 'goroscope run' or 'goroscope test' to create one.")
+		return nil
+	}
+
+	_, _ = fmt.Fprintf(stdout, "%-26s  %-30s  %8s  %6s  %s\n",
+		"DATE", "TARGET", "DURATION", "GOROUT", "PATH")
+	_, _ = fmt.Fprintf(stdout, "%s\n", strings.Repeat("-", 100))
+
+	for _, e := range entries {
+		dur := time.Duration(e.DurationNS)
+		durStr := dur.Round(time.Millisecond).String()
+		target := e.Target
+		if len(target) > 30 {
+			target = "…" + target[len(target)-29:]
+		}
+		_, _ = fmt.Fprintf(stdout, "%-26s  %-30s  %8s  %6d  %s\n",
+			e.CreatedAt.Local().Format("2006-01-02 15:04:05 MST"),
+			target,
+			durStr,
+			e.GoroutineCount,
+			s.FilePath(e),
+		)
+	}
+	return nil
+}
+
+// autoSaveCapture persists capture to the default store directory and logs the
+// result to stderr. Errors are non-fatal — a warning is printed instead.
+func autoSaveCapture(capture model.Capture, target string, stderr io.Writer) {
+	dir, err := store.DefaultDir()
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "goroscope: autosave: %v\n", err)
+		return
+	}
+	s, err := store.New(dir)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "goroscope: autosave: %v\n", err)
+		return
+	}
+	path, err := s.Save(store.SaveInput{
+		Capture:   capture,
+		Target:    target,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "goroscope: autosave: %v\n", err)
+		return
+	}
+	_, _ = fmt.Fprintf(stderr, "goroscope: capture saved to %s\n", path)
+}
+
 // testCaptureInput holds all parameters for runTestCapture.
 type testCaptureInput struct {
 	Addr        string
@@ -616,6 +726,7 @@ func runTestCapture(ctx context.Context, in testCaptureInput) error {
 			_, _ = fmt.Fprintf(in.Stderr, "goroscope test: saved capture to %s\n", in.SavePath)
 		}
 	}
+	autoSaveCapture(capture, strings.Join(in.GoTestArgs, " "), in.Stderr)
 
 	// Derive a session name from the go test arguments for display.
 	sessionName := "test"
@@ -734,6 +845,7 @@ type serveLiveRunInput struct {
 	PollInterval time.Duration
 	SavePath     string
 	UIPath       string
+	ServerConfig api.Config
 	Stdout       io.Writer
 	Stderr       io.Writer
 }
@@ -741,26 +853,29 @@ type serveLiveRunInput struct {
 // serveCaptureInput holds all parameters for serveCaptureSession (CS-5: input
 // struct for functions with more than 2 arguments).
 type serveCaptureInput struct {
-	Addr        string
-	SessionName string
-	Target      string
-	Capture     model.Capture
-	OpenBrowser bool
-	UIPath      string
+	Addr         string
+	SessionName  string
+	Target       string
+	Capture      model.Capture
+	OpenBrowser  bool
+	UIPath       string
+	ServerConfig api.Config
 	Stdout      io.Writer
 	Stderr      io.Writer
 }
 
 func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
-	warnIfNotLoopback(in.Addr, in.Stderr)
-
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
 	current := sessions.StartSession(in.SessionName, in.Target)
 	engine.LoadCapture(current, tracebridge.BindCaptureSession(in.Capture, current.ID))
 
-	server := api.NewServer(in.Addr, engine, sessions, in.UIPath)
-	url := "http://" + in.Addr
+	server := api.NewServer(in.Addr, engine, sessions, in.UIPath, in.ServerConfig)
+	scheme := "http"
+	if in.ServerConfig.TLSCertFile != "" {
+		scheme = "https"
+	}
+	url := scheme + "://" + in.Addr
 	_, _ = fmt.Fprintf(in.Stdout, "goroscope scaffold serving %q at %s\n", in.Target, url)
 
 	if in.OpenBrowser {
@@ -771,8 +886,6 @@ func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
 }
 
 func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
-	warnIfNotLoopback(in.Addr, in.Stderr)
-
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
 	current := sessions.StartSession(in.SessionName, in.Target)
@@ -794,8 +907,12 @@ func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
 		Stderr:       in.Stderr,
 	})
 
-	server := api.NewServer(in.Addr, engine, sessions, in.UIPath)
-	url := "http://" + in.Addr
+	server := api.NewServer(in.Addr, engine, sessions, in.UIPath, in.ServerConfig)
+	scheme := "http"
+	if in.ServerConfig.TLSCertFile != "" {
+		scheme = "https"
+	}
+	url := scheme + "://" + in.Addr
 	_, _ = fmt.Fprintf(in.Stdout, "goroscope live run serving %q at %s\n", in.Target, url)
 
 	if in.OpenBrowser {
@@ -866,20 +983,20 @@ func streamLiveTrace(ctx context.Context, in streamLiveTraceInput) {
 		_, _ = fmt.Fprintf(in.Stderr, "goroscope: trace stream error: %v\n", streamErr)
 	default:
 		in.Sessions.CompleteCurrent()
-		if in.SavePath != "" {
-			// Re-parse the completed file for the save snapshot — single pass,
-			// same result as if BuildCaptureFromRawTrace were called directly.
-			saveCapture, saveErr := tracebridge.BuildCaptureFromRawTrace(ctx, tracePath)
-			if saveErr != nil {
-				_, _ = fmt.Fprintf(in.Stderr, "goroscope: build capture for save: %v\n", saveErr)
-			} else {
-				saveCapture.Target = in.Target
+		// Re-parse the completed file once for save/autosave.
+		saveCapture, saveErr := tracebridge.BuildCaptureFromRawTrace(ctx, tracePath)
+		if saveErr != nil {
+			_, _ = fmt.Fprintf(in.Stderr, "goroscope: build capture for save: %v\n", saveErr)
+		} else {
+			saveCapture.Target = in.Target
+			if in.SavePath != "" {
 				if err := tracebridge.SaveCaptureFile(in.SavePath, saveCapture); err != nil {
 					_, _ = fmt.Fprintf(in.Stderr, "goroscope: save capture: %v\n", err)
 				} else {
 					_, _ = fmt.Fprintf(in.Stderr, "goroscope: saved capture to %s\n", in.SavePath)
 				}
 			}
+			autoSaveCapture(saveCapture, in.Target, in.Stderr)
 		}
 	}
 }
