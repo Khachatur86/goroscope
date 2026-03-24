@@ -906,6 +906,14 @@ export function App() {
           >
             Compare
           </button>
+          <a
+            href="/api/v1/replay/export"
+            download
+            className="action-button secondary"
+            title="Download current session as .gtrace file"
+          >
+            Export
+          </a>
         </div>
       </header>
 

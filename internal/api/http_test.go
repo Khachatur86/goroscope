@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -825,3 +826,82 @@ func TestHandleGoroutineStackAt(t *testing.T) {
 		}
 	})
 }
+
+// ─── handleReplayExport ───────────────────────────────────────────────────────
+
+func TestHandleReplayExport(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 404 when no active session", func(t *testing.T) {
+		t.Parallel()
+		eng := analysis.NewEngine()
+		mgr := session.NewManager()
+		srv := NewServer("127.0.0.1:0", eng, mgr, "")
+		rec := get(t, srv.routes(), "/api/v1/replay/export")
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+	})
+
+	t.Run("returns 204 when session active but no goroutines", func(t *testing.T) {
+		t.Parallel()
+		eng := analysis.NewEngine()
+		mgr := session.NewManager()
+		sess := mgr.StartSession("test", "demo://test")
+		eng.Reset(sess)
+		srv := NewServer("127.0.0.1:0", eng, mgr, "")
+		rec := get(t, srv.routes(), "/api/v1/replay/export")
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", rec.Code)
+		}
+	})
+
+	t.Run("returns gtrace file with goroutines", func(t *testing.T) {
+		t.Parallel()
+		eng := analysis.NewEngine()
+		mgr := session.NewManager()
+		base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		sess := mgr.StartSession("test", "demo://test")
+		eng.Reset(sess)
+		eng.ApplyEvents([]model.Event{
+			{Kind: model.EventKindGoroutineCreate, GoroutineID: 1, Timestamp: base},
+			{Kind: model.EventKindGoroutineState, GoroutineID: 1, Timestamp: base.Add(time.Millisecond), State: model.StateRunning},
+		})
+		srv := NewServer("127.0.0.1:0", eng, mgr, "")
+		rec := get(t, srv.routes(), "/api/v1/replay/export")
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+		}
+
+		cd := rec.Header().Get("Content-Disposition")
+		if cd == "" {
+			t.Fatal("missing Content-Disposition header")
+		}
+		if !strings.Contains(cd, ".gtrace") {
+			t.Errorf("Content-Disposition %q does not include .gtrace", cd)
+		}
+
+		var capture model.Capture
+		if err := json.NewDecoder(rec.Body).Decode(&capture); err != nil {
+			t.Fatalf("decode capture: %v", err)
+		}
+		if len(capture.Events) == 0 {
+			t.Fatal("exported capture has no events")
+		}
+	})
+
+	t.Run("rejects non-GET methods", func(t *testing.T) {
+		t.Parallel()
+		eng := analysis.NewEngine()
+		mgr := session.NewManager()
+		srv := NewServer("127.0.0.1:0", eng, mgr, "")
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/replay/export", nil)
+		rec := httptest.NewRecorder()
+		srv.routes().ServeHTTP(rec, req)
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("status = %d, want 405", rec.Code)
+		}
+	})
+}
+

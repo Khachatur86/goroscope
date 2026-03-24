@@ -465,6 +465,110 @@ func (e *Engine) ResourceGraph() []model.ResourceEdge {
 	return out
 }
 
+// ExportCapture builds a model.Capture from the current engine state.
+// The returned capture is self-contained and can be saved or replayed.
+// One create event and one current-state event are synthesised per goroutine;
+// all historical stacks, resource edges, and processor segments are included.
+func (e *Engine) ExportCapture() model.Capture {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	sessionID := ""
+	name := "export"
+	if e.session != nil {
+		sessionID = e.session.ID
+		name = e.session.Name
+	}
+
+	events := make([]model.Event, 0, len(e.goroutines)*2)
+	parentIDs := make(map[int64]int64)
+	labelOverrides := make(map[int64]model.Labels)
+	seq := uint64(0)
+
+	for _, g := range e.goroutines {
+		ts := g.CreatedAt
+		if ts.IsZero() {
+			ts = g.LastSeenAt
+		}
+
+		seq++
+		events = append(events, model.Event{
+			SessionID:   sessionID,
+			Seq:         seq,
+			Timestamp:   ts,
+			Kind:        model.EventKindGoroutineCreate,
+			GoroutineID: g.ID,
+			ParentID:    g.ParentID,
+		})
+
+		if g.State != "" {
+			seq++
+			events = append(events, model.Event{
+				SessionID:   sessionID,
+				Seq:         seq,
+				Timestamp:   g.LastSeenAt,
+				Kind:        model.EventKindGoroutineState,
+				GoroutineID: g.ID,
+				State:       g.State,
+				Reason:      g.Reason,
+				ResourceID:  g.ResourceID,
+			})
+		}
+
+		if g.ParentID != 0 {
+			parentIDs[g.ID] = g.ParentID
+		}
+
+		if len(g.Labels) > 0 {
+			cp := make(model.Labels, len(g.Labels))
+			for k, v := range g.Labels {
+				cp[k] = v
+			}
+			labelOverrides[g.ID] = cp
+		}
+	}
+
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].Timestamp.Equal(events[j].Timestamp) {
+			return events[i].Seq < events[j].Seq
+		}
+		return events[i].Timestamp.Before(events[j].Timestamp)
+	})
+	for i := range events {
+		events[i].Seq = uint64(i + 1)
+	}
+
+	stacks := make([]model.StackSnapshot, len(e.stacks))
+	for i, s := range e.stacks {
+		cp := s
+		cp.Frames = append([]model.StackFrame(nil), s.Frames...)
+		stacks[i] = cp
+	}
+
+	edges := make([]model.ResourceEdge, len(e.edges))
+	copy(edges, e.edges)
+
+	procSegs := make([]model.ProcessorSegment, len(e.processorSegments))
+	copy(procSegs, e.processorSegments)
+
+	if len(parentIDs) == 0 {
+		parentIDs = nil
+	}
+	if len(labelOverrides) == 0 {
+		labelOverrides = nil
+	}
+
+	return model.Capture{
+		Name:              name,
+		Events:            events,
+		Stacks:            stacks,
+		Resources:         edges,
+		ProcessorSegments: procSegs,
+		ParentIDs:         parentIDs,
+		LabelOverrides:    labelOverrides,
+	}
+}
+
 // MemoryStats returns point-in-time counts of the data held by the Engine.
 // It acquires the read lock, so it is safe to call from any goroutine.
 func (e *Engine) MemoryStats() MemoryStats {

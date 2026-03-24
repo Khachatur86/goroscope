@@ -103,6 +103,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/deadlock-hints", s.handleDeadlockHints)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 	mux.HandleFunc("/api/v1/replay/load", s.handleReplayLoad)
+	mux.HandleFunc("/api/v1/replay/export", s.handleReplayExport)
 	mux.HandleFunc("/api/v1/compare", s.handleCompare)
 	mux.HandleFunc("/api/v1/memory", s.handleMemoryStats)
 
@@ -713,6 +714,42 @@ func (s *Server) handleReplayLoad(w http.ResponseWriter, r *http.Request) {
 	s.engine.LoadCapture(current, capture)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "session_id": current.ID})
+}
+
+// handleReplayExport serialises the current engine state as a .gtrace file download.
+// GET /api/v1/replay/export
+// Returns 404 when no session is active, 204 when the session has no goroutines yet.
+func (s *Server) handleReplayExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	current := s.sessions.Current()
+	if current == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active session"})
+		return
+	}
+
+	capture := s.engine.ExportCapture()
+	if len(capture.Events) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	data, err := json.Marshal(capture)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("encode capture: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	filename := fmt.Sprintf("session-%s.gtrace", current.ID)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 // handleCompare accepts two .gtrace files and returns baseline/compare data plus diff.
