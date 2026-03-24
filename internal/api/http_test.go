@@ -904,3 +904,96 @@ func TestHandleReplayExport(t *testing.T) {
 		}
 	})
 }
+
+// ─── bearer auth ──────────────────────────────────────────────────────────────
+
+func TestBearerAuth_NoToken(t *testing.T) {
+	t.Parallel()
+	// Server without a token: all requests allowed.
+	s := NewServer("127.0.0.1:0", nil, nil, "")
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 without token config, got %d", rec.Code)
+	}
+}
+
+func TestBearerAuth_CorrectToken(t *testing.T) {
+	t.Parallel()
+	s := NewServer("127.0.0.1:0", nil, nil, "", Config{Token: "secret"})
+	handler := bearerAuth("secret", s.routes())
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 with correct token, got %d", rec.Code)
+	}
+}
+
+func TestBearerAuth_WrongToken(t *testing.T) {
+	t.Parallel()
+	handler := bearerAuth("secret", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cases := []struct {
+		name  string
+		auth  string
+		want  int
+	}{
+		{"no header", "", http.StatusUnauthorized},
+		{"wrong token", "Bearer wrong", http.StatusUnauthorized},
+		{"no bearer prefix", "secret", http.StatusUnauthorized},
+		{"empty bearer", "Bearer ", http.StatusUnauthorized},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			if tc.auth != "" {
+				req.Header.Set("Authorization", tc.auth)
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Errorf("auth=%q: got %d, want %d", tc.auth, rec.Code, tc.want)
+			}
+			if rec.Code == http.StatusUnauthorized {
+				if !strings.Contains(rec.Header().Get("WWW-Authenticate"), "Bearer") {
+					t.Error("missing WWW-Authenticate: Bearer header on 401")
+				}
+			}
+		})
+	}
+}
+
+func TestValidateConfig_RemoteRequiresTLS(t *testing.T) {
+	t.Parallel()
+
+	t.Run("loopback without TLS is ok", func(t *testing.T) {
+		t.Parallel()
+		s := NewServer("127.0.0.1:7070", nil, nil, "")
+		if err := s.validateConfig(); err != nil {
+			t.Errorf("unexpected error for loopback: %v", err)
+		}
+	})
+
+	t.Run("non-loopback without TLS returns error", func(t *testing.T) {
+		t.Parallel()
+		s := NewServer("0.0.0.0:7070", nil, nil, "")
+		if err := s.validateConfig(); err == nil {
+			t.Error("expected error for non-loopback without TLS")
+		}
+	})
+
+	t.Run("non-loopback with TLS is ok", func(t *testing.T) {
+		t.Parallel()
+		s := NewServer("0.0.0.0:7070", nil, nil, "", Config{TLSCertFile: "cert.pem", TLSKeyFile: "key.pem"})
+		if err := s.validateConfig(); err != nil {
+			t.Errorf("unexpected error for non-loopback with TLS: %v", err)
+		}
+	})
+}

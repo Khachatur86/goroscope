@@ -24,30 +24,61 @@ import (
 	"github.com/Khachatur86/goroscope/internal/version"
 )
 
+// Config holds optional TLS and authentication settings for the Server.
+// Zero value means plaintext HTTP with no authentication.
+type Config struct {
+	// TLSCertFile is the path to a PEM-encoded TLS certificate.
+	// When non-empty, the server uses HTTPS via ListenAndServeTLS.
+	TLSCertFile string
+	// TLSKeyFile is the path to the PEM-encoded private key paired with TLSCertFile.
+	TLSKeyFile string
+	// Token is a bearer token required for every request.
+	// When empty, no authentication is enforced.
+	Token string
+}
+
 // Server is the goroscope local HTTP server.
 type Server struct {
 	addr     string
 	engine   *analysis.Engine
 	sessions *session.Manager
 	uiPath   string // if non-empty, serve React UI from this dir instead of embedded vanilla UI
+	config   Config
 }
 
 // NewServer returns a Server bound to addr with the given engine and session manager.
 // If uiPath is non-empty, the server serves the React UI from that directory (e.g. web/dist).
-func NewServer(addr string, engine *analysis.Engine, sessions *session.Manager, uiPath string) *Server {
+// An optional Config may be supplied as the last argument to enable TLS or bearer-token auth.
+func NewServer(addr string, engine *analysis.Engine, sessions *session.Manager, uiPath string, cfgs ...Config) *Server {
+	var cfg Config
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
+	}
 	return &Server{
 		addr:     addr,
 		engine:   engine,
 		sessions: sessions,
 		uiPath:   uiPath,
+		config:   cfg,
 	}
 }
 
 // Serve starts the HTTP server and blocks until ctx is cancelled.
+// When Config.TLSCertFile is set, the server uses HTTPS.
+// When Config.Token is set, every request must carry a matching Bearer token.
 func (s *Server) Serve(ctx context.Context) error {
+	if err := s.validateConfig(); err != nil {
+		return err
+	}
+
+	handler := s.routes()
+	if s.config.Token != "" {
+		handler = bearerAuth(s.config.Token, handler)
+	}
+
 	httpServer := &http.Server{
 		Addr:    s.addr,
-		Handler: s.routes(),
+		Handler: handler,
 		// ReadHeaderTimeout guards against slowloris attacks.
 		// WriteTimeout and ReadTimeout are intentionally omitted: the /stream
 		// endpoint uses Server-Sent Events which requires long-lived connections,
@@ -62,12 +93,51 @@ func (s *Server) Serve(ctx context.Context) error {
 		_ = httpServer.Shutdown(context.Background())
 	}()
 
-	err := httpServer.ListenAndServe()
+	var err error
+	if s.config.TLSCertFile != "" {
+		err = httpServer.ListenAndServeTLS(s.config.TLSCertFile, s.config.TLSKeyFile)
+	} else {
+		err = httpServer.ListenAndServe()
+	}
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
-
 	return err
+}
+
+// validateConfig returns an error when the server is bound to a non-loopback
+// address but no TLS certificate is provided (SEC-1: explicit I/O timeouts;
+// TLS required for remote access).
+func (s *Server) validateConfig() error {
+	if isLocalhostAddr(s.addr) {
+		return nil
+	}
+	if s.config.TLSCertFile == "" {
+		return fmt.Errorf(
+			"server bound to non-loopback address %q requires TLS: "+
+				"provide --tls-cert and --tls-key, or bind to 127.0.0.1",
+			s.addr,
+		)
+	}
+	if s.config.TLSKeyFile == "" {
+		return fmt.Errorf("--tls-key is required when --tls-cert is set")
+	}
+	return nil
+}
+
+// bearerAuth wraps next with HTTP Bearer token authentication.
+// Requests without a matching Authorization: Bearer <token> header receive 401.
+func bearerAuth(token string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		const prefix = "Bearer "
+		if !strings.HasPrefix(auth, prefix) || auth[len(prefix):] != token {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="goroscope"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) routes() http.Handler {
@@ -113,6 +183,11 @@ func (s *Server) routes() http.Handler {
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	} else {
+		// Explicitly block the pprof prefix so the React SPA catch-all ("/"
+		// returning 200) does not accidentally expose what looks like a pprof
+		// endpoint to remote callers (OBS-3: local-only access).
+		mux.HandleFunc("/debug/pprof/", http.NotFound)
 	}
 
 	return mux
