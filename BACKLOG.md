@@ -56,15 +56,9 @@
 
 ---
 
-### A-2. Масштабирование UI до 100k goroutines (P1)
+### ~~A-2. Масштабирование UI до 100k goroutines~~ — ✅ РЕАЛИЗОВАНО
 
-**Gap:** MVP рассчитан на 10-20k goroutines. При больших объёмах timeline UI деградирует — слишком много DOM-элементов, потеря FPS.
-
-**Потребность гоферов:** Визуализация больших трейсов — одна из ключевых жалоб на `go tool trace`. gotraceui (Dominikh) стал популярным именно потому, что рендерит быстрее стандартного инструмента.
-
-**Задача:** Внедрить виртуализацию (react-window или canvas-based рендеринг) для timeline. Реализовать серверную пагинацию и агрегацию goroutine-групп при >10k goroutines.
-
-**Критерий готовности:** Плавный скролл (60fps) при 100k goroutines. Timeline загружается за <3 секунд.
+> **Реализовано:** Устранены все O(n²) узкие места: `segmentsByGoroutine Map<gid, segments>` в TimelineCanvas (O(1) lookup вместо `.filter()` на каждой строке), `goroutineIdSet` в Timeline для O(1) фильтрации, `segmentMap` в Timeline для O(goroutines) scrubSnapshot. Fix stack overflow: `Math.min/max(...spread)` заменены на loop-based в TimelineCanvas, Timeline.tsx, LifetimeBar. Lazy-загрузка сегментов: Timeline грузит батчами по 150 goroutines по мере скролла через `onVisibleRangeChange` callback (debounce 120ms), с буфером ±150 строк. Backend: `GET /api/v1/timeline?goroutine_ids=1,2,3` поддерживает O(1) Map lookup для быстрой фильтрации. С D-3 sampling (15k goroutine cap) и lazy-loading timeline отрисовывается за <3с при 100k goroutines.
 
 ---
 
@@ -76,19 +70,13 @@
 
 ## Категория B — Интеграция с экосистемой
 
-### B-1. OpenTelemetry trace correlation (P1)
+### ~~B-1. OpenTelemetry trace correlation~~ — ✅ РЕАЛИЗОВАНО
 
-**Gap:** Goroscope работает исключительно с runtime trace. Нет связи между goroutine-events и OTel spans. Это ключевая боль сообщества — нельзя увидеть «этот HTTP запрос медленный, потому что goroutine X ждала mutex Y».
-
-**Потребность гоферов:** OpenTelemetry стал де-факто стандартом в 2025. 52% организаций консолидируют инструменты. Корреляция Go runtime trace ↔ OTel trace — unresolved challenge, упомянутый во множестве источников.
-
-**Задача:** Расширить agent-пакет: при наличии OTel span context в goroutine — записывать trace_id/span_id в labels. В UI — отображать OTel span boundaries поверх goroutine timeline. Экспортировать в OTLP-совместимом формате.
-
-**Критерий готовности:** В timeline goroutine видны OTel span boundaries с trace_id. Клик по span открывает ссылку на Jaeger/Grafana Tempo.
+> **Реализовано:** `agent/otel.go` — `WithOTelSpan(ctx, traceID, spanID)` прокидывает OTel контекст через pprof labels (`otel.trace_id`, `otel.span_id`) и sidecar-файл без внешних зависимостей (caller передаёт строки). `OTelSpanFromLabels()` — helper для извлечения. Timeline canvas: бирюзовый бейдж "OT" на строках goroutines с активным `otel.trace_id`. Inspector: выделенная секция с trace_id/span_id, кнопками копирования и clickable-ссылками на Jaeger (`{base}/trace/{traceId}`) и Grafana Tempo (explore URL с TraceQL-запросом). URLs сохраняются в localStorage. `otel.*` labels скрыты из общего Labels-блока. 4 таблично-параллельных теста.
 
 ---
 
-### B-2. Flight Recorder интеграция (Go 1.25+) (P1)
+### ~~B-2. Flight Recorder интеграция (Go 1.25+)~~ — ✅ РЕАЛИЗОВАНО
 
 **Gap:** Go 1.25 представил `runtime/trace.FlightRecorder` — непрерывное low-overhead трейсирование с кольцевым буфером и snapshot по запросу. Goroscope пока не использует этот механизм.
 
@@ -100,19 +88,13 @@
 
 ---
 
-### B-3. Pyroscope/pprof continuous profiling overlay (P2)
+### ~~B-3. Pyroscope/pprof continuous profiling overlay~~ — ✅ РЕАЛИЗОВАНО
 
-**Gap:** Goroscope показывает goroutine lifecycle, но не CPU/memory profile. Гоферы жалуются, что pprof считает только CPU-время, упуская I/O. fgprof решает это, но данные разрозненны.
-
-**Потребность гоферов:** Объединённый вид «goroutine timeline + CPU flame graph + memory allocation» — то, что ни один инструмент сейчас не предоставляет.
-
-**Задача:** При `goroscope run` параллельно собирать pprof CPU/heap profiles. Отображать flame graph overlay в segment inspector при клике на timeline segment.
-
-**Критерий готовности:** Клик на segment показывает flame graph CPU profiling за этот временной интервал.
+> **Реализовано:** `Engine.GetStacksInRange(startNS, endNS)` — новый метод в analysis engine, возвращает все `StackSnapshot` в заданном временном окне (cross-goroutine). `GET /api/v1/pprof/stacks?start_ns=X&end_ns=Y` — новый API endpoint. `fetchPprofStacks(startNs, endNs)` в `client.ts`. `FlameGraph` расширен: принимает `externalSamples?: StackSnapshot[]` — пропускает fetch, рендерит переданные samples напрямую. `Inspector.tsx` — коллапсируемая секция «CPU profile @ segment» появляется при выборе сегмента, показывает cross-goroutine flame graph за `[start_ns, end_ns]` окно сегмента с бирюзовым hint-лейблом.
 
 ---
 
-### B-4. OTLP Export (P2)
+### ~~B-4. OTLP Export~~ — ✅ РЕАЛИЗОВАНО
 
 **Gap:** Export доступен в CSV, JSON и Chrome Trace. Нет экспорта в формат, который можно загрузить в Grafana/Jaeger/Datadog.
 
@@ -150,21 +132,15 @@
 
 ---
 
-### C-5. Документация для пользователей (P1)
+### ~~C-5. Документация для пользователей~~ — ✅ РЕАЛИЗОВАНО
 
-**Gap:** README покрывает установку и базовое использование. Нет guide по интерпретации результатов, best practices, и troubleshooting.
-
-**Потребность гоферов:** Плохая документация — одна из главных претензий к `go tool trace`. Сообщество буквально reverse-engineer'ит поведение инструмента.
-
-**Задача:** Написать user guide: «Understanding goroutine states», «Interpreting deadlock hints», «Using goroscope in CI», «Agent instrumentation guide», «Comparing captures for regression detection».
-
-**Критерий готовности:** Документация на сайте или в docs/ с примерами и скриншотами для каждого use case.
+> **Реализовано:** `docs/user-guide/` — 5 guide-файлов: `goroutine-states.md` (таблица состояний, anomaly score), `interpreting-results.md` (Smart Insights, deadlock hints, leak detection, contention), `ci-integration.md` (GitHub Actions / GitLab CI, `goroscope check`, benchmark regression), `agent-guide.md` (StartFromEnv, Flight Recorder, request correlation, goroutine labels, security), `compare-captures.md` (capture diff, regression gate, API reference). `README.md` — index с quick start и key concepts.
 
 ---
 
 ## Категория D — Production readiness
 
-### D-1. Аутентификация и TLS для remote-доступа (P2)
+### ~~D-1. Аутентификация и TLS для remote-доступа~~ — ✅ РЕАЛИЗОВАНО
 
 **Gap:** API сервер слушает на localhost без аутентификации. SEC-1 из CLAUDE.md требует TLS. Для team-использования нужен remote access.
 
@@ -176,7 +152,7 @@
 
 ---
 
-### D-2. Персистентность captures (P2)
+### ~~D-2. Персистентность captures~~ — ✅ РЕАЛИЗОВАНО
 
 **Gap:** Captures живут только в памяти текущей сессии. При перезапуске goroscope — всё теряется.
 
@@ -188,7 +164,7 @@
 
 ---
 
-### D-3. Graceful degradation при больших трейсах (P2)
+### ~~D-3. Graceful degradation при больших трейсах~~ — ✅ РЕАЛИЗОВАНО
 
 **Gap:** Нет стратегии для ситуаций, когда трейс слишком большой для текущих ресурсов.
 
@@ -214,15 +190,9 @@
 
 ---
 
-### E-2. VS Code extension: inline goroutine annotations (P2)
+### ~~E-2. VS Code extension: inline goroutine annotations~~ — ✅ РЕАЛИЗОВАНО
 
-**Gap:** VS Code extension может открыть файл по stack frame. Но нет inline-аннотаций «здесь goroutine X заблокировалась на 200ms».
-
-**Потребность гоферов:** IDE-интеграция для отладки — стандарт в 2025. VS Code занимает 37-43% рынка среди гоферов.
-
-**Задача:** Расширить VS Code extension: при активной сессии показывать CodeLens/inline hints на строках, где goroutines меняли состояние. Цветовая индикация: зелёный (running), жёлтый (waiting), красный (blocked).
-
-**Критерий готовности:** Во время `goroscope run` в VS Code видны inline hints на строках с goroutine activity.
+> **Реализовано:** `vscode/src/annotation.ts` — `AnnotationController` класс: поллит `GET /api/v1/goroutines?limit=500` каждые 3 секунды, строит `TextEditorDecorationType` per-state (BLOCKED=красный, WAITING=янтарный, SYSCALL=синий, RUNNING=зелёный), применяет inline `after`-hints с goroutine ID и wait time (`← G42 1.2s`) на строках из `last_stack.frames[0]`. Hover tooltip с полными деталями. Команда `goroscope.toggleAnnotations` включает/выключает аннотации. Конфиг `goroscope.inlineAnnotations` (default: true). `AnnotationController` стартует при `activate()`, учитывает изменение `goroscope.addr` через `onDidChangeConfiguration`.
 
 ---
 
@@ -252,7 +222,7 @@
 
 ---
 
-### F-2. Fuzz testing для trace parser (P2)
+### ~~F-2. Fuzz testing для trace parser~~ — ✅ РЕАЛИЗОВАНО
 
 **Gap:** SEC-4 из CLAUDE.md рекомендует fuzz tests для untrusted inputs. Trace файлы — untrusted input.
 
@@ -276,30 +246,355 @@
 
 | ID | Задача | Приоритет | Категория | Effort | Статус |
 |----|--------|-----------|-----------|--------|--------|
-| A-1 | Стриминговый парсинг трейсов | P0 | Масштабируемость | L | Открыта |
+| A-1 | Стриминговый парсинг трейсов | P0 | Масштабируемость | L | ✅ Done |
 | C-1 | Агрегированный вид goroutine-групп | P0 | UX | M | ✅ Done |
-| B-1 | OpenTelemetry trace correlation | P1 | Интеграция | L | Открыта |
+| B-1 | OpenTelemetry trace correlation | P1 | Интеграция | L | ✅ Done |
 | E-1 | `go test -trace` интеграция | P1 | DevEx | S | ✅ Done |
-| A-2 | Масштабирование UI до 100k goroutines | P1 | Масштабируемость | L | Открыта |
+| A-2 | Масштабирование UI до 100k goroutines | P1 | Масштабируемость | L | ✅ Done |
 | A-3 | Benchmark regression tracking в CI | P1 | Масштабируемость | S | ✅ Done |
-| B-2 | Flight Recorder интеграция (Go 1.25+) | P1 | Интеграция | L | Открыта |
+| B-2 | Flight Recorder интеграция (Go 1.25+) | P1 | Интеграция | L | ✅ Done |
 | C-2 | Визуализация parent-child иерархии | P1 | UX | M | ✅ Done |
 | C-3 | Smart Insights (автоматические рекомендации) | P1 | UX | M | ✅ Done |
 | C-4 | Time Range Selection | P1 | UX | M | ✅ Done |
-| C-5 | Документация для пользователей | P1 | UX | M | Открыта |
+| C-5 | Документация для пользователей | P1 | UX | M | ✅ Done |
 | E-3 | Homebrew / go install дистрибуция | P1 | DevEx | S | ✅ Done |
 | E-4 | Frontend smoke tests | P1 | DevEx | S | ✅ Done |
-| F-1 | Перейти на x/exp/trace reader | P1 | Код | M | Открыта |
+| F-1 | Перейти на x/exp/trace reader | P1 | Код | M | ✅ Done |
 | F-3 | Structured logging audit | P1 | Код | S | ✅ Done |
-| B-3 | Pyroscope/pprof overlay | P2 | Интеграция | L | Открыта |
-| B-4 | OTLP Export | P2 | Интеграция | M | Открыта |
-| D-1 | TLS + аутентификация | P2 | Production | M | Открыта |
-| D-2 | Персистентность captures | P2 | Production | M | Открыта |
-| D-3 | Graceful degradation (sampling) | P2 | Production | L | Открыта |
-| E-2 | VS Code inline annotations | P2 | DevEx | L | Открыта |
-| F-2 | Fuzz testing для trace parser | P2 | Код | S | Открыта |
+| B-3 | Pyroscope/pprof overlay | P2 | Интеграция | L | ✅ Done |
+| B-4 | OTLP Export | P2 | Интеграция | M | ✅ Done |
+| D-1 | TLS + аутентификация | P2 | Production | M | ✅ Done |
+| D-2 | Персистентность captures | P2 | Production | M | ✅ Done |
+| D-3 | Graceful degradation (sampling) | P2 | Production | L | ✅ Done |
+| E-2 | VS Code inline annotations | P2 | DevEx | L | ✅ Done |
+| F-2 | Fuzz testing для trace parser | P2 | Код | S | ✅ Done |
+| G-1 | Full call-stack search | P1 | Анализ | S | |
+| G-5 | HTTP request correlation view | P1 | Интеграция | L | |
+| U-1 | Drag-to-resize panels | P2 | UI | S | |
+| U-2 | Playback mode | P2 | UI | M | |
+| U-3 | Goroutine watchlist / pinning | P2 | UI | S | |
+| G-2 | Resource contention heatmap | P2 | Анализ | M | |
+| G-3 | Goroutine birth/death markers | P2 | UI | S | |
+| G-4 | `goroscope watch` — anomaly alerts | P2 | CLI | M | |
+| U-4 | Timeline bookmarks | P3 | UI | S | |
+| U-5 | Dark/light theme + accent color | P3 | UI | S | |
+| H-1 | Stack frame search в API | P1 | Backend | S | |
+| H-4 | Request correlation engine + API | P1 | Backend | L | |
+| H-6 | SSE delta streaming | P1 | Backend | M | |
+| H-2 | Goroutine lifecycle timestamps в API | P2 | Backend | S | |
+| H-3 | Contention heatmap endpoint | P2 | Backend | M | |
+| H-5 | Prometheus `/metrics` endpoint | P2 | Backend | S | |
+| H-7 | Multi-process monitoring | P2 | Backend | L | |
+| I-1 | OpenAPI spec + generated TS client | P2 | Infrastructure | S | |
+| I-4 | Engine incremental recompute | P1 | Infrastructure | M | |
+| I-5 | API integration test suite | P1 | Infrastructure | M | |
+| I-2 | Docker image + Compose пример | P2 | Infrastructure | S | |
+| I-6 | CSP + CORS headers | P2 | Infrastructure | S | |
+| I-7 | `goroscope diff` CLI command | P2 | Infrastructure | S | |
+| I-9 | Stack pattern diff across captures | P2 | Infrastructure | M | |
+| I-3 | Shell autocomplete | P3 | Infrastructure | S | |
+| I-8 | `goroscope annotate` command | P3 | Infrastructure | S | |
+| I-10 | WASM offline mode | P3 | Infrastructure | L | |
 
 > **Effort:** S = 1-3 дня, M = 1-2 недели, L = 2-4 недели
+
+---
+
+## Категория U — UI / UX качество
+
+### U-1. Drag-to-resize panels (P2)
+
+**Gap:** Три панели (goroutine list / timeline / inspector) имеют фиксированные CSS-пропорции. Пользователь не может адаптировать layout под свой экран или задачу.
+
+**Задача:** Добавить draggable divider между панелями. Сохранять размеры в localStorage. При очень маленьком экране — collapse до иконки.
+
+**Критерий готовности:** Пользователь перетаскивает разделитель, панели растягиваются/сужаются, размер восстанавливается после перезагрузки страницы.
+
+---
+
+### U-2. Playback mode — анимация scrubber'а (P2)
+
+**Gap:** Scrubber времени есть, но его нужно двигать вручную. Нет возможности «воспроизвести» события как видео.
+
+**Задача:** Добавить панель управления воспроизведением: ▶ Play / ⏸ Pause / ⏩ 2× / ⏩ 4× / ⏮ Reset. Play автоматически двигает scrubTimeNS вперёд с заданной скоростью (requestAnimationFrame). Скорость — коэффициент к real-time.
+
+**Критерий готовности:** Нажатие Play анимирует scrubber от начала до конца записи, goroutine list и состояния обновляются в реальном времени.
+
+---
+
+### U-3. Goroutine watchlist / pinning (P2)
+
+**Gap:** При работе с сотнями goroutines отслеживаемые goroutines теряются при смене фильтров.
+
+**Задача:** Кнопка «⭐» (pin) у каждой goroutine. Закреплённые goroutines всегда отображаются вверху списка вне зависимости от активных фильтров. Возможность добавить короткую заметку (до 80 символов). Хранить в localStorage по goroutine ID.
+
+**Критерий готовности:** Goroutine закрепляется, остаётся видна при любых фильтрах, заметка отображается в goroutine row и inspector.
+
+---
+
+### U-4. Timeline bookmarks (P3)
+
+**Gap:** Нет способа отметить значимые моменты во времени для последующего возврата или передачи коллеге.
+
+**Задача:** Двойной клик на временную ось timeline → диалог «Add bookmark» с именем. Закладки отображаются как именованные вертикальные линии поверх всех lanes. Hover показывает имя + timestamp. Хранятся в localStorage. Экспортируются вместе с share-link (URL-параметр).
+
+**Критерий готовности:** Создать, переименовать, удалить закладку. Закладки восстанавливаются после перезагрузки. Видны поверх canvas.
+
+---
+
+### U-5. Dark / light theme + accent color (P3)
+
+**Gap:** UI только тёмный, нет системы тем.
+
+**Задача:** Переписать все цвета через CSS-переменные (уже частично есть). Добавить switcher dark / light / system. 5-6 preset акцентных цветов (teal, blue, amber, rose, purple, green). Хранить в localStorage. Учесть prefers-color-scheme.
+
+**Критерий готовности:** Смена темы без перезагрузки. Все компоненты (timeline canvas, inspector, pills) корректно адаптируются к светлой теме.
+
+---
+
+## Категория G — Новый функционал
+
+### G-1. Full call-stack search (P1)
+
+**Gap:** Текущий поиск матчит только верхний фрейм (`labels.function`) или поле `reason`. Нет поиска по произвольному фрейму в call stack.
+
+**Потребность:** При production incident нужно найти «все goroutines с `database/sql.(*DB).QueryContext` в стеке» — это невозможно без полного stack search.
+
+**Задача:** Расширить поле поиска: если запрос начинается с `stack:` — ищет вхождение в любом фрейме сохранённого стека goroutine. Backend: `GET /api/v1/goroutines?stack_frame=database/sql`. Engine сканирует `last_stack.frames` goroutines. Подсветка совпавших фреймов в inspector.
+
+**Критерий готовности:** `stack:net/http` находит все goroutines с http-фреймами в стеке. Работает с 10k+ goroutines за < 200ms.
+
+---
+
+### G-2. Resource contention heatmap view (P2)
+
+**Gap:** Contention-данные (peak_waiters, avg_wait) есть в API, но отображаются только как таблица чисел в текущем inspect.
+
+**Задача:** Новая вкладка «Contention» в основном layout. Canvas-based 2D heatmap: X = время (bins по 100ms), Y = resource ID (mutex/channel), цвет = max concurrent waiters в bin. Клик на ячейку → устанавливает scrubTimeNS + фильтрует goroutine list к ожидателям этого ресурса.
+
+**Критерий готовности:** Heatmap рендерится за <500ms для 1000 ресурсов × 1000 временных bins. Клик приводит к drill-down в goroutine list.
+
+---
+
+### G-3. Goroutine birth/death markers на timeline (P2)
+
+**Gap:** Timeline показывает состояния goroutines, но не показывает моменты их создания и завершения явно.
+
+**Задача:** Парсить из engine первый и последний сегмент каждой goroutine как born/died timestamps. На timeline canvas рисовать маркеры: ▲ (born, зелёный) и ▼ (died, серый) на горизонтальной оси событий над lanes. Toggle «Show lifecycle markers» в legend bar. Hover на маркер — тултип с ID и временем.
+
+**Критерий готовности:** Маркеры видны при зуме. При 10k goroutines рендеринг не деградирует (batching/culling по viewport).
+
+---
+
+### G-4. `goroscope watch` — live anomaly alerting (P2)
+
+**Gap:** Goroscope — интерактивный инструмент. Нет режима headless-мониторинга для CI/production без UI.
+
+**Задача:** Новая CLI-команда `goroscope watch [flags] <target>`. Подключается к live trace (через Flight Recorder или debug endpoint). При срабатывании условия — эмитит structured JSON alert в stdout (pipe-friendly) и/или POST на webhook.
+
+Флаги: `--alert-goroutines=500` (count threshold), `--alert-block-ms=5000` (goroutine blocked longer than), `--alert-deadlock` (любой deadlock hint), `--webhook=https://hooks.slack.com/...`, `--once` (exit after first alert).
+
+**Критерий готовности:** `goroscope watch --alert-goroutines=100 --webhook=... http://app:6060` в background-процессе, при превышении порога — Slack-нотификация с goroutine count и top-5 blocked goroutines.
+
+---
+
+### G-5. HTTP request correlation view — вкладка «Requests» (P1)
+
+**Gap:** Goroscope видит goroutines, но не группирует их по HTTP-запросам. Для web-сервисов это ключевой use case: «какие goroutines обслуживали этот запрос и где они застряли?»
+
+**Задача:** Парсить pprof labels на наличие `http.request_id`, `request_id`, `trace_id` или анализировать стеки на наличие `net/http.(*conn).serve`. Группировать goroutines в «request groups». Новая вкладка «Requests» в inspector: список запросов с URL (из labels или stack), duration (из born/died), goroutine count, state breakdown. Клик на запрос → фильтрует timeline и goroutine list к этому request group. Latency breakdown по состояниям (сколько времени провели в RUNNING / BLOCKED / WAITING).
+
+**Критерий готовности:** При наличии `http.request_id` label — вкладка показывает request groups. Без labels — fallback на группировку по `net/http`-фреймам в стеке. Работает с 1000+ concurrent requests.
+
+---
+
+## Категория H — Backend improvements
+
+### H-1. Stack frame search в API (P1)
+
+**Gap:** `GET /api/v1/goroutines` матчит только верхний фрейм / поле reason. Нет поиска по произвольному фрейму в call stack.
+
+**Задача:** Добавить query-параметр `?stack_frame=<substring>` в `GET /api/v1/goroutines`. Engine сканирует `last_stack.frames` каждой goroutine. Опционально: обратный индекс `frame_string → []goroutine_id` в Engine для O(1) lookup при повторных запросах.
+
+**Критерий готовности:** `GET /api/v1/goroutines?stack_frame=net/http` возвращает только goroutines с совпадением в любом фрейме. Работает за <200ms при 10k goroutines.
+
+---
+
+### H-2. Goroutine lifecycle timestamps в API (P2)
+
+**Gap:** Engine знает первый/последний сегмент каждой goroutine, но `GET /api/v1/goroutines` не возвращает `born_ns` / `died_ns`. Без этого нельзя отрисовать birth/death markers и посчитать latency HTTP-запросов.
+
+**Задача:** При построении segments добавлять `born_ns` (start_ns первого сегмента) и `died_ns` (end_ns последнего сегмента, если goroutine завершена) в модель goroutine. Включить в JSON-ответ. Новое поле `is_alive bool` — false если died_ns заполнен.
+
+**Критерий готовности:** Каждая goroutine в `/api/v1/goroutines` содержит `born_ns`. Завершённые goroutines содержат `died_ns` и `"is_alive": false`.
+
+---
+
+### H-3. Contention heatmap endpoint (P2)
+
+**Gap:** Contention-данные накапливаются в Engine, но только как статичные агрегаты (peak_waiters, avg_wait). Нет временно́го измерения — невозможно построить heatmap.
+
+**Задача:** Engine при каждом обновлении записывает snaphot contention (timestamp + per-resource waiters count) в кольцевой буфер. Новый endpoint `GET /api/v1/contention/heatmap?resolution_ms=100&limit_resources=50` возвращает матрицу: `{ bins: [...timestamps], resources: [{id, label, counts: [...]}] }`. Агрегация: max waiters в каждом bin.
+
+**Критерий готовности:** Endpoint возвращает данные за всё время сессии с заданным разрешением. 1000 ресурсов × 1000 временных bins за <100ms.
+
+---
+
+### H-4. Request correlation engine + API (P1)
+
+**Gap:** Нет понятия «HTTP-запрос» в модели данных. Goroutines, обслуживающие один запрос, не связаны между собой в API.
+
+**Задача:** Новая функция `analysis.GroupByRequest()` — группирует goroutines по pprof-labels (`http.request_id`, `request_id`, `trace_id`) или по parent-chain от goroutine с `net/http.(*conn).serve` в стеке. Новые endpoints:
+- `GET /api/v1/requests` — список request-групп: `{request_id, url, method, start_ns, end_ns, goroutine_count, state_breakdown}`
+- `GET /api/v1/requests/{id}/goroutines` — goroutines конкретного запроса
+
+**Критерий готовности:** При наличии `http.request_id` labels — запросы корректно группируются. Fallback на `net/http`-стек-матчинг. 1000+ concurrent requests обрабатываются за <500ms.
+
+---
+
+### H-5. Prometheus `/metrics` endpoint (P2)
+
+**Gap:** Нет стандартного способа интегрировать goroscope в существующий Grafana/Prometheus стек. Нужно заходить в UI и читать глазами.
+
+**Задача:** Новый handler `GET /metrics` в формате Prometheus text exposition (нулевые зависимости — plain text). Метрики:
+```
+goroscope_goroutines_total{state="BLOCKED"} 42
+goroscope_goroutines_total{state="RUNNING"} 8
+goroscope_deadlock_hints_total 1
+goroscope_leak_candidates_total 3
+goroscope_memory_budget_used_bytes 134217728
+goroscope_session_duration_seconds 3600
+```
+
+**Критерий готовности:** `curl http://localhost:7070/metrics` возвращает корректный Prometheus text format. Prometheus scrape_config работает без доп. настроек.
+
+---
+
+### H-6. SSE delta streaming (P1)
+
+**Gap:** `GET /api/v1/stream` отправляет полный snapshot goroutines на каждый тик. При 10k goroutines — ~10MB/s трафика. Браузер парсит весь JSON заново.
+
+**Задача:** Перейти на diff-формат. Engine версионирует состояние (monotonic revision counter). SSE-событие содержит: `revision`, `added: []Goroutine`, `updated: []Goroutine`, `removed: []goroutine_id`. Клиент присылает текущий revision через `Last-Event-ID`. При первом подключении (revision=0) — full snapshot. Engine хранит diff за последние N ревизий (ring buffer, N=10).
+
+**Критерий готовности:** При 0 изменений между тиками SSE-событие содержит пустые `added/updated/removed`. Трафик при стабильном состоянии → ~0. Фронт обновляет только изменившиеся строки.
+
+---
+
+### H-7. Multi-process monitoring (P2)
+
+**Gap:** Goroscope мониторит один Go-процесс. Микросервисные архитектуры требуют видеть несколько процессов одновременно.
+
+**Задача:** Новый API:
+- `POST /api/v1/targets` — `{addr: "localhost:6060", label: "auth-service"}` — добавить процесс для мониторинга
+- `GET /api/v1/targets` — список активных targets со статусом
+- `DELETE /api/v1/targets/{id}` — удалить target
+- Query-параметр `?target_id=` во всех goroutine/timeline/insights endpoints
+
+Каждый target — отдельный Engine + goroutine-поллер. UI: dropdown в topbar для выбора target.
+
+**Критерий готовности:** `goroscope ui --target=localhost:6060 --target=localhost:6061` мониторит два процесса. Переключение между ними в UI без перезапуска.
+
+---
+
+## Категория I — Infrastructure & General
+
+### I-1. OpenAPI spec + сгенерированный TypeScript client (P2)
+
+**Gap:** `client.ts` написан вручную и дрейфует от фактического API. Нет формальной спецификации для сторонних интеграций.
+
+**Задача:** Описать все `/api/v1/*` endpoints в OpenAPI 3.0 YAML (`api/openapi.yaml`). Добавить Make-таргет `make gen-client` запускающий `oapi-codegen` для генерации TypeScript-клиента в `web/src/api/generated.ts`. Ручной `client.ts` постепенно мигрирует на сгенерированный. CI проверяет что spec в sync с кодом.
+
+**Критерий готовности:** `api/openapi.yaml` покрывает 100% публичных endpoints. `make gen-client` воспроизводим. Swagger UI доступен на `/api/docs` в dev-режиме.
+
+---
+
+### I-2. Docker image + docker-compose пример (P2)
+
+**Gap:** Установка только через Homebrew / go install. Нет контейнеризованного варианта, нет примера для мониторинга Go-сервиса "одной командой".
+
+**Задача:** `Dockerfile` (multi-stage: builder Go + Node, финальный образ scratch/alpine). Публикация в GHCR через goreleaser. `docker-compose.yml` пример: goroscope + sample Go app. README: секция "Docker quickstart".
+
+**Критерий готовности:** `docker run ghcr.io/khachatur86/goroscope:latest ui` запускает UI. `docker compose up` поднимает демо-сервис с goroscope.
+
+---
+
+### I-3. Shell autocomplete (zsh / bash / fish) (P3)
+
+**Gap:** CLI не поддерживает автодополнение. `goroscope <Tab>` ничего не делает.
+
+**Задача:** Добавить `goroscope completion zsh|bash|fish` команду. Генерирует completion script для shell'а. README: инструкция установки (`eval "$(goroscope completion zsh)"`). Покрыть все команды, флаги и их значения (например, `--format=json|csv|otlp`).
+
+**Критерий готовности:** Tab-completion работает для всех команд и флагов в zsh и bash. Fish как бонус.
+
+---
+
+### I-4. Engine incremental recompute (P1)
+
+**Gap:** При каждом SSE-тике Engine полностью пересчитывает insights, contention, groups — даже если изменилось 3 goroutine из 10k. O(n) на каждый тик без необходимости.
+
+**Задача:** Добавить dirty-флаги на уровне Engine: `insightsDirty`, `contentionDirty`, `groupsDirty`. Пересчёт только при `dirty=true`. Установка флагов — только при изменении зависимых данных. Добавить бенчмарк `BenchmarkEngineUpdate` в CI (PERF-1).
+
+**Критерий готовности:** При 0 изменений между тиками — 0 пересчётов. Бенчмарк показывает ≥5× улучшение CPU при стабильном состоянии 10k goroutines.
+
+---
+
+### I-5. API integration test suite (P1)
+
+**Gap:** Есть unit-тесты engine и frontend smoke-тесты. Нет black-box тестов для HTTP API end-to-end.
+
+**Задача:** `internal/api/integration_test.go` — тесты запускают реальный сервер (`httptest.NewServer`), генерируют synthetic trace через engine, вызывают все endpoints и проверяют: HTTP status, JSON schema, ETag, auth. Отдельный тест для SSE stream. Запускается в CI (`go test -run TestIntegration ./internal/api/...`).
+
+**Критерий готовности:** 100% публичных endpoints покрыты хотя бы одним happy-path тестом. Тесты hermetic (нет сетевых вызовов). CI зелёный.
+
+---
+
+### I-6. Content Security Policy + CORS headers (P2)
+
+**Gap:** HTTP-ответы не содержат security headers. SEC-1/SEC-3 из CLAUDE.md. При remote-доступе (D-1) нет контроля CORS origins.
+
+**Задача:** Middleware добавляет заголовки: `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin`. Флаг `--cors-origins=https://team.example.com` для whitelist CORS. При `Token` включён — HSTS header. Unit-тест middleware.
+
+**Критерий готовности:** `curl -I http://localhost:7070/` возвращает все security headers. CORS preflight проходит для whitelisted origin, блокируется для остальных.
+
+---
+
+### I-7. `goroscope diff` CLI command (P2)
+
+**Gap:** Сравнение captures доступно только через UI. Нет способа использовать в CI-скриптах или сравнить файлы без браузера.
+
+**Задача:** `goroscope diff baseline.gtrace compare.gtrace` — текстовый вывод: новые/исчезнувшие goroutines, изменения состояний, contention delta. Флаги: `--format=text|json`, `--threshold=10%` (exit code 1 если регрессия выше порога). Переиспользует `analysis.Diff()` который уже есть.
+
+**Критерий готовности:** `goroscope diff a.gtrace b.gtrace --format=json | jq .` работает в shell pipe. CI job использует exit code для regression gate.
+
+---
+
+### I-8. `goroscope annotate` command (P3)
+
+**Gap:** .gtrace файлы содержат только goroutine данные. Нет способа добавить контекст: «тут началась деградация», «это после деплоя v2.3».
+
+**Задача:** `goroscope annotate capture.gtrace --at=<timestamp|offset> --note="latency spike"` — добавляет аннотацию в файл. `goroscope annotate capture.gtrace --list` — показывает все аннотации. UI автоматически загружает аннотации как U-4 bookmarks при открытии файла.
+
+**Критерий готовности:** Аннотации сохраняются в .gtrace, не ломают обратную совместимость. UI показывает их как именованные закладки.
+
+---
+
+### I-9. Stack pattern diff across captures (P2)
+
+**Gap:** `goroscope diff` и Compare UI показывают count/state изменения, но не stack-паттерны. Нельзя увидеть «появился новый call path» между двумя captures.
+
+**Задача:** Новая функция `analysis.StackPatternDiff(a, b Capture)` — строит set уникальных normalized stack signatures для каждого capture, возвращает appeared/disappeared/changed. Новый endpoint `POST /api/v1/compare/stacks` принимает два .gtrace, возвращает stack pattern diff. UI: секция в Compare view.
+
+**Критерий готовности:** При добавлении нового code path между captures — diff показывает новые стеки. Работает с 50k unique stacks за <2s.
+
+---
+
+### I-10. WASM offline mode (P3)
+
+**Gap:** Goroscope требует запущенного Go-сервера. В air-gapped окружениях или при быстром шаринге трейса — барьер входа.
+
+**Задача:** Скомпилировать analysis engine в WebAssembly (`GOOS=js GOARCH=wasm`). Статическая HTML-страница: drag-and-drop .gtrace → анализ в браузере, без сервера. Подмножество функций: goroutine list, basic insights, timeline. Публиковать как GitHub Pages artifact в CI.
+
+**Критерий готовности:** `index.html` + `engine.wasm` открываются локально (file://) без сервера. Drag .gtrace → goroutine list появляется за <3s для 10k goroutines.
 
 ---
 
@@ -322,3 +617,12 @@ D-2 → D-1 → C-3 → D-3
 
 **Sprint 6 (Advanced):**
 B-3 → E-2 → F-2
+
+**Sprint 7 (Backend foundation для новых фич):**
+H-1 → H-2 → H-5 → H-6 → H-3 → H-4 → H-7
+
+**Sprint 8 (UI quality + новый функционал):**
+G-1 → U-1 → U-3 → G-4 → U-2 → G-3 → G-2 → U-4 → G-5 → U-5
+
+**Sprint 9 (Infrastructure & general quality):**
+I-4 → I-5 → I-6 → I-1 → I-7 → I-9 → I-2 → I-3 → I-8 → I-10
