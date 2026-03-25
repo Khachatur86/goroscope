@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { FixedSizeList, type ListChildComponentProps } from "react-window";
-import type { Goroutine, Session, DeadlockHint, TimelineSegment } from "./api/client";
+import type { Goroutine, Session, DeadlockHint, TimelineSegment, SampleInfo } from "./api/client";
 import type { ScrubSnapshot, TimelineHandle } from "./timeline/Timeline";
 import {
   fetchCurrentSession,
@@ -46,8 +46,14 @@ function LifetimeBar({ segments }: { segments: TimelineSegment[] | undefined }) 
   if (!segments || segments.length === 0) {
     return <div className="lifetime-bar lifetime-bar--empty" />;
   }
-  const minStart = Math.min(...segments.map((s) => s.start_ns));
-  const maxEnd = Math.max(...segments.map((s) => s.end_ns));
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  for (const s of segments) {
+    if (s.start_ns < minStart) minStart = s.start_ns;
+    if (s.end_ns > maxEnd) maxEnd = s.end_ns;
+  }
+  if (minStart === Infinity) minStart = 0;
+  if (maxEnd === -Infinity) maxEnd = 1;
   const span = Math.max(maxEnd - minStart, 1);
   const sorted = [...segments].sort((a, b) => a.start_ns - b.start_ns);
 
@@ -171,6 +177,7 @@ export function App() {
     leak_candidates_count?: number;
   }>({ long_blocked_count: 0, leak_candidates_count: 0 });
   const [deadlockHints, setDeadlockHints] = useState<DeadlockHint[]>([]);
+  const [sampleInfo, setSampleInfo] = useState<SampleInfo | null>(null);
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
@@ -328,8 +335,9 @@ export function App() {
       fetchDeadlockHints(),
     ]);
     setSession(sess ?? null);
-    const gsSafe = Array.isArray(gs) ? gs : [];
+    const gsSafe = gs?.goroutines ?? [];
     setGoroutines(gsSafe);
+    setSampleInfo(gs?.sampleInfo ?? null);
     const urlId = parseGoroutineFromURL();
     if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
       setSelectedId(urlId);
@@ -349,8 +357,9 @@ export function App() {
   const refreshLive = useCallback(async () => {
     const gs = await fetchGoroutines(goroutineParams).catch(() => null);
     if (!gs) return;
-    const gsSafe = Array.isArray(gs) ? gs : [];
+    const gsSafe = gs.goroutines;
     setGoroutines(gsSafe);
+    setSampleInfo(gs.sampleInfo);
     const urlId = parseGoroutineFromURL();
     if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
       setSelectedId(urlId);
@@ -927,6 +936,19 @@ export function App() {
           {replayError}
         </div>
       )}
+      {sampleInfo && (
+        <div className="sample-warning" role="status">
+          <span className="sample-warning-icon">&#9888;</span>
+          {sampleInfo.warning}
+          <button
+            className="sample-warning-dismiss"
+            onClick={() => setSampleInfo(null)}
+            aria-label="Dismiss sampling warning"
+          >
+            &#10005;
+          </button>
+        </div>
+      )}
 
       <main className="workspace">
         <aside className="panel lane-panel">
@@ -1048,7 +1070,6 @@ export function App() {
             goroutines={displayGoroutines}
             selectedId={selectedId}
             onSelectGoroutine={handleSelectFromTimeline}
-            filters={filters}
             zoomToSelected={zoomToSelected}
             viewMode={viewMode}
             highlightedIds={highlightedIds}

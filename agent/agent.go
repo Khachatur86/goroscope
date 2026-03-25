@@ -15,6 +15,9 @@ import (
 
 const traceFileEnv = "GOROSCOPE_TRACE_FILE"
 
+// traceFilePath returns the active trace file path from the environment, or "".
+func traceFilePath() string { return os.Getenv(traceFileEnv) }
+
 // DefaultRequestIDKey is the default label key for request/trace IDs.
 const DefaultRequestIDKey = "request_id"
 
@@ -65,8 +68,7 @@ func WithRequestID(ctx context.Context, requestID string) context.Context {
 	ctx = pprof.WithLabels(ctx, labels)
 	pprof.SetGoroutineLabels(ctx)
 
-	tracePath := os.Getenv(traceFileEnv)
-	if tracePath != "" {
+	if tracePath := traceFilePath(); tracePath != "" {
 		writeLabelToSidecar(tracePath+".labels", key, requestID)
 	}
 	return ctx

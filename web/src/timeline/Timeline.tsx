@@ -7,6 +7,9 @@ import { TimelineHeatmapCanvas } from "./TimelineHeatmapCanvas";
 import { MinimapCanvas } from "./MinimapCanvas";
 import { MetricsChart } from "./MetricsChart";
 
+/** Lazy-load batch size: fetch this many goroutines' segments per request. */
+const SEGMENT_BATCH_SIZE = 150;
+
 /**
  * Historical state snapshot for one goroutine at the scrub time.
  * State and optional reason reflect the segment active at that moment.
@@ -17,19 +20,10 @@ export type ScrubSnapshot = {
   reason?: string;
 };
 
-type FiltersState = {
-  state: string;
-  reason: string;
-  resource: string;
-  search: string;
-  labelFilter?: string;
-};
-
 type Props = {
   goroutines: Goroutine[];
   selectedId: number | null;
   onSelectGoroutine: (id: number, segment?: TimelineSegment) => void;
-  filters: FiltersState;
   zoomToSelected?: boolean;
   viewMode?: "lanes" | "heatmap";
   /** When provided, use these segments instead of fetching from API (e.g. for Compare mode). */
@@ -76,7 +70,6 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   goroutines,
   selectedId,
   onSelectGoroutine,
-  filters,
   zoomToSelected = false,
   viewMode = "lanes",
   segmentsOverride,
@@ -87,7 +80,10 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   onScrubSnapshot,
   onSegmentsChange,
 }: Props, ref) {
-  const [segments, setSegments] = useState<TimelineSegment[]>([]);
+  // segmentMap: goroutine_id → segments. Populated lazily as visible range changes.
+  const [segmentMap, setSegmentMap] = useState<Map<number, TimelineSegment[]>>(new Map());
+  // Track which goroutine IDs have already been fetched so we don't re-request them.
+  const loadedGoroutineIds = useRef(new Set<number>());
   const [processorSegments, setProcessorSegments] = useState<ProcessorSegment[]>([]);
   const [canvasZoomLevel, setCanvasZoomLevel] = useState(1);
   const [canvasPanOffsetNS, setCanvasPanOffsetNS] = useState(0);
@@ -101,20 +97,43 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
       timelineCanvasRef.current?.exportGif(nFrames, fpsHint, onDone),
   }), []);
 
-  useEffect(() => {
-    if (segmentsOverride !== undefined) {
-      setSegments(segmentsOverride ?? []);
-      return;
+  // When segmentsOverride is provided (e.g. Compare mode), bypass lazy-loading entirely.
+  const useOverride = segmentsOverride !== undefined;
+
+  // Load segments for a batch of goroutine IDs that haven't been fetched yet.
+  const loadSegmentsBatch = useCallback(async (ids: number[]) => {
+    const toLoad = ids.filter((id) => !loadedGoroutineIds.current.has(id));
+    if (toLoad.length === 0) return;
+    // Mark as loaded optimistically to prevent duplicate in-flight requests.
+    toLoad.forEach((id) => loadedGoroutineIds.current.add(id));
+    try {
+      const data = await fetchTimeline({ goroutineIds: toLoad });
+      if (data.length === 0) return;
+      setSegmentMap((prev) => {
+        const next = new Map(prev);
+        for (const seg of data) {
+          const list = next.get(seg.goroutine_id);
+          if (list) list.push(seg);
+          else next.set(seg.goroutine_id, [seg]);
+        }
+        return next;
+      });
+    } catch {
+      // Roll back optimistic marks so the batch can be retried.
+      toLoad.forEach((id) => loadedGoroutineIds.current.delete(id));
     }
-    fetchTimeline({
-      state: filters.state !== "ALL" ? filters.state : undefined,
-      reason: filters.reason || undefined,
-      search: filters.search || undefined,
-      label: filters.labelFilter || undefined,
-    })
-      .then((data) => setSegments(Array.isArray(data) ? data : []))
-      .catch(() => setSegments([]));
-  }, [goroutines, filters.state, filters.reason, filters.search, segmentsOverride]);
+  }, []);
+
+  // When goroutine list changes (new session, filters, live reload) reset the segment cache.
+  useEffect(() => {
+    if (useOverride) return;
+    setSegmentMap(new Map());
+    loadedGoroutineIds.current = new Set();
+    // Eagerly load the first batch so the timeline isn't blank on initial render.
+    const firstBatch = goroutines.slice(0, SEGMENT_BATCH_SIZE).map((g) => g.goroutine_id);
+    if (firstBatch.length > 0) loadSegmentsBatch(firstBatch);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goroutines, useOverride]);
 
   // Re-fetch processor segments whenever goroutines are refreshed so that the
   // GMP strip is populated during live streaming, not only after the traced
@@ -125,39 +144,67 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
       .catch(() => setProcessorSegments([]));
   }, [goroutines]);
 
+  // Handle visible range change from TimelineCanvas — load missing segments.
+  const handleVisibleRangeChange = useCallback(
+    (firstIndex: number, lastIndex: number) => {
+      if (useOverride) return;
+      // Add buffer: load SEGMENT_BATCH_SIZE rows above and below the visible range.
+      const bufStart = Math.max(0, firstIndex - SEGMENT_BATCH_SIZE);
+      const bufEnd = Math.min(goroutines.length - 1, lastIndex + SEGMENT_BATCH_SIZE);
+      const ids = goroutines.slice(bufStart, bufEnd + 1).map((g) => g.goroutine_id);
+      loadSegmentsBatch(ids);
+    },
+    [goroutines, useOverride, loadSegmentsBatch]
+  );
+
+  // Build a flat segments array from the map (for scrub snapshot + minimap).
+  const segments: TimelineSegment[] = useMemo(() => {
+    if (useOverride) return segmentsOverride ?? [];
+    const arr: TimelineSegment[] = [];
+    for (const segs of segmentMap.values()) {
+      for (const s of segs) arr.push(s);
+    }
+    return arr;
+  }, [segmentMap, useOverride, segmentsOverride]);
+
+  // Pre-build goroutine ID set for O(1) membership checks.
+  const goroutineIdSet = useMemo(
+    () => new Set(goroutines.map((g) => g.goroutine_id)),
+    [goroutines]
+  );
+
   const filteredSegments = useMemo(
-    () =>
-      (segments ?? []).filter((seg) =>
-        (goroutines ?? []).some((g) => g.goroutine_id === seg.goroutine_id)
-      ),
-    [segments, goroutines]
+    () => segments.filter((seg) => goroutineIdSet.has(seg.goroutine_id)),
+    [segments, goroutineIdSet]
   );
 
   // Compute the historical state of each goroutine at scrubTimeNS.
-  // Uses `segments` (all fetched, unfiltered by goroutine list) for accuracy.
+  // Uses the pre-built segmentMap for O(goroutines) instead of O(goroutines × segments).
   const scrubSnapshot = useMemo<ScrubSnapshot[]>(() => {
-    if (scrubTimeNS == null || segments.length === 0) return [];
-    const goroutineIds = [...new Set(segments.map((s) => s.goroutine_id))];
+    if (scrubTimeNS == null) return [];
     const result: ScrubSnapshot[] = [];
-    for (const gid of goroutineIds) {
-      const segs = segments
-        .filter((s) => s.goroutine_id === gid)
-        .sort((a, b) => a.start_ns - b.start_ns);
+    // Iterate over loaded goroutines (not all segment-map keys) so we only scan relevant IDs.
+    for (const g of goroutines) {
+      const segs = (segmentMap.get(g.goroutine_id) ?? []).slice().sort((a, b) => a.start_ns - b.start_ns);
+      if (segs.length === 0) continue;
       // Segment that contains scrubTimeNS.
       const active = segs.find((s) => s.start_ns <= scrubTimeNS && s.end_ns > scrubTimeNS);
       if (active) {
-        result.push({ goroutine_id: gid, state: active.state, reason: active.reason || undefined });
+        result.push({ goroutine_id: g.goroutine_id, state: active.state, reason: active.reason || undefined });
         continue;
       }
       // No covering segment — use the last segment that ended before T.
-      const lastBefore = [...segs].filter((s) => s.end_ns <= scrubTimeNS).pop();
-      if (lastBefore) {
-        result.push({ goroutine_id: gid, state: lastBefore.state, reason: lastBefore.reason || undefined });
+      let lastBefore: TimelineSegment | undefined;
+      for (const s of segs) {
+        if (s.end_ns <= scrubTimeNS) lastBefore = s;
+        else break;
       }
-      // Goroutines with no segment before T were not yet created; skip.
+      if (lastBefore) {
+        result.push({ goroutine_id: g.goroutine_id, state: lastBefore.state, reason: lastBefore.reason || undefined });
+      }
     }
     return result;
-  }, [scrubTimeNS, segments]);
+  }, [scrubTimeNS, segmentMap, goroutines]);
 
   // Propagate snapshot to parent whenever it changes.
   useEffect(() => {
@@ -169,8 +216,14 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
     onSegmentsChange?.(filteredSegments);
   }, [filteredSegments, onSegmentsChange]);
 
-  const fullMinStart = Math.min(...filteredSegments.map((s) => s.start_ns));
-  const fullMaxEnd = Math.max(...filteredSegments.map((s) => s.end_ns));
+  let fullMinStart = Infinity;
+  let fullMaxEnd = -Infinity;
+  for (const s of filteredSegments) {
+    if (s.start_ns < fullMinStart) fullMinStart = s.start_ns;
+    if (s.end_ns > fullMaxEnd) fullMaxEnd = s.end_ns;
+  }
+  if (fullMinStart === Infinity) fullMinStart = 0;
+  if (fullMaxEnd === -Infinity) fullMaxEnd = 1;
   const fullSpan = Math.max(fullMaxEnd - fullMinStart, 1);
   const isHeatmap = viewMode === "heatmap";
 
@@ -189,11 +242,14 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   // or selects a different goroutine — not on background poll updates.
   useEffect(() => {
     if (zoomToSelected && selectedId) {
-      const segs = filteredSegmentsRef.current;
-      const selectedSegs = segs.filter((s) => s.goroutine_id === selectedId);
-      if (selectedSegs.length > 0) {
-        const minStart = Math.min(...selectedSegs.map((s) => s.start_ns));
-        const maxEnd = Math.max(...selectedSegs.map((s) => s.end_ns));
+      const segs = segmentMap.get(selectedId) ?? [];
+      if (segs.length > 0) {
+        let minStart = Infinity;
+        let maxEnd = -Infinity;
+        for (const s of segs) {
+          if (s.start_ns < minStart) minStart = s.start_ns;
+          if (s.end_ns > maxEnd) maxEnd = s.end_ns;
+        }
         const padding = Math.max((maxEnd - minStart) * 0.1, 1);
         const visibleStart = Math.max(fullMinStartRef.current, minStart - padding);
         const visibleEnd = Math.min(fullMaxEndRef.current, maxEnd + padding);
@@ -325,6 +381,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
             onBrushChange={handleBrushChange}
             scrubTimeNS={scrubTimeNS}
             onScrubChange={onScrubChange}
+            onVisibleRangeChange={handleVisibleRangeChange}
           />
         </div>
       )}

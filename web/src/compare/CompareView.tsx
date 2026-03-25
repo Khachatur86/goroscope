@@ -108,7 +108,6 @@ function ComparePanel({
   listRef,
   onScroll,
 }: ComparePanelProps) {
-  const filters = { state: "ALL", reason: "", resource: "", search: "", labelFilter: "" };
   return (
     <div className="compare-panel">
       <h3 className="compare-panel-title">{title}</h3>
@@ -141,7 +140,6 @@ function ComparePanel({
           goroutines={goroutines}
           selectedId={selectedId}
           onSelectGoroutine={onSelectSegment}
-          filters={filters}
           segmentsOverride={segments}
         />
       </div>

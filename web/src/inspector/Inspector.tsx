@@ -1,8 +1,122 @@
 import { useEffect, useState } from "react";
-import type { Goroutine, TimelineSegment } from "../api/client";
-import { fetchStackAt } from "../api/client";
+import type { Goroutine, TimelineSegment, StackSnapshot } from "../api/client";
+import { fetchStackAt, fetchPprofStacks } from "../api/client";
 import { SpawnTree } from "./SpawnTree";
 import { FlameGraph } from "./FlameGraph";
+
+const OTEL_TRACE_ID_KEY = "otel.trace_id";
+const OTEL_SPAN_ID_KEY = "otel.span_id";
+const LS_JAEGER_URL = "goroscope:jaeger_url";
+const LS_GRAFANA_URL = "goroscope:grafana_url";
+
+function OTelSection({ labels }: { labels: Record<string, string> | undefined }) {
+  const traceId = labels?.[OTEL_TRACE_ID_KEY];
+  const spanId = labels?.[OTEL_SPAN_ID_KEY];
+  const [jaegerUrl, setJaegerUrl] = useState(() => localStorage.getItem(LS_JAEGER_URL) ?? "");
+  const [grafanaUrl, setGrafanaUrl] = useState(() => localStorage.getItem(LS_GRAFANA_URL) ?? "");
+  const [configOpen, setConfigOpen] = useState(false);
+
+  if (!traceId && !spanId) return null;
+
+  const saveJaeger = (v: string) => {
+    setJaegerUrl(v);
+    if (v) localStorage.setItem(LS_JAEGER_URL, v);
+    else localStorage.removeItem(LS_JAEGER_URL);
+  };
+  const saveGrafana = (v: string) => {
+    setGrafanaUrl(v);
+    if (v) localStorage.setItem(LS_GRAFANA_URL, v);
+    else localStorage.removeItem(LS_GRAFANA_URL);
+  };
+
+  const jaegerHref = jaegerUrl && traceId
+    ? `${jaegerUrl.replace(/\/$/, "")}/trace/${traceId}`
+    : null;
+
+  // Grafana Tempo explore URL (datasource=Tempo, query by traceId).
+  const grafanaHref = grafanaUrl && traceId
+    ? `${grafanaUrl.replace(/\/$/, "")}/explore?left=${encodeURIComponent(
+        JSON.stringify({
+          datasource: "Tempo",
+          queries: [{ refId: "A", queryType: "traceql", query: `{.traceId="${traceId}"}` }],
+        })
+      )}`
+    : null;
+
+  const copyText = (v: string) => navigator.clipboard.writeText(v);
+
+  return (
+    <div className="inspector-section inspector-otel">
+      <div className="inspector-otel-header">
+        <span className="inspector-label">OpenTelemetry</span>
+        <button
+          type="button"
+          className="otel-config-toggle"
+          onClick={() => setConfigOpen((v) => !v)}
+          title="Configure Jaeger / Grafana URLs"
+        >
+          ⚙
+        </button>
+      </div>
+
+      {traceId && (
+        <div className="otel-row">
+          <span className="otel-key">trace_id</span>
+          <code className="otel-val" title={traceId}>{traceId.slice(0, 16)}…</code>
+          <button type="button" className="otel-copy" onClick={() => copyText(traceId)} title="Copy trace ID">⎘</button>
+          {jaegerHref && (
+            <a className="otel-link otel-link--jaeger" href={jaegerHref} target="_blank" rel="noreferrer">
+              Jaeger
+            </a>
+          )}
+          {grafanaHref && (
+            <a className="otel-link otel-link--tempo" href={grafanaHref} target="_blank" rel="noreferrer">
+              Tempo
+            </a>
+          )}
+          {!jaegerHref && !grafanaHref && (
+            <button type="button" className="otel-config-hint" onClick={() => setConfigOpen(true)}>
+              configure links ↗
+            </button>
+          )}
+        </div>
+      )}
+
+      {spanId && (
+        <div className="otel-row">
+          <span className="otel-key">span_id</span>
+          <code className="otel-val" title={spanId}>{spanId}</code>
+          <button type="button" className="otel-copy" onClick={() => copyText(spanId)} title="Copy span ID">⎘</button>
+        </div>
+      )}
+
+      {configOpen && (
+        <div className="otel-config">
+          <label className="otel-config-label">
+            Jaeger base URL
+            <input
+              className="otel-config-input"
+              type="url"
+              placeholder="http://localhost:16686"
+              value={jaegerUrl}
+              onChange={(e) => saveJaeger(e.target.value)}
+            />
+          </label>
+          <label className="otel-config-label">
+            Grafana base URL
+            <input
+              className="otel-config-input"
+              type="url"
+              placeholder="http://localhost:3000"
+              value={grafanaUrl}
+              onChange={(e) => saveGrafana(e.target.value)}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type Props = {
   goroutine: Goroutine | null;
@@ -38,6 +152,8 @@ function formatTimestamp(s?: string): string {
 export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive, isScrubActive }: Props) {
   const [segmentStack, setSegmentStack] = useState<Goroutine["last_stack"] | null>(null);
   const [flameOpen, setFlameOpen] = useState(false);
+  const [pprofOpen, setPprofOpen] = useState(false);
+  const [pprofSamples, setPprofSamples] = useState<StackSnapshot[] | null>(null);
 
   useEffect(() => {
     if (!segmentOverride || !goroutine) {
@@ -54,6 +170,18 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
     });
     return () => { cancelled = true; };
   }, [segmentOverride, goroutine?.goroutine_id]);
+
+  useEffect(() => {
+    if (!segmentOverride) {
+      setPprofSamples(null);
+      return;
+    }
+    let cancelled = false;
+    fetchPprofStacks(segmentOverride.start_ns, segmentOverride.end_ns).then((stacks) => {
+      if (!cancelled) setPprofSamples(stacks);
+    });
+    return () => { cancelled = true; };
+  }, [segmentOverride?.start_ns, segmentOverride?.end_ns]);
 
   if (!goroutine) {
     return (
@@ -137,7 +265,7 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
           <div className="inspector-label">Labels</div>
           <div className="inspector-value inspector-labels">
             {Object.entries(goroutine.labels)
-              .filter(([k]) => k !== "function")
+              .filter(([k]) => k !== "function" && !k.startsWith("otel."))
               .map(([k, v]) => (
                 <span key={k} className="inspector-label-pair">
                   {k}={v}
@@ -146,6 +274,8 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
           </div>
         </div>
       )}
+
+      <OTelSection labels={goroutine.labels} />
 
       <div className="inspector-section">
         <div className="inspector-label">Spawn Tree</div>
@@ -201,6 +331,30 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
           <div className="empty-message">No stack snapshot yet.</div>
         )}
       </div>
+
+      {/* ── CPU profile overlay (only when a segment is selected) ── */}
+      {segmentOverride && (
+        <div className="inspector-section">
+          <button
+            type="button"
+            className="flame-toggle-btn"
+            onClick={() => setPprofOpen((v) => !v)}
+            aria-expanded={pprofOpen}
+          >
+            <span className="flame-toggle-icon">{pprofOpen ? "▾" : "▸"}</span>
+            CPU profile @ segment
+            <span className="flame-toggle-hint pprof-hint">
+              {pprofOpen ? "hide" : `all goroutines · ${formatDuration(segmentOverride.end_ns - segmentOverride.start_ns)} window`}
+            </span>
+          </button>
+          {pprofOpen && (
+            <FlameGraph
+              externalSamples={pprofSamples ?? []}
+              emptyHint="No stack snapshots in this time window."
+            />
+          )}
+        </div>
+      )}
 
       {/* ── Flame graph ─────────────────────────────────────────── */}
       <div className="inspector-section">

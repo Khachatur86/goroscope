@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { StackSnapshot } from "../api/client";
 import { fetchStacks } from "../api/client";
 
+export type { StackSnapshot };
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const ROW_H = 18;       // px per flame row
@@ -105,26 +107,39 @@ function layout(
 // ── Component ──────────────────────────────────────────────────────────────────
 
 type Props = {
-  goroutineId: number;
+  /** Fetch by goroutine ID (mutually exclusive with externalSamples). */
+  goroutineId?: number;
+  /** Pre-fetched samples; skips the internal fetch when provided. */
+  externalSamples?: StackSnapshot[];
+  /** Optional label for the empty-state message. */
+  emptyHint?: string;
 };
 
 type Tooltip = { x: number; y: number; rect: Rect } | null;
 
-/** Flame graph of all stack snapshots for a goroutine. */
-export function FlameGraph({ goroutineId }: Props) {
+/** Flame graph of all stack snapshots for a goroutine, or an external sample set. */
+export function FlameGraph({ goroutineId, externalSamples, emptyHint }: Props) {
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const rectsRef   = useRef<Rect[]>([]);
   const rootRef    = useRef<FlameNode | null>(null);
 
-  const [loading,   setLoading]   = useState(true);
-  const [samples,   setSamples]   = useState<StackSnapshot[]>([]);
+  const [loading,   setLoading]   = useState(externalSamples === undefined);
+  const [samples,   setSamples]   = useState<StackSnapshot[]>(externalSamples ?? []);
   const [zoomNode,  setZoomNode]  = useState<FlameNode | null>(null);
   const [zoomPath,  setZoomPath]  = useState<string[]>([]);
   const [tooltip,   setTooltip]   = useState<Tooltip>(null);
   const [canvasH,   setCanvasH]   = useState(200);
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch (only when using goroutineId mode) ────────────────────────────────
   useEffect(() => {
+    if (externalSamples !== undefined) {
+      setSamples(externalSamples);
+      setLoading(false);
+      setZoomNode(null);
+      setZoomPath([]);
+      return;
+    }
+    if (goroutineId === undefined) return;
     setLoading(true);
     setSamples([]);
     setZoomNode(null);
@@ -133,7 +148,7 @@ export function FlameGraph({ goroutineId }: Props) {
       setSamples(s);
       setLoading(false);
     });
-  }, [goroutineId]);
+  }, [goroutineId, externalSamples]);
 
   // ── Draw ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -247,7 +262,7 @@ export function FlameGraph({ goroutineId }: Props) {
   if (samples.length === 0) {
     return (
       <div className="flame-empty">
-        No stack snapshots recorded for this goroutine.
+        {emptyHint ?? "No stack snapshots recorded for this goroutine."}
         <br />
         <span className="flame-empty-hint">
           Stack snapshots are captured from runtime/trace events.

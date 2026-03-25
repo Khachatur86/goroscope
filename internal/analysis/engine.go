@@ -44,6 +44,17 @@ func WithRetention(p RetentionPolicy) Option {
 	}
 }
 
+// WithSampling configures the display-level goroutine sampling policy.
+// When the tracked goroutine count exceeds SamplingPolicy.MaxDisplay the API
+// returns a prioritised subset, ordered by anomaly score.
+// Use DefaultSamplingPolicy() for the built-in 15 000-goroutine cap.
+// Pass a zero-value SamplingPolicy (MaxDisplay=0) to disable sampling.
+func WithSampling(p SamplingPolicy) Option {
+	return func(e *Engine) {
+		e.sampling = p
+	}
+}
+
 // Engine processes goroutine events and maintains timeline state.
 type Engine struct {
 	mu                sync.RWMutex
@@ -58,6 +69,7 @@ type Engine struct {
 	stacks            []model.StackSnapshot // historical stacks for stack-at-segment lookup
 
 	retention RetentionPolicy
+	sampling  SamplingPolicy
 
 	subsMu      sync.Mutex
 	subscribers map[chan struct{}]struct{}
@@ -87,6 +99,8 @@ type MemoryStats struct {
 	MaxClosedSegments int `json:"max_closed_segments"`
 	// MaxStacksPerGoroutine is the configured cap (0 = unlimited).
 	MaxStacksPerGoroutine int `json:"max_stacks_per_goroutine"`
+	// MaxDisplayGoroutines is the configured display cap (0 = unlimited).
+	MaxDisplayGoroutines int `json:"max_display_goroutines"`
 }
 
 // NewEngine returns an empty, ready-to-use Engine configured with the given
@@ -425,6 +439,27 @@ func (e *Engine) GetStacksFor(goroutineID int64) []model.StackSnapshot {
 	return out
 }
 
+// GetStacksInRange returns all historical stack snapshots whose timestamp falls
+// within [startNS, endNS] (nanoseconds since epoch). Used to build cross-goroutine
+// CPU flame graphs for a selected time window (pprof overlay).
+func (e *Engine) GetStacksInRange(startNS, endNS int64) []model.StackSnapshot {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	var out []model.StackSnapshot
+	for i := range e.stacks {
+		s := &e.stacks[i]
+		ts := s.Timestamp.UnixNano()
+		if ts < startNS || ts > endNS {
+			continue
+		}
+		cp := *s
+		cp.Frames = append([]model.StackFrame(nil), s.Frames...)
+		out = append(out, cp)
+	}
+	return out
+}
+
 // LeakCandidates returns goroutines that have been in WAITING or BLOCKED
 // state for longer than thresholdNS. These may indicate goroutine leaks.
 func (e *Engine) LeakCandidates(thresholdNS int64) []model.Goroutine {
@@ -569,6 +604,11 @@ func (e *Engine) ExportCapture() model.Capture {
 	}
 }
 
+// GetSamplingPolicy returns the configured display-level sampling policy.
+func (e *Engine) GetSamplingPolicy() SamplingPolicy {
+	return e.sampling
+}
+
 // MemoryStats returns point-in-time counts of the data held by the Engine.
 // It acquires the read lock, so it is safe to call from any goroutine.
 func (e *Engine) MemoryStats() MemoryStats {
@@ -582,6 +622,7 @@ func (e *Engine) MemoryStats() MemoryStats {
 		ProcessorSegments:     len(e.processorSegments),
 		MaxClosedSegments:     e.retention.MaxClosedSegments,
 		MaxStacksPerGoroutine: e.retention.MaxStacksPerGoroutine,
+		MaxDisplayGoroutines:  e.sampling.MaxDisplay,
 	}
 }
 

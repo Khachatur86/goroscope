@@ -41,7 +41,8 @@
     "onCommand:goroscope.attachToSession",
     "onCommand:goroscope.stopSession",
     "onCommand:goroscope.openTimeline",
-    "onView:goroscope.session"
+    "onView:goroscope.session",
+    "onCommand:goroscope.toggleAnnotations"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -69,6 +70,10 @@
       {
         "command": "goroscope.refreshSession",
         "title": "Goroscope: Refresh Session"
+      },
+      {
+        "command": "goroscope.toggleAnnotations",
+        "title": "Goroscope: Toggle Inline Annotations"
       }
     ],
     "viewsContainers": {
@@ -109,6 +114,11 @@
           "type": "string",
           "default": "",
           "description": "Path to goroscope binary. Empty = use PATH or workspace bin/goroscope"
+        },
+        "goroscope.inlineAnnotations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline goroutine state annotations in open Go files while a session is active"
         }
       }
     }

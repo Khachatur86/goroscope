@@ -56,6 +56,26 @@ export async function fetchCurrentSession(): Promise<Session | null> {
   }
 }
 
+export type SampleInfo = {
+  sampled: boolean;
+  totalCount: number;
+  displayCount: number;
+  warning: string;
+};
+
+export type GoroutineListResult = {
+  goroutines: Goroutine[];
+  sampleInfo: SampleInfo | null;
+};
+
+type GoroutineListEnvelope = {
+  goroutines?: Goroutine[];
+  sampled?: boolean;
+  total_count?: number;
+  display_count?: number;
+  warning?: string;
+};
+
 export async function fetchGoroutines(params?: {
   state?: string;
   reason?: string;
@@ -64,7 +84,7 @@ export async function fetchGoroutines(params?: {
   label?: string;
   limit?: number;
   offset?: number;
-}): Promise<Goroutine[]> {
+}): Promise<GoroutineListResult> {
   const q = new URLSearchParams();
   if (params?.state && params.state !== "ALL") q.set("state", params.state);
   if (params?.reason) q.set("reason", params.reason);
@@ -75,9 +95,23 @@ export async function fetchGoroutines(params?: {
   if (params?.offset) q.set("offset", String(params.offset));
   const query = q.toString();
   const path = `/api/v1/goroutines${query ? `?${query}` : ""}`;
-  const data = await fetchJson<Goroutine[] | { goroutines?: Goroutine[] }>(path);
-  if (Array.isArray(data)) return data;
-  return data?.goroutines ?? [];
+  const data = await fetchJson<Goroutine[] | GoroutineListEnvelope>(path);
+
+  if (Array.isArray(data)) {
+    return { goroutines: data, sampleInfo: null };
+  }
+
+  const goroutines = data?.goroutines ?? [];
+  const sampleInfo: SampleInfo | null = data?.sampled
+    ? {
+        sampled: true,
+        totalCount: data.total_count ?? goroutines.length,
+        displayCount: data.display_count ?? goroutines.length,
+        warning: data.warning ?? "",
+      }
+    : null;
+
+  return { goroutines, sampleInfo };
 }
 
 export async function fetchGoroutine(id: number): Promise<Goroutine | null> {
@@ -122,17 +156,35 @@ export async function fetchStacks(goroutineId: number): Promise<StackSnapshot[]>
   }
 }
 
+/** Fetch all stack snapshots across all goroutines within a time window [startNs, endNs].
+ * Used to build the cross-goroutine CPU flame graph overlay for a selected segment. */
+export async function fetchPprofStacks(startNs: number, endNs: number): Promise<StackSnapshot[]> {
+  try {
+    const res = await fetchJson<{ stacks: StackSnapshot[] }>(
+      `/api/v1/pprof/stacks?start_ns=${startNs}&end_ns=${endNs}`
+    );
+    return res?.stacks ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchTimeline(params?: {
   state?: string;
   reason?: string;
   search?: string;
   label?: string;
+  /** When set, only return segments for these goroutine IDs (lazy-load for visible range). */
+  goroutineIds?: number[];
 }): Promise<TimelineSegment[]> {
   const q = new URLSearchParams();
   if (params?.state && params.state !== "ALL") q.set("state", params.state);
   if (params?.reason) q.set("reason", params.reason);
   if (params?.search) q.set("search", params.search);
   if (params?.label) q.set("label", params.label);
+  if (params?.goroutineIds && params.goroutineIds.length > 0) {
+    q.set("goroutine_ids", params.goroutineIds.join(","));
+  }
   const query = q.toString();
   const path = `/api/v1/timeline${query ? `?${query}` : ""}`;
   const data = await fetchJson<TimelineSegment[] | null>(path);

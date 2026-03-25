@@ -4,13 +4,23 @@ import * as childProcess from "child_process";
 import * as fs from "fs";
 
 import { SessionPanelProvider } from "./sessionPanel";
+import { AnnotationController } from "./annotation";
 
 const DEFAULT_ADDR = "127.0.0.1:7070";
 let goroscopeProcess: childProcess.ChildProcess | null = null;
+let annotationController: AnnotationController | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
   const sessionProvider = new SessionPanelProvider();
+
+  const config = vscode.workspace.getConfiguration("goroscope");
+  const addr = config.get<string>("addr") ?? DEFAULT_ADDR;
+  const inlineEnabled = config.get<boolean>("inlineAnnotations") ?? true;
+
+  annotationController = new AnnotationController(addr, inlineEnabled);
+
   context.subscriptions.push(
+    annotationController,
     sessionProvider,
     vscode.window.registerTreeDataProvider("goroscope.session", sessionProvider),
     vscode.commands.registerCommand("goroscope.runCurrentPackage", () =>
@@ -26,7 +36,21 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("goroscope.openTimeline", openTimeline),
     vscode.commands.registerCommand("goroscope.refreshSession", () =>
       sessionProvider.refresh()
-    )
+    ),
+    vscode.commands.registerCommand("goroscope.toggleAnnotations", () => {
+      if (!annotationController) return;
+      annotationController.toggle();
+      const state = annotationController.isEnabled() ? "enabled" : "disabled";
+      vscode.window.showInformationMessage(`Goroscope inline annotations ${state}.`);
+    }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("goroscope.addr") && annotationController) {
+        const newAddr =
+          vscode.workspace.getConfiguration("goroscope").get<string>("addr") ??
+          DEFAULT_ADDR;
+        annotationController.updateAddr(newAddr);
+      }
+    })
   );
 }
 

@@ -145,6 +145,11 @@ type Props = {
   scrubTimeNS?: number | null;
   /** Fired when the user clicks the axis to set (or double-clicks to clear) the scrub time. */
   onScrubChange?: (timeNS: number | null) => void;
+  /**
+   * Fired (debounced ~100 ms) when the visible goroutine row range changes due to scrolling.
+   * Used by the parent to lazy-load segments for the visible slice.
+   */
+  onVisibleRangeChange?: (firstIndex: number, lastIndex: number) => void;
 };
 
 export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function TimelineCanvas({
@@ -164,6 +169,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
   onBrushChange,
   scrubTimeNS,
   onScrubChange,
+  onVisibleRangeChange,
 }: Props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -195,6 +201,18 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [rowScrollTop, setRowScrollTop] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Pre-build segment lookup for O(1) per-row access instead of O(total_segments).
+  // This is the critical optimisation for large traces (100k goroutines × N segments).
+  const segmentsByGoroutine = useMemo(() => {
+    const map = new Map<number, TimelineSegment[]>();
+    for (const seg of segments) {
+      const list = map.get(seg.goroutine_id);
+      if (list) list.push(seg);
+      else map.set(seg.goroutine_id, [seg]);
+    }
+    return map;
+  }, [segments]);
 
   // ── Export ────────────────────────────────────────────────────────────────────
   // Composites axis canvas + rows canvas into a single PNG and downloads it.
@@ -370,8 +388,15 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     [annotations]
   );
 
-  const fullMinStart = Math.min(...segments.map((s) => s.start_ns));
-  const fullMaxEnd = Math.max(...segments.map((s) => s.end_ns));
+  // Avoid spread operators on large arrays — they cause stack overflows beyond ~125k elements.
+  let fullMinStart = Infinity;
+  let fullMaxEnd = -Infinity;
+  for (const s of segments) {
+    if (s.start_ns < fullMinStart) fullMinStart = s.start_ns;
+    if (s.end_ns > fullMaxEnd) fullMaxEnd = s.end_ns;
+  }
+  if (fullMinStart === Infinity) fullMinStart = 0;
+  if (fullMaxEnd === -Infinity) fullMaxEnd = 1;
   const fullSpan = Math.max(fullMaxEnd - fullMinStart, 1);
 
   // Sync zoom/pan when zoomToSelected changes (only in uncontrolled mode)
@@ -667,9 +692,20 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       const fn = (g.labels?.function || "unknown").slice(0, 20);
       ctx.fillText(fn, 14, drawY + 23);
 
-      segments
-        .filter((s) => s.goroutine_id === g.goroutine_id)
-        .forEach((seg) => {
+      // OTel correlation badge: small cyan "OT" pill when otel.trace_id label is set.
+      if (g.labels?.["otel.trace_id"]) {
+        const badgeX = METRICS.labelGutterWidth - 28;
+        const badgeY = drawY + 7;
+        ctx.fillStyle = "rgba(20, 184, 166, 0.90)";
+        ctx.beginPath();
+        (ctx as CanvasRenderingContext2D & { roundRect: typeof ctx.roundRect }).roundRect(badgeX, badgeY, 22, 12, 3);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.font = 'bold 8px "IBM Plex Mono", monospace';
+        ctx.fillText("OT", badgeX + 3, badgeY + 9);
+      }
+
+      (segmentsByGoroutine.get(g.goroutine_id) ?? []).forEach((seg) => {
           const rawX = plotLeft + ((seg.start_ns - visibleStart) / visibleSpan) * innerWidth;
           const rawX2 = plotLeft + ((seg.end_ns - visibleStart) / visibleSpan) * innerWidth;
           const cx = Math.max(plotLeft, Math.min(rawX, plotLeft + innerWidth));
@@ -770,7 +806,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     }
   }, [
     goroutines,
-    segments,
+    segmentsByGoroutine,
     selectedId,
     highlightedIds,
     visibleStart,
@@ -816,6 +852,16 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Notify parent when the visible goroutine index range changes (debounced 120 ms).
+  // The parent uses this to lazy-load segments for visible goroutines only.
+  useEffect(() => {
+    if (!onVisibleRangeChange) return;
+    const id = setTimeout(() => {
+      onVisibleRangeChange(firstVisibleIndex, lastVisibleIndex);
+    }, 120);
+    return () => clearTimeout(id);
+  }, [firstVisibleIndex, lastVisibleIndex, onVisibleRangeChange]);
+
   const hitTest = useCallback(
     (clientX: number, clientY: number): TimelineSegment | null => {
       const canvas = rowsCanvasRef.current;
@@ -832,7 +878,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       if (rowIndex < 0 || rowIndex >= goroutines.length) return null;
       const g = goroutines[rowIndex];
 
-      const segs = segments.filter((s) => s.goroutine_id === g.goroutine_id);
+      const segs = segmentsByGoroutine.get(g.goroutine_id) ?? [];
       const drawY = rowIndex * METRICS.rowHeight - rowScrollTop;
       const barY = drawY + 4;
       for (const seg of segs) {
@@ -844,7 +890,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       }
       return null;
     },
-    [goroutines, segments, visibleStart, visibleSpan, rowScrollTop]
+    [goroutines, segmentsByGoroutine, visibleStart, visibleSpan, rowScrollTop]
   );
 
   const handleWheel = useCallback(

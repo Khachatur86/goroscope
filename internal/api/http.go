@@ -176,6 +176,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/replay/export", s.handleReplayExport)
 	mux.HandleFunc("/api/v1/compare", s.handleCompare)
 	mux.HandleFunc("/api/v1/memory", s.handleMemoryStats)
+	mux.HandleFunc("/api/v1/pprof/stacks", s.handlePprofStacks)
 
 	if isLocalhostAddr(s.addr) {
 		mux.Handle("/debug/pprof/", http.StripPrefix("/debug/pprof", http.HandlerFunc(pprof.Index)))
@@ -401,15 +402,39 @@ func (s *Server) handleGoroutines(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Apply display-level sampling when no explicit pagination is requested.
+	// This keeps responses fast and the UI smooth for very large traces.
+	sample := analysis.SampleGoroutines(filtered, s.engine.GetSamplingPolicy())
+	if sample.Sampled {
+		w.Header().Set("X-Sampled", "true")
+		w.Header().Set("X-Total-Count", strconv.Itoa(sample.TotalCount))
+		writeJSON(w, http.StatusOK, goroutineListResponse{
+			Goroutines:   sample.Goroutines,
+			Total:        sample.TotalCount,
+			Sampled:      true,
+			TotalCount:   sample.TotalCount,
+			DisplayCount: sample.DisplayCount,
+			Warning:      sample.Warning,
+		})
+		return
+	}
+
 	writeJSON(w, http.StatusOK, filtered)
 }
 
-// goroutineListResponse is the paginated response for /api/v1/goroutines.
+// goroutineListResponse is the response for /api/v1/goroutines.
+// It is returned for both paginated and sampled responses so the shape is
+// always consistent. The frontend already handles both array and object forms.
 type goroutineListResponse struct {
 	Goroutines []model.Goroutine `json:"goroutines"`
 	Total      int               `json:"total"`
-	Limit      int               `json:"limit"`
-	Offset     int               `json:"offset"`
+	Limit      int               `json:"limit,omitempty"`
+	Offset     int               `json:"offset,omitempty"`
+	// Sampling fields — only set when the list was truncated by the display cap.
+	Sampled      bool   `json:"sampled,omitempty"`
+	TotalCount   int    `json:"total_count,omitempty"`
+	DisplayCount int    `json:"display_count,omitempty"`
+	Warning      string `json:"warning,omitempty"`
 }
 
 func (s *Server) handleGoroutineByID(w http.ResponseWriter, r *http.Request) {
@@ -464,6 +489,25 @@ func (s *Server) handleGoroutineStacks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"goroutine_id": id,
 		"stacks":       stacks,
+	})
+}
+
+// handlePprofStacks returns all historical stack snapshots within a time range.
+// Query params: start_ns and end_ns (int64, nanoseconds since epoch).
+// Used to build cross-goroutine CPU flame graphs for a selected segment.
+func (s *Server) handlePprofStacks(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	startNS, errA := strconv.ParseInt(q.Get("start_ns"), 10, 64)
+	endNS, errB := strconv.ParseInt(q.Get("end_ns"), 10, 64)
+	if errA != nil || errB != nil || startNS <= 0 || endNS <= 0 || startNS >= endNS {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_ns and end_ns must be valid positive integers with start_ns < end_ns"})
+		return
+	}
+	stacks := s.engine.GetStacksInRange(startNS, endNS)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"stacks":   stacks,
+		"start_ns": startNS,
+		"end_ns":   endNS,
 	})
 }
 
@@ -638,10 +682,11 @@ func (s *Server) handleSmartInsights(w http.ResponseWriter, r *http.Request) {
 
 // timelineListParams holds query parameters for the timeline endpoint.
 type timelineListParams struct {
-	State  model.GoroutineState
-	Reason model.BlockingReason
-	Search string
-	Label  string
+	State        model.GoroutineState
+	Reason       model.BlockingReason
+	Search       string
+	Label        string
+	GoroutineIDs map[int64]bool // when non-nil, only return segments for these IDs
 }
 
 func parseTimelineListParams(r *http.Request) timelineListParams {
@@ -659,6 +704,20 @@ func parseTimelineListParams(r *http.Request) timelineListParams {
 	if v := q.Get("label"); v != "" {
 		params.Label = strings.TrimSpace(v)
 	}
+	// goroutine_ids=1,2,3 — only return segments for these goroutine IDs.
+	if v := q.Get("goroutine_ids"); v != "" {
+		params.GoroutineIDs = make(map[int64]bool)
+		for _, tok := range strings.Split(v, ",") {
+			tok = strings.TrimSpace(tok)
+			if tok == "" {
+				continue
+			}
+			var id int64
+			if _, err := fmt.Sscanf(tok, "%d", &id); err == nil {
+				params.GoroutineIDs[id] = true
+			}
+		}
+	}
 	return params
 }
 
@@ -672,35 +731,45 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 
 	params := parseTimelineListParams(r)
 	all := s.engine.Timeline()
-	goroutines := s.engine.ListGoroutines()
 
-	if params.State == "" && params.Reason == "" && params.Search == "" && params.Label == "" {
+	// Fast path: no filters at all.
+	hasFilters := params.State != "" || params.Reason != "" || params.Search != "" || params.Label != "" || params.GoroutineIDs != nil
+	if !hasFilters {
 		writeJSON(w, http.StatusOK, all)
 		return
 	}
 
-	// Build set of goroutine IDs that match the filter.
-	matchIDs := make(map[int64]bool)
-	for _, g := range goroutines {
-		if params.State != "" && g.State != params.State {
-			continue
-		}
-		if params.Reason != "" && g.Reason != params.Reason {
-			continue
-		}
-		if params.Search != "" && !goroutineMatchesSearch(g, params.Search) {
-			continue
-		}
-		if params.Label != "" {
-			if eq := strings.Index(params.Label, "="); eq > 0 {
-				key := params.Label[:eq]
-				value := params.Label[eq+1:]
-				if g.Labels == nil || g.Labels[key] != value {
-					continue
+	// Build set of goroutine IDs that pass attribute filters (state/reason/search/label).
+	// When GoroutineIDs is set, use it as the primary allow-list and skip the goroutine scan.
+	matchIDs := params.GoroutineIDs
+	if params.State != "" || params.Reason != "" || params.Search != "" || params.Label != "" {
+		goroutines := s.engine.ListGoroutines()
+		matchIDs = make(map[int64]bool, len(goroutines))
+		for _, g := range goroutines {
+			// If the caller also supplied goroutine_ids, intersect.
+			if params.GoroutineIDs != nil && !params.GoroutineIDs[g.ID] {
+				continue
+			}
+			if params.State != "" && g.State != params.State {
+				continue
+			}
+			if params.Reason != "" && g.Reason != params.Reason {
+				continue
+			}
+			if params.Search != "" && !goroutineMatchesSearch(g, params.Search) {
+				continue
+			}
+			if params.Label != "" {
+				if eq := strings.Index(params.Label, "="); eq > 0 {
+					key := params.Label[:eq]
+					value := params.Label[eq+1:]
+					if g.Labels == nil || g.Labels[key] != value {
+						continue
+					}
 				}
 			}
+			matchIDs[g.ID] = true
 		}
-		matchIDs[g.ID] = true
 	}
 
 	var filtered []model.TimelineSegment

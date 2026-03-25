@@ -20,7 +20,9 @@ import (
 
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/api"
+	"github.com/Khachatur86/goroscope/internal/flightrec"
 	"github.com/Khachatur86/goroscope/internal/model"
+	"github.com/Khachatur86/goroscope/internal/otlp"
 	"github.com/Khachatur86/goroscope/internal/pprofpoll"
 	"github.com/Khachatur86/goroscope/internal/session"
 	"github.com/Khachatur86/goroscope/internal/store"
@@ -164,17 +166,20 @@ func warnIfNotLoopback(addr string, w io.Writer) {
 }
 
 // attachCommand implements `goroscope attach <url>`.
-// It polls the target's /debug/pprof/goroutine endpoint, feeds the data into
-// the engine, and serves the UI — no changes to the target process required.
+// By default it polls the target's /debug/pprof/goroutine endpoint.
+// With --flight-recorder, it polls /debug/goroscope/snapshot instead,
+// receiving full runtime trace snapshots from the embedded Flight Recorder.
 func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("attach", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage: goroscope attach [flags] <url>\n\n")
-		_, _ = fmt.Fprintf(stderr, "Attach to any running Go process that exposes /debug/pprof.\n")
+		_, _ = fmt.Fprintf(stderr, "Attach to any running Go process that exposes /debug/pprof\n")
+		_, _ = fmt.Fprintf(stderr, "or /debug/goroscope/snapshot (with --flight-recorder).\n")
 		_, _ = fmt.Fprintf(stderr, "The URL should be the base address, e.g. http://localhost:6060\n\n")
-		_, _ = fmt.Fprintf(stderr, "Example:\n")
-		_, _ = fmt.Fprintf(stderr, "  goroscope attach http://localhost:6060 --open-browser\n\n")
+		_, _ = fmt.Fprintf(stderr, "Examples:\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope attach http://localhost:6060 --open-browser\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope attach http://localhost:7071 --flight-recorder\n\n")
 		fs.PrintDefaults()
 	}
 
@@ -186,6 +191,8 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 	maxSegments := fs.Int("max-segments", 500_000, "Maximum closed timeline segments to retain in memory (0 = unlimited)")
 	maxStacks := fs.Int("max-stacks", 200, "Maximum stack snapshots to retain per goroutine (0 = unlimited)")
+	maxGoroutinesAttach := fs.Int("max-goroutines", 15_000, "Maximum goroutines to display in the UI (0 = unlimited); excess goroutines are sampled by anomaly score")
+	flightRecorder := fs.Bool("flight-recorder", false, "Use Flight Recorder snapshot endpoint (/debug/goroscope/snapshot) instead of pprof. Requires agent.StartFlightRecorder() in the target.")
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS; required for non-loopback --addr)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests (empty = no auth)")
@@ -207,11 +214,37 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
-	engine := analysis.NewEngine(analysis.WithRetention(analysis.RetentionPolicy{
-		MaxClosedSegments:     *maxSegments,
-		MaxStacksPerGoroutine: *maxStacks,
-	}))
+	engine := analysis.NewEngine(
+		analysis.WithRetention(analysis.RetentionPolicy{
+			MaxClosedSegments:     *maxSegments,
+			MaxStacksPerGoroutine: *maxStacks,
+		}),
+		analysis.WithSampling(analysis.SamplingPolicy{MaxDisplay: *maxGoroutinesAttach}),
+	)
 	sessions := session.NewManager()
+
+	cfg := api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token}
+	server := api.NewServer(*addr, engine, sessions, uiPathResolved, cfg)
+	scheme := "http"
+	if *tlsCert != "" {
+		scheme = "https"
+	}
+	uiURL := scheme + "://" + *addr
+
+	if *flightRecorder {
+		return attachFlightRecorder(ctx, attachFlightRecorderInput{
+			TargetURL:   targetURL,
+			Interval:    *interval,
+			SessionName: *sessionName,
+			Engine:      engine,
+			Sessions:    sessions,
+			Server:      server,
+			UIURL:       uiURL,
+			OpenBrowser: *openBrowser,
+			Stdout:      stdout,
+			Stderr:      stderr,
+		})
+	}
 
 	poller := pprofpoll.NewPoller(pprofpoll.PollInput{
 		TargetURL:   targetURL,
@@ -234,13 +267,6 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	// Start continuous polling in the background.
 	go poller.Run(ctx, stderr)
 
-	cfg := api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token}
-	server := api.NewServer(*addr, engine, sessions, uiPathResolved, cfg)
-	scheme := "http"
-	if *tlsCert != "" {
-		scheme = "https"
-	}
-	uiURL := scheme + "://" + *addr
 	_, _ = fmt.Fprintf(stdout, "goroscope attach: UI at %s  (polling every %s)\n", uiURL, *interval)
 
 	if *openBrowser {
@@ -248,6 +274,54 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	}
 
 	return server.Serve(ctx)
+}
+
+// attachFlightRecorderInput holds parameters for attachFlightRecorder (CS-5).
+type attachFlightRecorderInput struct {
+	TargetURL   string
+	Interval    time.Duration
+	SessionName string
+	Engine      interface {
+		LoadCapture(sess *model.Session, capture model.Capture)
+	}
+	Sessions    *session.Manager
+	Server      interface{ Serve(ctx context.Context) error }
+	UIURL       string
+	OpenBrowser bool
+	Stdout      io.Writer
+	Stderr      io.Writer
+}
+
+// attachFlightRecorder connects to a Flight Recorder snapshot endpoint and
+// streams captures into the engine.
+func attachFlightRecorder(ctx context.Context, in attachFlightRecorderInput) error {
+	poller := flightrec.NewPoller(flightrec.PollerInput{
+		BaseURL:     in.TargetURL,
+		Interval:    in.Interval,
+		Engine:      in.Engine,
+		Sessions:    in.Sessions,
+		SessionName: in.SessionName,
+	})
+
+	_, _ = fmt.Fprintf(in.Stdout, "goroscope attach (flight-recorder): connecting to %s ...\n", in.TargetURL)
+
+	verifyCtx, verifyCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer verifyCancel()
+	if err := poller.PollOnce(verifyCtx); err != nil {
+		return fmt.Errorf("attach: cannot reach flight recorder at %s: %w", in.TargetURL, err)
+	}
+	_, _ = fmt.Fprintf(in.Stdout, "goroscope attach (flight-recorder): connected. Starting polling loop.\n")
+
+	go poller.Run(ctx, in.Stderr)
+
+	_, _ = fmt.Fprintf(in.Stdout, "goroscope attach (flight-recorder): UI at %s  (polling every %s)\n",
+		in.UIURL, in.Interval)
+
+	if in.OpenBrowser {
+		scheduleOpenBrowser(ctx, 300*time.Millisecond, in.UIURL)
+	}
+
+	return in.Server.Serve(ctx)
 }
 
 func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -272,6 +346,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests (empty = no auth)")
+	maxGoroutines := fs.Int("max-goroutines", 15_000, "Maximum goroutines to display in the UI (0 = unlimited); excess goroutines are sampled by anomaly score")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -291,16 +366,17 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	}
 
 	return serveLiveRunSession(ctx, serveLiveRunInput{
-		Addr:         *addr,
-		OpenBrowser:  *openBrowser,
-		SessionName:  *sessionName,
-		Target:       target,
-		PollInterval: *pollInterval,
-		SavePath:     *savePath,
-		UIPath:       uiPathResolved,
-		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
-		Stdout:       stdout,
-		Stderr:       stderr,
+		Addr:          *addr,
+		OpenBrowser:   *openBrowser,
+		SessionName:   *sessionName,
+		Target:        target,
+		PollInterval:  *pollInterval,
+		SavePath:      *savePath,
+		UIPath:        uiPathResolved,
+		ServerConfig:  api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
+		MaxGoroutines: *maxGoroutines,
+		Stdout:        stdout,
+		Stderr:        stderr,
 	})
 }
 
@@ -341,7 +417,7 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 		Addr: *addr, SessionName: "collector", Target: "collector",
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
 		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
-		Stdout: stdout, Stderr: stderr,
+		Stdout:       stdout, Stderr: stderr,
 	})
 }
 
@@ -361,6 +437,7 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests")
+	maxGoroutinesUI := fs.Int("max-goroutines", 15_000, "Maximum goroutines to display in the UI (0 = unlimited); excess goroutines are sampled by anomaly score")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -381,8 +458,9 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "ui-demo", Target: "demo://ui",
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
-		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
-		Stdout: stdout, Stderr: stderr,
+		ServerConfig:  api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
+		MaxGoroutines: *maxGoroutinesUI,
+		Stdout:        stdout, Stderr: stderr,
 	})
 }
 
@@ -403,6 +481,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests")
+	maxGoroutinesReplay := fs.Int("max-goroutines", 15_000, "Maximum goroutines to display in the UI (0 = unlimited); excess goroutines are sampled by anomaly score")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -428,8 +507,9 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "replay", Target: target,
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
-		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
-		Stdout: stdout, Stderr: stderr,
+		ServerConfig:  api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
+		MaxGoroutines: *maxGoroutinesReplay,
+		Stdout:        stdout, Stderr: stderr,
 	})
 }
 
@@ -744,10 +824,16 @@ func runTestCapture(ctx context.Context, in testCaptureInput) error {
 func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("export", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	format := fs.String("format", "csv", "Output format: csv or json")
+	format := fs.String("format", "csv", "Output format: csv, json, or otlp")
+	endpoint := fs.String("endpoint", "", "OTLP/HTTP endpoint for --format=otlp (e.g. localhost:4318 or http://localhost:4318/v1/traces)")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage: goroscope export [flags] <capture-file>\n\n")
-		_, _ = fmt.Fprintf(stderr, "Export timeline segments for analysis (e.g. pandas).\n\n")
+		_, _ = fmt.Fprintf(stderr, "Export timeline segments. Formats:\n")
+		_, _ = fmt.Fprintf(stderr, "  csv   — timeline segments as CSV (stdout)\n")
+		_, _ = fmt.Fprintf(stderr, "  json  — timeline segments as JSON (stdout)\n")
+		_, _ = fmt.Fprintf(stderr, "  otlp  — goroutine spans via OTLP/HTTP+JSON (requires --endpoint)\n\n")
+		_, _ = fmt.Fprintf(stderr, "Example:\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope export --format=otlp --endpoint=localhost:4318 capture.gtrace\n\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -760,14 +846,15 @@ func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return fmt.Errorf("missing capture file; usage: goroscope export [flags] <capture-file>")
 	}
 
-	capture, err := tracebridge.LoadCaptureFromPath(ctx, fs.Arg(0))
+	target := fs.Arg(0)
+	capture, err := tracebridge.LoadCaptureFromPath(ctx, target)
 	if err != nil {
 		return err
 	}
 
 	engine := analysis.NewEngine()
 	sessions := session.NewManager()
-	current := sessions.StartSession("export", fs.Arg(0))
+	current := sessions.StartSession("export", target)
 	engine.LoadCapture(current, tracebridge.BindCaptureSession(capture, current.ID))
 	segments := engine.Timeline()
 
@@ -776,9 +863,54 @@ func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return writeExportCSV(stdout, segments)
 	case "json":
 		return writeExportJSON(stdout, segments)
+	case "otlp":
+		return exportOTLP(ctx, otlpExportInput{
+			Target:     target,
+			Goroutines: engine.ListGoroutines(),
+			Segments:   segments,
+			Endpoint:   *endpoint,
+			Stdout:     stdout,
+			Stderr:     stderr,
+		})
 	default:
-		return fmt.Errorf("unsupported format %q; use csv or json", *format)
+		return fmt.Errorf("unsupported format %q; use csv, json, or otlp", *format)
 	}
+}
+
+// otlpExportInput holds parameters for exportOTLP (CS-5).
+type otlpExportInput struct {
+	Target     string
+	Goroutines []model.Goroutine
+	Segments   []model.TimelineSegment
+	// Endpoint is the OTLP/HTTP target. Empty → write JSON to Stdout instead.
+	Endpoint string
+	Stdout   io.Writer
+	Stderr   io.Writer
+}
+
+// exportOTLP converts the capture to OTLP/HTTP+JSON and either sends it to
+// the collector (when Endpoint is set) or writes the raw JSON to Stdout.
+func exportOTLP(ctx context.Context, in otlpExportInput) error {
+	payload, err := otlp.BuildPayload(otlp.ExportInput{
+		Target:     in.Target,
+		Goroutines: in.Goroutines,
+		Segments:   in.Segments,
+	})
+	if err != nil {
+		return fmt.Errorf("build OTLP payload: %w", err)
+	}
+
+	if in.Endpoint == "" {
+		_, err = in.Stdout.Write(payload)
+		return err
+	}
+
+	_, _ = fmt.Fprintf(in.Stderr, "Sending OTLP trace (%d bytes) to %s …\n", len(payload), in.Endpoint)
+	if err := otlp.Send(ctx, otlp.SendInput{Endpoint: in.Endpoint, Payload: payload}); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(in.Stderr, "OK: %d goroutine spans exported.\n", len(in.Goroutines))
+	return nil
 }
 
 func writeExportCSV(w io.Writer, segments []model.TimelineSegment) error {
@@ -846,8 +978,10 @@ type serveLiveRunInput struct {
 	SavePath     string
 	UIPath       string
 	ServerConfig api.Config
-	Stdout       io.Writer
-	Stderr       io.Writer
+	// MaxGoroutines caps the number of goroutines returned by the API (0 = no limit).
+	MaxGoroutines int
+	Stdout        io.Writer
+	Stderr        io.Writer
 }
 
 // serveCaptureInput holds all parameters for serveCaptureSession (CS-5: input
@@ -860,12 +994,14 @@ type serveCaptureInput struct {
 	OpenBrowser  bool
 	UIPath       string
 	ServerConfig api.Config
-	Stdout      io.Writer
-	Stderr      io.Writer
+	// MaxGoroutines caps the number of goroutines returned by the API (0 = no limit).
+	MaxGoroutines int
+	Stdout        io.Writer
+	Stderr        io.Writer
 }
 
 func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
-	engine := analysis.NewEngine()
+	engine := analysis.NewEngine(analysis.WithSampling(analysis.SamplingPolicy{MaxDisplay: in.MaxGoroutines}))
 	sessions := session.NewManager()
 	current := sessions.StartSession(in.SessionName, in.Target)
 	engine.LoadCapture(current, tracebridge.BindCaptureSession(in.Capture, current.ID))
@@ -886,7 +1022,7 @@ func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
 }
 
 func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {
-	engine := analysis.NewEngine()
+	engine := analysis.NewEngine(analysis.WithSampling(analysis.SamplingPolicy{MaxDisplay: in.MaxGoroutines}))
 	sessions := session.NewManager()
 	current := sessions.StartSession(in.SessionName, in.Target)
 	engine.Reset(current)

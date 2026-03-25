@@ -28,6 +28,14 @@ import (
 	"github.com/Khachatur86/goroscope/internal/model"
 )
 
+// BuildCaptureFromReader parses a raw runtime/trace binary stream into a Capture.
+// It uses golang.org/x/exp/trace for direct in-process reading — no subprocess.
+// Unlike BuildCaptureFromRawTrace, no label sidecar is applied.
+// This is useful when the trace data arrives over a network (e.g. Flight Recorder snapshot).
+func BuildCaptureFromReader(ctx context.Context, r io.Reader) (model.Capture, error) {
+	return buildCaptureFromReader(ctx, r)
+}
+
 // BuildCaptureFromRawTrace parses a raw runtime/trace binary file into a Capture.
 // It uses golang.org/x/exp/trace for direct in-process reading — no subprocess.
 // If tracePath+".labels" exists (written by agent.WithRequestID), label overrides
