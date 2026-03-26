@@ -1411,9 +1411,10 @@ export function App() {
             {analysisTab === "heatmap" && (
               <ContentionHeatmap
                 segments={timelineSegments}
-                onSelectResource={(id) =>
-                  setFilters((f) => ({ ...f, search: id }))
-                }
+                onSelectResource={(id, bucketMidNS) => {
+                  setFilters((f) => ({ ...f, search: id }));
+                  setScrubTimeNS(bucketMidNS);
+                }}
               />
             )}
           </div>

@@ -100,7 +100,8 @@ type TooltipInfo = {
 
 type Props = {
   segments: TimelineSegment[];
-  onSelectResource?: (resourceId: string) => void;
+  /** Called when the user clicks a cell. bucketMidNS is the midpoint of the time bucket. */
+  onSelectResource?: (resourceId: string, bucketMidNS: number) => void;
 };
 
 /** Canvas heatmap: resource rows × time buckets, coloured by waiter count. */
@@ -241,11 +242,15 @@ export function ContentionHeatmap({ segments, onSelectResource }: Props) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const bnd = canvas.getBoundingClientRect();
+    const cx  = e.clientX - bnd.left;
     const cy  = e.clientY - bnd.top;
     const ri  = Math.floor((cy - HEADER_H) / CELL_H);
-    if (ri >= 0 && ri < d.resources.length) {
-      onSelectResource?.(d.resources[ri]);
-    }
+    if (ri < 0 || ri >= d.resources.length) return;
+    const b = Math.floor((cx - LEFT_W) / cellWRef.current);
+    const clampedB = Math.max(0, Math.min(BUCKETS - 1, b));
+    const span = d.maxNS - d.minNS;
+    const bucketMidNS = d.minNS + ((clampedB + 0.5) / BUCKETS) * span;
+    onSelectResource?.(d.resources[ri], bucketMidNS);
   }, [onSelectResource]);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -311,7 +316,7 @@ export function ContentionHeatmap({ segments, onSelectResource }: Props) {
             <strong>{formatNS(tooltip.totalWait)}</strong>
           </div>
           {onSelectResource && (
-            <div className="heatmap-tooltip-hint">Click row to filter</div>
+            <div className="heatmap-tooltip-hint">Click cell to scrub + filter</div>
           )}
         </div>
       )}

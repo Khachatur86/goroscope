@@ -273,7 +273,7 @@
 | U-1 | Drag-to-resize panels | P2 | UI | S | ✅ Done |
 | U-2 | Playback mode | P2 | UI | M | ✅ Done |
 | U-3 | Goroutine watchlist / pinning | P2 | UI | S | ✅ Done |
-| G-2 | Resource contention heatmap | P2 | Анализ | M | |
+| G-2 | Resource contention heatmap | P2 | Анализ | M | ✅ Done |
 | G-3 | Goroutine birth/death markers | P2 | UI | S | ✅ Done |
 | G-4 | `goroscope watch` — anomaly alerts | P2 | CLI | M | ✅ Done |
 | U-4 | Timeline bookmarks | P3 | UI | S | |
@@ -366,13 +366,9 @@
 
 ---
 
-### G-2. Resource contention heatmap view (P2)
+### ~~G-2. Resource contention heatmap view~~ — ✅ РЕАЛИЗОВАНО (G-2)
 
-**Gap:** Contention-данные (peak_waiters, avg_wait) есть в API, но отображаются только как таблица чисел в текущем inspect.
-
-**Задача:** Новая вкладка «Contention» в основном layout. Canvas-based 2D heatmap: X = время (bins по 100ms), Y = resource ID (mutex/channel), цвет = max concurrent waiters в bin. Клик на ячейку → устанавливает scrubTimeNS + фильтрует goroutine list к ожидателям этого ресурса.
-
-**Критерий готовности:** Heatmap рендерится за <500ms для 1000 ресурсов × 1000 временных bins. Клик приводит к drill-down в goroutine list.
+> **Реализовано:** `ContentionHeatmap` компонент уже содержал Canvas-based 2D heatmap (X=время bins, Y=resource ID, цвет=concurrent waiters). Добавлен drill-down: клик на ячейку теперь вычисляет `bucketMidNS` (середина временного bucket) и вызывает `onSelectResource(resourceId, bucketMidNS)`. В `app.tsx`: callback устанавливает `scrubTimeNS = bucketMidNS` И `search = resourceId`, что одновременно скраббирует timeline к нужному моменту и фильтрует goroutine list к ожидателям этого ресурса. Tooltip обновлён: «Click cell to scrub + filter».
 
 ---
 
