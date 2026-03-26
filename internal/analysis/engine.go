@@ -55,6 +55,16 @@ func WithSampling(p SamplingPolicy) Option {
 	}
 }
 
+// StreamDelta is the payload for SSE delta streaming (H-6).
+// It describes what changed since a given revision so the client can update
+// its local state without re-fetching the full goroutine list.
+type StreamDelta struct {
+	Revision uint64            `json:"revision"`
+	Added    []model.Goroutine `json:"added"`
+	Updated  []model.Goroutine `json:"updated"`
+	Removed  []int64           `json:"removed"`
+}
+
 // Engine processes goroutine events and maintains timeline state.
 type Engine struct {
 	mu                sync.RWMutex
@@ -67,6 +77,12 @@ type Engine struct {
 	processorSegments []model.ProcessorSegment
 	dataVersion       uint64                // incremented on any state change, for ETag
 	stacks            []model.StackSnapshot // historical stacks for stack-at-segment lookup
+
+	// Delta tracking for SSE streaming (H-6).
+	// goroutineBornAt records the dataVersion when each goroutine first appeared.
+	// goroutineChangedAt records the dataVersion of the most recent change.
+	goroutineBornAt    map[int64]uint64
+	goroutineChangedAt map[int64]uint64
 
 	retention RetentionPolicy
 	sampling  SamplingPolicy
@@ -107,11 +123,13 @@ type MemoryStats struct {
 // options. If no WithRetention option is supplied, DefaultRetentionPolicy is used.
 func NewEngine(opts ...Option) *Engine {
 	e := &Engine{
-		stateMachine:   NewStateMachine(),
-		goroutines:     make(map[int64]model.Goroutine),
-		activeSegments: make(map[int64]activeSegment),
-		subscribers:    make(map[chan struct{}]struct{}),
-		retention:      DefaultRetentionPolicy(),
+		stateMachine:       NewStateMachine(),
+		goroutines:         make(map[int64]model.Goroutine),
+		activeSegments:     make(map[int64]activeSegment),
+		subscribers:        make(map[chan struct{}]struct{}),
+		goroutineBornAt:    make(map[int64]uint64),
+		goroutineChangedAt: make(map[int64]uint64),
+		retention:          DefaultRetentionPolicy(),
 	}
 	for _, o := range opts {
 		o(e)
@@ -604,6 +622,42 @@ func (e *Engine) ExportCapture() model.Capture {
 	}
 }
 
+// DeltaSince returns the goroutines that changed since the given revision (H-6).
+// Goroutines born after revision are in Added; goroutines that existed before
+// revision but changed since then are in Updated. Removed is always empty
+// because the engine never deletes goroutines (they remain as State=DONE).
+// Pass revision=0 to receive a full snapshot in Added.
+func (e *Engine) DeltaSince(revision uint64) StreamDelta {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	delta := StreamDelta{
+		Revision: e.dataVersion,
+		Added:    []model.Goroutine{},
+		Updated:  []model.Goroutine{},
+		Removed:  []int64{},
+	}
+
+	for id, g := range e.goroutines {
+		changedAt := e.goroutineChangedAt[id]
+		if changedAt <= revision {
+			continue
+		}
+		bornAt := e.goroutineBornAt[id]
+		clone := cloneGoroutine(g)
+		if bornAt > revision {
+			delta.Added = append(delta.Added, clone)
+		} else {
+			delta.Updated = append(delta.Updated, clone)
+		}
+	}
+
+	sort.Slice(delta.Added, func(i, j int) bool { return delta.Added[i].ID < delta.Added[j].ID })
+	sort.Slice(delta.Updated, func(i, j int) bool { return delta.Updated[i].ID < delta.Updated[j].ID })
+
+	return delta
+}
+
 // GetSamplingPolicy returns the configured display-level sampling policy.
 func (e *Engine) GetSamplingPolicy() SamplingPolicy {
 	return e.sampling
@@ -699,6 +753,8 @@ func (e *Engine) resetLocked(session *model.Session) {
 	e.edges = nil
 	e.processorSegments = nil
 	e.stacks = nil
+	e.goroutineBornAt = make(map[int64]uint64)
+	e.goroutineChangedAt = make(map[int64]uint64)
 	e.dataVersion++
 }
 
@@ -731,10 +787,23 @@ func (e *Engine) applyEventLocked(event model.Event) {
 	if event.Kind == model.EventKindGoroutineCreate && event.ParentID != 0 && next.ParentID == 0 {
 		next.ParentID = event.ParentID
 	}
+	// Track lifecycle timestamps (H-2).
+	if next.BornNS == 0 && !next.CreatedAt.IsZero() {
+		next.BornNS = next.CreatedAt.UnixNano()
+	}
+	if next.State == model.StateDone && next.DiedNS == 0 && !event.Timestamp.IsZero() {
+		next.DiedNS = event.Timestamp.UnixNano()
+	}
+	next.IsAlive = next.State != model.StateDone
 	e.updateSegmentsLocked(event.GoroutineID, current, next, event)
 	e.trimClosedSegmentsLocked()
-	e.goroutines[next.ID] = next
 	e.dataVersion++
+	// Delta tracking (H-6): record born/changed revisions after dataVersion increment.
+	if _, exists := e.goroutineBornAt[next.ID]; !exists {
+		e.goroutineBornAt[next.ID] = e.dataVersion
+	}
+	e.goroutineChangedAt[next.ID] = e.dataVersion
+	e.goroutines[next.ID] = next
 }
 
 func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot, appendToHistory bool) {
@@ -748,7 +817,9 @@ func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot, appendTo
 		if !snapshot.Timestamp.IsZero() {
 			goroutine.CreatedAt = snapshot.Timestamp
 			goroutine.LastSeenAt = snapshot.Timestamp
+			goroutine.BornNS = snapshot.Timestamp.UnixNano()
 		}
+		goroutine.IsAlive = true
 	}
 
 	if snapshot.Timestamp.After(goroutine.LastSeenAt) {

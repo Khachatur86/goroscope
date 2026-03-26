@@ -177,6 +177,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/compare", s.handleCompare)
 	mux.HandleFunc("/api/v1/memory", s.handleMemoryStats)
 	mux.HandleFunc("/api/v1/pprof/stacks", s.handlePprofStacks)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 
 	if isLocalhostAddr(s.addr) {
 		mux.Handle("/debug/pprof/", http.StripPrefix("/debug/pprof", http.HandlerFunc(pprof.Index)))
@@ -262,13 +263,14 @@ func (s *Server) handleSessionCurrent(w http.ResponseWriter, _ *http.Request) {
 
 // goroutineListParams holds query parameters for the goroutines endpoint.
 type goroutineListParams struct {
-	State     model.GoroutineState
-	Reason    model.BlockingReason
-	Search    string
-	MinWaitNS int64  // filter goroutines in wait state with WaitNS >= MinWaitNS
-	Label     string // key=value for pprof label filter
-	Limit     int
-	Offset    int
+	State      model.GoroutineState
+	Reason     model.BlockingReason
+	Search     string
+	StackFrame string // substring matched against any frame in LastStack (H-1)
+	MinWaitNS  int64  // filter goroutines in wait state with WaitNS >= MinWaitNS
+	Label      string // key=value for pprof label filter
+	Limit      int
+	Offset     int
 }
 
 func parseGoroutineListParams(r *http.Request) goroutineListParams {
@@ -286,6 +288,9 @@ func parseGoroutineListParams(r *http.Request) goroutineListParams {
 	}
 	if v := q.Get("search"); v != "" {
 		params.Search = strings.TrimSpace(strings.ToLower(v))
+	}
+	if v := q.Get("stack_frame"); v != "" {
+		params.StackFrame = strings.TrimSpace(strings.ToLower(v))
 	}
 	if v := q.Get("min_wait_ns"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
@@ -332,6 +337,11 @@ func filterGoroutines(goroutines []model.Goroutine, params goroutineListParams) 
 				continue
 			}
 		}
+		if params.StackFrame != "" {
+			if !goroutineMatchesStackFrame(g, params.StackFrame) {
+				continue
+			}
+		}
 		if params.MinWaitNS > 0 {
 			if !isWaitState(g.State) || g.WaitNS < params.MinWaitNS {
 				continue
@@ -349,6 +359,22 @@ func filterGoroutines(goroutines []model.Goroutine, params goroutineListParams) 
 		out = append(out, g)
 	}
 	return out
+}
+
+// goroutineMatchesStackFrame reports whether any frame in g's last stack
+// contains needle as a case-insensitive substring. Used by the ?stack_frame=
+// query parameter (H-1) for pure frame-based search, independent of labels.
+func goroutineMatchesStackFrame(g model.Goroutine, needle string) bool {
+	if g.LastStack == nil {
+		return false
+	}
+	for _, f := range g.LastStack.Frames {
+		if strings.Contains(strings.ToLower(f.Func), needle) ||
+			strings.Contains(strings.ToLower(f.File), needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func goroutineMatchesSearch(g model.Goroutine, search string) bool {
@@ -819,6 +845,64 @@ func (s *Server) handleMemoryStats(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.engine.MemoryStats())
 }
 
+// handleMetrics serves Prometheus text exposition format (H-5).
+// GET /metrics — compatible with prometheus scrape_config, no dependencies.
+func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+	goroutines := s.engine.ListGoroutines()
+	stateCounts := make(map[model.GoroutineState]int)
+	for _, g := range goroutines {
+		stateCounts[g.State]++
+	}
+
+	edges := s.engine.ResourceGraph()
+	if len(edges) == 0 {
+		edges = analysis.DeriveCurrentContentionEdges(goroutines)
+	}
+	hints := analysis.FindDeadlockHints(edges, goroutines)
+
+	const leakThresholdNS = 30_000_000_000 // 30 s
+	leaks := s.engine.LeakCandidates(leakThresholdNS)
+
+	mem := s.engine.MemoryStats()
+
+	var sessionDurationSecs float64
+	if sess := s.engine.CurrentSession(); sess != nil && !sess.StartedAt.IsZero() {
+		sessionDurationSecs = time.Since(sess.StartedAt).Seconds()
+	}
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+
+	allStates := []model.GoroutineState{
+		model.StateRunning, model.StateRunnable, model.StateWaiting,
+		model.StateBlocked, model.StateSyscall, model.StateDone,
+	}
+	fmt.Fprintf(w, "# HELP goroscope_goroutines_total Number of goroutines by state.\n")
+	fmt.Fprintf(w, "# TYPE goroscope_goroutines_total gauge\n")
+	for _, state := range allStates {
+		fmt.Fprintf(w, "goroscope_goroutines_total{state=%q} %d\n", state, stateCounts[state])
+	}
+
+	fmt.Fprintf(w, "# HELP goroscope_deadlock_hints_total Number of potential deadlock cycles detected.\n")
+	fmt.Fprintf(w, "# TYPE goroscope_deadlock_hints_total gauge\n")
+	fmt.Fprintf(w, "goroscope_deadlock_hints_total %d\n", len(hints))
+
+	fmt.Fprintf(w, "# HELP goroscope_leak_candidates_total Goroutines blocked longer than 30s.\n")
+	fmt.Fprintf(w, "# TYPE goroscope_leak_candidates_total gauge\n")
+	fmt.Fprintf(w, "goroscope_leak_candidates_total %d\n", len(leaks))
+
+	fmt.Fprintf(w, "# HELP goroscope_closed_segments_total Closed timeline segments retained in memory.\n")
+	fmt.Fprintf(w, "# TYPE goroscope_closed_segments_total gauge\n")
+	fmt.Fprintf(w, "goroscope_closed_segments_total %d\n", mem.ClosedSegments)
+
+	fmt.Fprintf(w, "# HELP goroscope_stack_snapshots_total Stack snapshots retained in memory.\n")
+	fmt.Fprintf(w, "# TYPE goroscope_stack_snapshots_total gauge\n")
+	fmt.Fprintf(w, "goroscope_stack_snapshots_total %d\n", mem.StackSnapshots)
+
+	fmt.Fprintf(w, "# HELP goroscope_session_duration_seconds Seconds since the current session started.\n")
+	fmt.Fprintf(w, "# TYPE goroscope_session_duration_seconds gauge\n")
+	fmt.Fprintf(w, "goroscope_session_duration_seconds %.3f\n", sessionDurationSecs)
+}
+
 // handleReplayLoad accepts a .gtrace file upload and loads it into the engine.
 // POST /api/v1/replay/load with multipart form field "file".
 func (s *Server) handleReplayLoad(w http.ResponseWriter, r *http.Request) {
@@ -972,11 +1056,17 @@ func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleStream implements a Server-Sent Events (SSE) endpoint.
-// The client receives an "update" event whenever the engine processes a new
-// capture snapshot. Each event carries no payload — the client is expected to
-// re-fetch the REST endpoints it cares about. This keeps the stream
-// protocol-agnostic and the payload format versioning out of SSE.
+// handleStream implements a Server-Sent Events (SSE) endpoint with delta
+// streaming (H-6). Each "update" event carries a GoroutineDelta JSON payload
+// describing only what changed since the client's last revision, so the client
+// does not need to re-fetch the full goroutine list on every tick.
+//
+// Protocol:
+//   - Client sends Last-Event-ID: <revision> to resume from a known revision.
+//   - Revision 0 (or missing header) triggers a full snapshot in Added.
+//   - Each SSE event includes an "id: <revision>" line so browsers auto-resume.
+//   - When added/updated/removed are all empty the event is suppressed entirely,
+//     keeping bandwidth near zero when nothing changes.
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -992,12 +1082,20 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	// Disable proxy buffering (nginx / Google Cloud Run, etc.)
 	w.Header().Set("X-Accel-Buffering", "no")
 
+	// Parse client's last-known revision from the SSE resume header.
+	var clientRevision uint64
+	if raw := r.Header.Get("Last-Event-ID"); raw != "" {
+		if n, err := strconv.ParseUint(raw, 10, 64); err == nil {
+			clientRevision = n
+		}
+	}
+
 	ch := s.engine.Subscribe()
 	defer s.engine.Unsubscribe(ch)
 
-	// Immediately send a "connected" event so the client knows the stream is live.
-	_, _ = fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
-	flusher.Flush()
+	// Send the initial delta immediately (full snapshot when clientRevision==0).
+	s.sendSSEDelta(w, flusher, clientRevision)
+	clientRevision = s.engine.DataVersion()
 
 	for {
 		select {
@@ -1007,10 +1105,25 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: update\ndata: {}\n\n")
-			flusher.Flush()
+			s.sendSSEDelta(w, flusher, clientRevision)
+			clientRevision = s.engine.DataVersion()
 		}
 	}
+}
+
+// sendSSEDelta fetches a StreamDelta since revision, serialises it and
+// writes one SSE event. Empty deltas are suppressed to save bandwidth.
+func (s *Server) sendSSEDelta(w http.ResponseWriter, flusher http.Flusher, revision uint64) {
+	delta := s.engine.DeltaSince(revision)
+	if len(delta.Added) == 0 && len(delta.Updated) == 0 && len(delta.Removed) == 0 && revision != 0 {
+		return
+	}
+	data, err := json.Marshal(delta)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "id: %d\nevent: update\ndata: %s\n\n", delta.Revision, data)
+	flusher.Flush()
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
