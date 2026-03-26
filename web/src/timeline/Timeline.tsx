@@ -6,6 +6,8 @@ import type { TimelineCanvasHandle } from "./TimelineCanvas";
 import { TimelineHeatmapCanvas } from "./TimelineHeatmapCanvas";
 import { MinimapCanvas } from "./MinimapCanvas";
 import { MetricsChart } from "./MetricsChart";
+import type { Bookmark } from "./bookmarks";
+import { loadBookmarks, saveBookmarks } from "./bookmarks";
 
 /** Lazy-load batch size: fetch this many goroutines' segments per request. */
 const SEGMENT_BATCH_SIZE = 150;
@@ -81,6 +83,10 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   onSegmentsChange,
 }: Props, ref) {
   const [showLifecycleMarkers, setShowLifecycleMarkers] = useState(false);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>(loadBookmarks);
+  // NS position where user double-clicked to add a bookmark; null = dialog closed.
+  const [bookmarkDialogNS, setBookmarkDialogNS] = useState<number | null>(null);
+  const [bookmarkDraftName, setBookmarkDraftName] = useState("");
   // segmentMap: goroutine_id → segments. Populated lazily as visible range changes.
   const [segmentMap, setSegmentMap] = useState<Map<number, TimelineSegment[]>>(new Map());
   // Track which goroutine IDs have already been fetched so we don't re-request them.
@@ -291,6 +297,26 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
     onBrushFilterChange?.(null);
   };
 
+  const handleAddBookmarkRequest = useCallback((timeNS: number) => {
+    setBookmarkDialogNS(timeNS);
+    setBookmarkDraftName(`Bookmark ${bookmarks.length + 1}`);
+  }, [bookmarks.length]);
+
+  const commitBookmark = useCallback(() => {
+    if (bookmarkDialogNS == null) return;
+    const name = bookmarkDraftName.trim() || `Bookmark ${bookmarks.length + 1}`;
+    const next = [...bookmarks, { id: `bm_${bookmarkDialogNS}`, name, timeNS: bookmarkDialogNS }];
+    setBookmarks(next);
+    saveBookmarks(next);
+    setBookmarkDialogNS(null);
+  }, [bookmarkDialogNS, bookmarkDraftName, bookmarks]);
+
+  const deleteBookmark = useCallback((id: string) => {
+    const next = bookmarks.filter((b) => b.id !== id);
+    setBookmarks(next);
+    saveBookmarks(next);
+  }, [bookmarks]);
+
   if (filteredSegments.length === 0) {
     return (
       <div className="timeline-placeholder">
@@ -393,6 +419,9 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
             onScrubChange={onScrubChange}
             onVisibleRangeChange={handleVisibleRangeChange}
             showLifecycleMarkers={showLifecycleMarkers}
+            bookmarks={bookmarks}
+            onAddBookmarkRequest={handleAddBookmarkRequest}
+            onDeleteBookmark={deleteBookmark}
           />
         </div>
       )}
@@ -403,6 +432,33 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
           panOffsetNS={canvasPanOffsetNS}
           onPanChange={setCanvasPanOffsetNS}
         />
+      )}
+      {bookmarkDialogNS != null && (
+        <div className="bookmark-dialog-overlay" onClick={() => setBookmarkDialogNS(null)}>
+          <div className="bookmark-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="bookmark-dialog-title">Add bookmark</div>
+            <input
+              className="bookmark-dialog-input"
+              type="text"
+              value={bookmarkDraftName}
+              onChange={(e) => setBookmarkDraftName(e.target.value)}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitBookmark();
+                if (e.key === "Escape") setBookmarkDialogNS(null);
+              }}
+              placeholder="Bookmark name"
+            />
+            <div className="bookmark-dialog-actions">
+              <button type="button" className="bookmark-dialog-btn bookmark-dialog-btn-confirm" onClick={commitBookmark}>
+                Add
+              </button>
+              <button type="button" className="bookmark-dialog-btn bookmark-dialog-btn-cancel" onClick={() => setBookmarkDialogNS(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

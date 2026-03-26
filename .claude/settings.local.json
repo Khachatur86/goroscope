@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(git stash:*)",
+      "Bash(go vet:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(python3:*)",
+      "Bash(find /Users/khachatur1/goprojects/goroscope -name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx)",
+      "Bash(npx tsc:*)",
+      "Bash(gofmt:*)",
+      "Bash(go doc:*)",
+      "Bash(npm run:*)",
+      "Bash(pkill -f \"goroscope\")",
+      "Bash(make ui-react-complex:*)",
+      "Bash(make run-react-complex:*)",
+      "Bash(curl -s http://127.0.0.1:7070/healthz)",
+      "Bash(git checkout:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

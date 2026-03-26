@@ -2930,3 +2930,127 @@ body {
   0%, 100% { opacity: 0.6; }
   50%       { opacity: 0.9; }
 }
+
+/* ── Timeline bookmarks (U-4) ─────────────────────────────────────────────── */
+
+.bookmark-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.bookmark-dialog {
+  background: #1e293b;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 8px;
+  padding: 16px;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.bookmark-dialog-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #c4b5fd;
+}
+
+.bookmark-dialog-input {
+  background: #0f172a;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+  color: #e2e8f0;
+  outline: none;
+  width: 100%;
+}
+
+.bookmark-dialog-input:focus {
+  border-color: rgba(167, 139, 250, 0.75);
+}
+
+.bookmark-dialog-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.bookmark-dialog-btn {
+  flex: 1;
+  padding: 5px 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.bookmark-dialog-btn-confirm {
+  background: rgba(167, 139, 250, 0.18);
+  border-color: rgba(167, 139, 250, 0.45);
+  color: #c4b5fd;
+}
+
+.bookmark-dialog-btn-confirm:hover {
+  background: rgba(167, 139, 250, 0.28);
+}
+
+.bookmark-dialog-btn-cancel {
+  background: transparent;
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #64748b;
+}
+
+.bookmark-dialog-btn-cancel:hover {
+  background: rgba(148, 163, 184, 0.06);
+  color: #94a3b8;
+}
+
+/* Bookmark hover tooltip in TimelineCanvas */
+.bookmark-tooltip {
+  background: #1e293b;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  color: #e2e8f0;
+  pointer-events: auto;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 140px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.bookmark-tooltip-name {
+  font-weight: 600;
+  color: #c4b5fd;
+}
+
+.bookmark-tooltip-time {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.bookmark-tooltip-delete {
+  margin-top: 4px;
+  padding: 3px 8px;
+  background: rgba(244, 63, 94, 0.12);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: 3px;
+  color: #fb7185;
+  font-size: 0.72rem;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.bookmark-tooltip-delete:hover {
+  background: rgba(244, 63, 94, 0.22);
+}

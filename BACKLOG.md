@@ -276,7 +276,7 @@
 | G-2 | Resource contention heatmap | P2 | Анализ | M | ✅ Done |
 | G-3 | Goroutine birth/death markers | P2 | UI | S | ✅ Done |
 | G-4 | `goroscope watch` — anomaly alerts | P2 | CLI | M | ✅ Done |
-| U-4 | Timeline bookmarks | P3 | UI | S | |
+| U-4 | Timeline bookmarks | P3 | UI | S | ✅ Done |
 | U-5 | Dark/light theme + accent color | P3 | UI | S | |
 | H-1 | Stack frame search в API | P1 | Backend | S | ✅ Done |
 | H-4 | Request correlation engine + API | P1 | Backend | L | |
@@ -332,13 +332,9 @@
 
 ---
 
-### U-4. Timeline bookmarks (P3)
+### ~~U-4. Timeline bookmarks~~ — ✅ РЕАЛИЗОВАНО (U-4)
 
-**Gap:** Нет способа отметить значимые моменты во времени для последующего возврата или передачи коллеге.
-
-**Задача:** Двойной клик на временную ось timeline → диалог «Add bookmark» с именем. Закладки отображаются как именованные вертикальные линии поверх всех lanes. Hover показывает имя + timestamp. Хранятся в localStorage. Экспортируются вместе с share-link (URL-параметр).
-
-**Критерий готовности:** Создать, переименовать, удалить закладку. Закладки восстанавливаются после перезагрузки. Видны поверх canvas.
+> **Реализовано:** `web/src/timeline/bookmarks.ts` — `Bookmark` тип, `loadBookmarks` (localStorage + `?bm=` URL-параметр), `saveBookmarks` (пишет в localStorage и обновляет URL через `history.replaceState`). В `TimelineCanvas.tsx`: двойной клик на ось вызывает `onAddBookmarkRequest(timeNS)` вместо сброса скраббера; фиолетовые пунктирные вертикали рендерятся в `renderAxis` и `renderRows`; hover на линию ±6px показывает `bookmark-tooltip` с именем, временем и кнопкой Delete. В `Timeline.tsx`: state `bookmarks` (init из `loadBookmarks`), диалог `bookmark-dialog-overlay` (поле имени + Add/Cancel, клавиши Enter/Escape), `deleteBookmark` callback. CSS: `.bookmark-dialog-overlay`, `.bookmark-dialog`, `.bookmark-tooltip`, `.bookmark-tooltip-delete`.
 
 ---
 

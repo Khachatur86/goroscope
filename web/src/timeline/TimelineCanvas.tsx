@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 import { encodeAnimatedGIF, type GifFrame } from "../gif/encoder";
+import type { Bookmark } from "./bookmarks";
 
 // ── Annotation storage ────────────────────────────────────────────────────────
 
@@ -152,6 +153,12 @@ type Props = {
   onVisibleRangeChange?: (firstIndex: number, lastIndex: number) => void;
   /** When true, draw ▲ (born) and ▼ (died) lifecycle markers on goroutine rows (G-3). */
   showLifecycleMarkers?: boolean;
+  /** Named time bookmarks drawn as violet dashed lines (U-4). */
+  bookmarks?: Bookmark[];
+  /** Fired when the user double-clicks the axis to add a bookmark. */
+  onAddBookmarkRequest?: (timeNS: number) => void;
+  /** Fired when the user clicks Delete on a hovered bookmark tooltip. */
+  onDeleteBookmark?: (id: string) => void;
 };
 
 export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function TimelineCanvas({
@@ -173,6 +180,9 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
   onScrubChange,
   onVisibleRangeChange,
   showLifecycleMarkers = false,
+  bookmarks,
+  onAddBookmarkRequest,
+  onDeleteBookmark,
 }: Props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -379,6 +389,9 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
   // Stored in state so renderAxis reacts to it; axis redraws are fast enough
   // for per-pixel mouse tracking.
   const [ghostTimeNS, setGhostTimeNS] = useState<number | null>(null);
+
+  // Hovered bookmark for tooltip display.
+  const [hoveredBookmark, setHoveredBookmark] = useState<{ bookmark: Bookmark; clientX: number; clientY: number } | null>(null);
 
   // Annotations: persisted to localStorage; displayed as amber pins on rows canvas.
   const [annotations, setAnnotations] = useState<Annotation[]>(loadAnnotations);
@@ -615,6 +628,32 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
         ctx.restore();
       }
     }
+    // Bookmark lines: violet dashed verticals with name labels.
+    if (bookmarks && bookmarks.length > 0) {
+      for (const bm of bookmarks) {
+        const ratio = (bm.timeNS - visibleStart) / visibleSpan;
+        const bx = plotLeft + ratio * innerWidth;
+        if (bx < plotLeft || bx > width - METRICS.rightPadding) continue;
+        ctx.save();
+        ctx.strokeStyle = "rgba(167, 139, 250, 0.85)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(bx, 0);
+        ctx.lineTo(bx, height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = 'bold 9px "IBM Plex Mono", monospace';
+        const lbl = bm.name;
+        const lw = ctx.measureText(lbl).width + 8;
+        const lx = Math.min(bx + 3, width - METRICS.rightPadding - lw - 2);
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        ctx.fillRect(lx - 2, 2, lw, 14);
+        ctx.fillStyle = "rgba(196, 181, 253, 0.95)";
+        ctx.fillText(lbl, lx + 2, 12);
+        ctx.restore();
+      }
+    }
   }, [
     visibleStart,
     visibleSpan,
@@ -625,6 +664,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     gTop,
     ghostTimeNS,
     scrubTimeNS,
+    bookmarks,
   ]);
 
   const rowsCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -822,6 +862,25 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       }
     }
 
+    // Bookmark lines in rows: violet semi-transparent dashed verticals.
+    if (bookmarks && bookmarks.length > 0) {
+      for (const bm of bookmarks) {
+        const ratio = (bm.timeNS - visibleStart) / visibleSpan;
+        const bx = plotLeft + ratio * innerWidth;
+        if (bx < plotLeft || bx > width - METRICS.rightPadding) continue;
+        ctx.save();
+        ctx.strokeStyle = "rgba(167, 139, 250, 0.22)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(bx, 0);
+        ctx.lineTo(bx, height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
     // Annotation pins: small downward-pointing amber triangle above each annotated segment.
     for (const ann of annotations) {
       const gIdx = goroutines.findIndex((g) => g.goroutine_id === ann.goroutineId);
@@ -862,6 +921,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     scrubTimeNS,
     annotations,
     showLifecycleMarkers,
+    bookmarks,
   ]);
 
   useEffect(() => {
@@ -1135,12 +1195,24 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       } else {
         setGhostTimeNS(null);
       }
+      // Bookmark hover: 6px hit zone around each bookmark line.
+      if (bookmarks && bookmarks.length > 0) {
+        const hit = bookmarks.find((bm) => {
+          const ratio = (bm.timeNS - visibleStart) / visibleSpan;
+          const bx = plotLeft + ratio * innerWidth;
+          return Math.abs(x - bx) <= 6;
+        });
+        setHoveredBookmark(hit ? { bookmark: hit, clientX: e.clientX, clientY: e.clientY } : null);
+      } else {
+        setHoveredBookmark(null);
+      }
     },
-    [visibleStart, visibleSpan]
+    [visibleStart, visibleSpan, bookmarks]
   );
 
   const handleAxisMouseLeave = useCallback(() => {
     setGhostTimeNS(null);
+    setHoveredBookmark(null);
   }, []);
 
   const handleAxisClick = useCallback(
@@ -1150,9 +1222,16 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     [axisXToNS, onScrubChange]
   );
 
-  const handleAxisDoubleClick = useCallback(() => {
-    onScrubChange?.(null);
-  }, [onScrubChange]);
+  const handleAxisDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (onAddBookmarkRequest) {
+        onAddBookmarkRequest(axisXToNS(e.clientX));
+      } else {
+        onScrubChange?.(null);
+      }
+    },
+    [axisXToNS, onAddBookmarkRequest, onScrubChange]
+  );
 
   return (
     <div ref={containerRef} className="timeline-canvas-container">
@@ -1268,6 +1347,34 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
             </button>
             <span className="annotation-popover-hint">⌘↵ save · ESC cancel</span>
           </div>
+        </div>
+      )}
+      {hoveredBookmark && (
+        <div
+          className="bookmark-tooltip"
+          style={{
+            position: "fixed",
+            left: Math.min(hoveredBookmark.clientX + 10, window.innerWidth - 220),
+            top: hoveredBookmark.clientY - 8,
+          }}
+        >
+          <div className="bookmark-tooltip-name">{hoveredBookmark.bookmark.name}</div>
+          <div className="bookmark-tooltip-time">
+            T+{formatAxisLabel(hoveredBookmark.bookmark.timeNS - fullMinStart)}
+          </div>
+          {onDeleteBookmark && (
+            <button
+              type="button"
+              className="bookmark-tooltip-delete"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                onDeleteBookmark(hoveredBookmark.bookmark.id);
+                setHoveredBookmark(null);
+              }}
+            >
+              Delete
+            </button>
+          )}
         </div>
       )}
     </div>
