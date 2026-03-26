@@ -25,6 +25,7 @@ import { SmartInsights } from "./insights/SmartInsights";
 import { DependencyGraph } from "./graph/DependencyGraph";
 import { ContentionHeatmap } from "./analysis/ContentionHeatmap";
 import { RequestsView } from "./requests/RequestsView";
+import { ThemeSwitcher } from "./theme/ThemeSwitcher";
 import { CommandPalette, type Command } from "./palette/CommandPalette";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
@@ -1113,6 +1114,7 @@ export function App() {
           >
             Export
           </a>
+          <ThemeSwitcher />
         </div>
       </header>
 

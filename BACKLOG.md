@@ -277,7 +277,7 @@
 | G-3 | Goroutine birth/death markers | P2 | UI | S | ✅ Done |
 | G-4 | `goroscope watch` — anomaly alerts | P2 | CLI | M | ✅ Done |
 | U-4 | Timeline bookmarks | P3 | UI | S | ✅ Done |
-| U-5 | Dark/light theme + accent color | P3 | UI | S | |
+| U-5 | Dark/light theme + accent color | P3 | UI | S | ✅ Done |
 | H-1 | Stack frame search в API | P1 | Backend | S | ✅ Done |
 | H-4 | Request correlation engine + API | P1 | Backend | L | ✅ Done |
 | H-6 | SSE delta streaming | P1 | Backend | M | ✅ Done |

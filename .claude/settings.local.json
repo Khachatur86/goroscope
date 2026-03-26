@@ -20,7 +20,15 @@
       "Bash(make run-react-complex:*)",
       "Bash(curl -s http://127.0.0.1:7070/healthz)",
       "Bash(git checkout:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cd:*)",
+      "Bash(sed -i '' 's/background: #1e293b/background: var\\(--bg-card\\)/g' index.css)",
+      "Bash(sed -i '' 's/background: #0c1322/background: var\\(--bg-panel\\)/g' index.css)",
+      "Bash(sed -i '' 's/background: #0d1117/background: var\\(--bg-secondary\\)/g' index.css)",
+      "Bash(sed -i '' 's/background: #0f172a/background: var\\(--bg-base\\)/g' index.css)",
+      "Bash(sed -i '' 's/color: #e2e8f0/color: var\\(--text-primary\\)/g' index.css)",
+      "Bash(sed -i '' 's/color: #94a3b8/color: var\\(--text-secondary\\)/g' index.css)",
+      "Bash(sed -i '' 's/color: #64748b/color: var\\(--text-muted\\)/g' index.css)"
     ]
   }
 }
