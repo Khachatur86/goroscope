@@ -368,6 +368,33 @@ export type CompareResponse = {
   diff: CaptureDiff;
 };
 
+export type RequestGroup = {
+  request_id: string;
+  url?: string;
+  method?: string;
+  start_ns: number;
+  end_ns: number;
+  duration_ns: number;
+  goroutine_count: number;
+  goroutine_ids: number[];
+  state_breakdown: Record<string, number>;
+  source: "label" | "stack";
+};
+
+export type RequestGroupsResponse = {
+  groups: RequestGroup[];
+  total: number;
+};
+
+export async function fetchRequestGroups(): Promise<RequestGroupsResponse> {
+  return fetchJson<RequestGroupsResponse>("/api/v1/requests").catch(() => ({ groups: [], total: 0 }));
+}
+
+export async function fetchRequestGoroutines(requestId: string): Promise<Goroutine[]> {
+  const res = await fetchJson<{ goroutines: Goroutine[] }>(`/api/v1/requests/${encodeURIComponent(requestId)}/goroutines`).catch(() => ({ goroutines: [] }));
+  return res?.goroutines ?? [];
+}
+
 /** Compare two .gtrace captures. Returns baseline, compare, and diff. */
 export async function fetchCompare(fileA: File, fileB: File): Promise<CompareResponse> {
   const form = new FormData();

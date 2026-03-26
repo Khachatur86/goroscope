@@ -24,6 +24,7 @@ import { GoroutineGroups } from "./groups/GoroutineGroups";
 import { SmartInsights } from "./insights/SmartInsights";
 import { DependencyGraph } from "./graph/DependencyGraph";
 import { ContentionHeatmap } from "./analysis/ContentionHeatmap";
+import { RequestsView } from "./requests/RequestsView";
 import { CommandPalette, type Command } from "./palette/CommandPalette";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
@@ -268,7 +269,7 @@ export function App() {
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
-  const [analysisTab, setAnalysisTab] = useState<"insights" | "hotspots" | "resources" | "deadlock" | "groups" | "graph" | "heatmap">("insights");
+  const [analysisTab, setAnalysisTab] = useState<"insights" | "hotspots" | "resources" | "deadlock" | "groups" | "graph" | "heatmap" | "requests">("insights");
   const [analysisOpen, setAnalysisOpen] = useState(true);
   const [brushFilterIds, setBrushFilterIds] = useState<Set<number> | null>(null);
   const [filters, setFilters] = useState<FiltersState>(() => {
@@ -1340,6 +1341,7 @@ export function App() {
                 { id: "groups",    label: "Groups"    },
                 { id: "graph",     label: "Graph"     },
                 { id: "heatmap",   label: "Heatmap"   },
+                { id: "requests",  label: "Requests"  },
               ] as const
             ).map(({ id, label }) => (
               <button
@@ -1414,6 +1416,14 @@ export function App() {
                 onSelectResource={(id, bucketMidNS) => {
                   setFilters((f) => ({ ...f, search: id }));
                   setScrubTimeNS(bucketMidNS);
+                }}
+              />
+            )}
+            {analysisTab === "requests" && (
+              <RequestsView
+                onSelectRequest={(ids) => {
+                  // Highlight the goroutines belonging to the selected request.
+                  setHighlightedIds(ids);
                 }}
               />
             )}

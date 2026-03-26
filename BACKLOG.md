@@ -269,7 +269,7 @@
 | E-2 | VS Code inline annotations | P2 | DevEx | L | ✅ Done |
 | F-2 | Fuzz testing для trace parser | P2 | Код | S | ✅ Done |
 | G-1 | Full call-stack search | P1 | Анализ | S | ✅ Done |
-| G-5 | HTTP request correlation view | P1 | Интеграция | L | |
+| G-5 | HTTP request correlation view | P1 | Интеграция | L | ✅ Done |
 | U-1 | Drag-to-resize panels | P2 | UI | S | ✅ Done |
 | U-2 | Playback mode | P2 | UI | M | ✅ Done |
 | U-3 | Goroutine watchlist / pinning | P2 | UI | S | ✅ Done |
@@ -279,7 +279,7 @@
 | U-4 | Timeline bookmarks | P3 | UI | S | ✅ Done |
 | U-5 | Dark/light theme + accent color | P3 | UI | S | |
 | H-1 | Stack frame search в API | P1 | Backend | S | ✅ Done |
-| H-4 | Request correlation engine + API | P1 | Backend | L | |
+| H-4 | Request correlation engine + API | P1 | Backend | L | ✅ Done |
 | H-6 | SSE delta streaming | P1 | Backend | M | ✅ Done |
 | H-2 | Goroutine lifecycle timestamps в API | P2 | Backend | S | ✅ Done |
 | H-3 | Contention heatmap endpoint | P2 | Backend | M | |
@@ -390,13 +390,9 @@
 
 ---
 
-### G-5. HTTP request correlation view — вкладка «Requests» (P1)
+### ~~G-5. HTTP request correlation view~~ — ✅ РЕАЛИЗОВАНО (G-5 + H-4)
 
-**Gap:** Goroscope видит goroutines, но не группирует их по HTTP-запросам. Для web-сервисов это ключевой use case: «какие goroutines обслуживали этот запрос и где они застряли?»
-
-**Задача:** Парсить pprof labels на наличие `http.request_id`, `request_id`, `trace_id` или анализировать стеки на наличие `net/http.(*conn).serve`. Группировать goroutines в «request groups». Новая вкладка «Requests» в inspector: список запросов с URL (из labels или stack), duration (из born/died), goroutine count, state breakdown. Клик на запрос → фильтрует timeline и goroutine list к этому request group. Latency breakdown по состояниям (сколько времени провели в RUNNING / BLOCKED / WAITING).
-
-**Критерий готовности:** При наличии `http.request_id` label — вкладка показывает request groups. Без labels — fallback на группировку по `net/http`-фреймам в стеке. Работает с 1000+ concurrent requests.
+> **Реализовано:** Backend — `internal/analysis/requests.go`: `RequestGroup` struct + `Engine.GroupByRequest()`. Pass 1: группировка по labels `http.request_id`/`request_id`/`trace_id`. Pass 2 (fallback): BFS по дереву потомков от goroutines с `net/http.(*conn).serve` в стеке. Эндпоинты: `GET /api/v1/requests` (список групп), `GET /api/v1/requests/{id}/goroutines` (goroutines запроса). Frontend — `web/src/requests/RequestsView.tsx`: поиск, список групп с METHOD badge, URL, duration, goroutine count, state breakdown bar; клик → `setHighlightedIds`. Новая вкладка «Requests» в analysis panel.
 
 ---
 
@@ -432,7 +428,7 @@
 
 ---
 
-### H-4. Request correlation engine + API (P1)
+### ~~H-4. Request correlation engine + API~~ — ✅ РЕАЛИЗОВАНО (см. G-5)
 
 **Gap:** Нет понятия «HTTP-запрос» в модели данных. Goroutines, обслуживающие один запрос, не связаны между собой в API.
 

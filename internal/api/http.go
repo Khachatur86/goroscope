@@ -177,6 +177,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/compare", s.handleCompare)
 	mux.HandleFunc("/api/v1/memory", s.handleMemoryStats)
 	mux.HandleFunc("/api/v1/pprof/stacks", s.handlePprofStacks)
+	mux.HandleFunc("/api/v1/requests", s.handleRequests)
+	mux.HandleFunc("/api/v1/requests/{id}/goroutines", s.handleRequestGoroutines)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 
 	if isLocalhostAddr(s.addr) {
@@ -843,6 +845,56 @@ func (s *Server) handleDeadlockHints(w http.ResponseWriter, _ *http.Request) {
 // GET /api/v1/memory
 func (s *Server) handleMemoryStats(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.engine.MemoryStats())
+}
+
+// handleRequests returns request groups (H-4 / G-5).
+// GET /api/v1/requests
+func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	groups := s.engine.GroupByRequest()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"groups": groups,
+		"total":  len(groups),
+	})
+}
+
+// handleRequestGoroutines returns the goroutines belonging to a request group.
+// GET /api/v1/requests/{id}/goroutines
+func (s *Server) handleRequestGoroutines(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	reqID := r.PathValue("id")
+	if reqID == "" {
+		http.Error(w, "missing request id", http.StatusBadRequest)
+		return
+	}
+	groups := s.engine.GroupByRequest()
+	for _, g := range groups {
+		if g.RequestID == reqID {
+			all := s.engine.ListGoroutines()
+			idSet := make(map[int64]bool, len(g.GoroutineIDs))
+			for _, id := range g.GoroutineIDs {
+				idSet[id] = true
+			}
+			result := make([]model.Goroutine, 0, len(g.GoroutineIDs))
+			for _, goroutine := range all {
+				if idSet[goroutine.ID] {
+					result = append(result, goroutine)
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"goroutines": result,
+				"total":      len(result),
+			})
+			return
+		}
+	}
+	http.Error(w, "request group not found", http.StatusNotFound)
 }
 
 // handleMetrics serves Prometheus text exposition format (H-5).
