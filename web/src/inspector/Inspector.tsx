@@ -132,6 +132,12 @@ type Props = {
   isScrubActive?: boolean;
   /** Substring from a "stack:<needle>" search — matching frames are highlighted. */
   stackFrameNeedle?: string;
+  /** Whether the selected goroutine is pinned in the watchlist (U-3). */
+  isPinned?: boolean;
+  /** Current watchlist note for this goroutine (U-3). */
+  pinnedNote?: string;
+  /** Called when the user changes the watchlist note (U-3). */
+  onSetNote?: (note: string) => void;
 };
 
 function formatDuration(ns: number): string {
@@ -151,7 +157,7 @@ function formatTimestamp(s?: string): string {
   }
 }
 
-export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive, isScrubActive, stackFrameNeedle }: Props) {
+export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive, isScrubActive, stackFrameNeedle, isPinned, pinnedNote, onSetNote }: Props) {
   const [segmentStack, setSegmentStack] = useState<Goroutine["last_stack"] | null>(null);
   const [flameOpen, setFlameOpen] = useState(false);
   const [pprofOpen, setPprofOpen] = useState(false);
@@ -262,6 +268,19 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
         <div className="inspector-label">Function</div>
         <div className="inspector-value">{goroutine.labels?.function ?? "—"}</div>
       </div>
+      {isPinned && onSetNote && (
+        <div className="inspector-section inspector-note-section">
+          <div className="inspector-label">★ Watchlist note</div>
+          <input
+            type="text"
+            className="inspector-note-input"
+            value={pinnedNote ?? ""}
+            maxLength={80}
+            placeholder="Add a note…"
+            onChange={(e) => onSetNote(e.target.value)}
+          />
+        </div>
+      )}
       {goroutine.labels && Object.keys(goroutine.labels).length > 0 && (
         <div className="inspector-section">
           <div className="inspector-label">Labels</div>

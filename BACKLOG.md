@@ -272,7 +272,7 @@
 | G-5 | HTTP request correlation view | P1 | Интеграция | L | |
 | U-1 | Drag-to-resize panels | P2 | UI | S | ✅ Done |
 | U-2 | Playback mode | P2 | UI | M | |
-| U-3 | Goroutine watchlist / pinning | P2 | UI | S | |
+| U-3 | Goroutine watchlist / pinning | P2 | UI | S | ✅ Done |
 | G-2 | Resource contention heatmap | P2 | Анализ | M | |
 | G-3 | Goroutine birth/death markers | P2 | UI | S | |
 | G-4 | `goroscope watch` — anomaly alerts | P2 | CLI | M | |

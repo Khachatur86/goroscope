@@ -138,26 +138,59 @@ function LifetimeBar({ segments }: { segments: TimelineSegment[] | undefined }) 
   );
 }
 
+// ── Goroutine watchlist / pinning (U-3) ─────────────────────────────────────
+const LS_PINNED = "goroscope:pinned";
+
+type PinnedMap = Map<number, string>; // goroutine_id → note (may be "")
+
+function loadPinned(): PinnedMap {
+  try {
+    const raw = localStorage.getItem(LS_PINNED);
+    if (!raw) return new Map();
+    const entries: [number, string][] = JSON.parse(raw);
+    return new Map(entries);
+  } catch {
+    return new Map();
+  }
+}
+
+function savePinned(m: PinnedMap) {
+  localStorage.setItem(LS_PINNED, JSON.stringify([...m.entries()]));
+}
+
 type GoroutineRowData = {
   goroutines: Goroutine[];
   selectedId: number | null;
   onSelect: (id: number) => void;
   segmentsByGoroutine: Map<number, TimelineSegment[]>;
+  pinned: PinnedMap;
+  onTogglePin: (id: number) => void;
 };
 
 function GoroutineRow({ index, style, data }: ListChildComponentProps<GoroutineRowData>) {
   const g = data.goroutines[index];
+  const isPinned = data.pinned.has(g.goroutine_id);
+  const note = data.pinned.get(g.goroutine_id) ?? "";
   return (
     <div style={style}>
       <button
         type="button"
-        className={`lane-item ${data.selectedId === g.goroutine_id ? "active" : ""}`}
+        className={`lane-item ${data.selectedId === g.goroutine_id ? "active" : ""}${isPinned ? " pinned" : ""}`}
         onClick={() => data.onSelect(g.goroutine_id)}
       >
+        <button
+          type="button"
+          className="pin-btn"
+          title={isPinned ? "Unpin goroutine" : "Pin goroutine"}
+          onClick={(e) => { e.stopPropagation(); data.onTogglePin(g.goroutine_id); }}
+          aria-pressed={isPinned}
+        >
+          {isPinned ? "★" : "☆"}
+        </button>
         <span className={`state-pill ${g.state}`}>{g.state}</span>
         <span className="lane-item-title">G{g.goroutine_id}</span>
         <span className="lane-item-meta">
-          {g.labels?.function ?? g.reason ?? "—"}
+          {note || (g.labels?.function ?? g.reason ?? "—")}
         </span>
         <LifetimeBar segments={data.segmentsByGoroutine.get(g.goroutine_id)} />
       </button>
@@ -258,6 +291,29 @@ export function App() {
   const { width: laneWidth, startDrag: startLaneDrag } = usePanelResize(LS_LANE_WIDTH, LANE_WIDTH_DEFAULT);
   const { width: inspectorWidth, startDrag: startInspectorDrag } = usePanelResize(LS_INSPECTOR_WIDTH, INSPECTOR_WIDTH_DEFAULT);
 
+  // Goroutine watchlist (U-3).
+  const [pinned, setPinned] = useState<PinnedMap>(() => loadPinned());
+
+  const handleTogglePin = useCallback((id: number) => {
+    setPinned((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) next.delete(id);
+      else next.set(id, "");
+      savePinned(next);
+      return next;
+    });
+  }, []);
+
+  const handleSetNote = useCallback((id: number, note: string) => {
+    setPinned((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.set(id, note.slice(0, 80));
+      savePinned(next);
+      return next;
+    });
+  }, []);
+
   // Time scrubber: declared early because scrubMap/listGoroutines useMemos reference them.
   const [scrubTimeNS, setScrubTimeNS] = useState<number | null>(null);
   const [scrubSnapshot, setScrubSnapshot] = useState<ScrubSnapshot[]>([]);
@@ -308,6 +364,19 @@ export function App() {
     displayGoroutines = displayGoroutines.filter(
       (g) => brushFilterIds.has(g.goroutine_id) || g.goroutine_id === selectedId
     );
+  }
+
+  // Pinned goroutines always appear at the top (U-3). Pinned goroutines not in
+  // the current filter set are also injected so they remain accessible.
+  if (pinned.size > 0) {
+    const pinnedInList = displayGoroutines.filter((g) => pinned.has(g.goroutine_id));
+    const rest = displayGoroutines.filter((g) => !pinned.has(g.goroutine_id));
+    // Add pinned goroutines that were filtered out.
+    const pinnedNotVisible = [...pinned.keys()]
+      .filter((id) => !displayGoroutines.some((g) => g.goroutine_id === id))
+      .map((id) => goroutines.find((g) => g.goroutine_id === id))
+      .filter((g): g is Goroutine => g !== undefined);
+    displayGoroutines = [...pinnedNotVisible, ...pinnedInList, ...rest];
   }
 
   // When the time scrubber is active, merge historical states from the snapshot
@@ -1053,7 +1122,7 @@ export function App() {
                 itemCount={listGoroutines.length}
                 itemSize={GOROUTINE_ITEM_HEIGHT}
                 width="100%"
-                itemData={{ goroutines: listGoroutines, selectedId, onSelect: handleSelect, segmentsByGoroutine }}
+                itemData={{ goroutines: listGoroutines, selectedId, onSelect: handleSelect, segmentsByGoroutine, pinned, onTogglePin: handleTogglePin }}
               >
                 {GoroutineRow}
               </FixedSizeList>
@@ -1163,6 +1232,9 @@ export function App() {
             onHighlightBranch={setHighlightedIds}
             highlightActive={highlightedIds !== null}
             stackFrameNeedle={stackFrameNeedle ?? undefined}
+            isPinned={selectedGoroutine !== null && pinned.has(selectedGoroutine.goroutine_id)}
+            pinnedNote={selectedGoroutine !== null ? pinned.get(selectedGoroutine.goroutine_id) : undefined}
+            onSetNote={selectedGoroutine !== null ? (note) => handleSetNote(selectedGoroutine.goroutine_id, note) : undefined}
           />
         </aside>
       </main>
