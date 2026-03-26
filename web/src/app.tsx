@@ -27,6 +27,60 @@ import { ContentionHeatmap } from "./analysis/ContentionHeatmap";
 import { CommandPalette, type Command } from "./palette/CommandPalette";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 
+// ── Panel resize (U-1) ───────────────────────────────────────────────────────
+const LS_LANE_WIDTH = "goroscope:laneWidth";
+const LS_INSPECTOR_WIDTH = "goroscope:inspectorWidth";
+const LANE_WIDTH_DEFAULT = 280;
+const INSPECTOR_WIDTH_DEFAULT = 300;
+const PANEL_MIN = 180;
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function usePanelResize(lsKey: string, defaultWidth: number) {
+  const [width, setWidth] = useState<number>(() => {
+    const stored = localStorage.getItem(lsKey);
+    return stored ? Number(stored) : defaultWidth;
+  });
+
+  const startDrag = useCallback(
+    (e: React.MouseEvent, side: "left" | "right") => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = width;
+      const onMove = (ev: MouseEvent) => {
+        const delta = side === "right" ? ev.clientX - startX : startX - ev.clientX;
+        setWidth(clamp(startW + delta, PANEL_MIN, 640));
+      };
+      const onUp = (ev: MouseEvent) => {
+        const delta = side === "right" ? ev.clientX - startX : startX - ev.clientX;
+        const next = clamp(startW + delta, PANEL_MIN, 640);
+        localStorage.setItem(lsKey, String(next));
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [width, lsKey]
+  );
+
+  return { width, startDrag };
+}
+
+/** Thin draggable strip between two panels. */
+function PanelDivider({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+  return (
+    <div
+      className="panel-divider"
+      onMouseDown={onMouseDown}
+      role="separator"
+      aria-orientation="vertical"
+    />
+  );
+}
+
 /** Height of one row in the virtualised goroutine list (px). */
 const GOROUTINE_ITEM_HEIGHT = 44;
 /** Visible height of the virtualised goroutine list (px). */
@@ -199,6 +253,10 @@ export function App() {
       labelFilter: fromUrl.labelFilter ?? "",
     };
   });
+
+  // Panel resize (U-1).
+  const { width: laneWidth, startDrag: startLaneDrag } = usePanelResize(LS_LANE_WIDTH, LANE_WIDTH_DEFAULT);
+  const { width: inspectorWidth, startDrag: startInspectorDrag } = usePanelResize(LS_INSPECTOR_WIDTH, INSPECTOR_WIDTH_DEFAULT);
 
   // Time scrubber: declared early because scrubMap/listGoroutines useMemos reference them.
   const [scrubTimeNS, setScrubTimeNS] = useState<number | null>(null);
@@ -958,7 +1016,7 @@ export function App() {
       )}
 
       <main className="workspace">
-        <aside className="panel lane-panel">
+        <aside className="panel lane-panel" style={{ width: laneWidth, flexShrink: 0 }}>
           <div className="panel-header">
             <h2>Goroutines</h2>
             <p className="goroutine-count-label">
@@ -1002,6 +1060,8 @@ export function App() {
             )}
           </div>
         </aside>
+
+        <PanelDivider onMouseDown={(e) => startLaneDrag(e, "right")} />
 
         <section ref={timelinePanelRef} className="panel timeline-panel">
           <div className="timeline-controls">
@@ -1088,7 +1148,9 @@ export function App() {
           />
         </section>
 
-        <aside className="panel inspector-panel">
+        <PanelDivider onMouseDown={(e) => startInspectorDrag(e, "left")} />
+
+        <aside className="panel inspector-panel" style={{ width: inspectorWidth, flexShrink: 0 }}>
           <div className="inspector-panel-header">
             <h2>Inspector</h2>
           </div>

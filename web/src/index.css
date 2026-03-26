@@ -177,12 +177,55 @@ body {
 /* ── Workspace: fills remaining vertical space ─────────────────────────────── */
 .workspace {
   flex: 1;
-  min-height: 0;          /* critical: lets grid shrink below natural size */
-  display: grid;
-  grid-template-columns: 280px 1fr 300px;
-  gap: 0.75rem;
+  min-height: 0;          /* critical: lets flex children shrink */
+  display: flex;
+  flex-direction: row;
+  gap: 0;
   padding: 0.75rem 1rem 0;
   overflow: hidden;
+}
+
+.workspace > .panel {
+  margin: 0 0.375rem;
+}
+
+.workspace > .panel:first-child {
+  margin-left: 0;
+}
+
+.workspace > .panel:last-child {
+  margin-right: 0;
+}
+
+/* timeline-panel takes remaining space */
+.timeline-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Draggable divider between panels */
+.panel-divider {
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s;
+}
+
+.panel-divider::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.panel-divider:hover::after,
+.panel-divider:active::after {
+  background: rgba(20, 184, 166, 0.7);
 }
 
 .panel {
