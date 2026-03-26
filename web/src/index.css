@@ -1145,6 +1145,32 @@ body {
   background: linear-gradient(135deg, #1d4ed8, #0f766e);
 }
 
+/* Playback controls (U-2) */
+.playback-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-left: 1px solid rgba(100, 116, 139, 0.4);
+  margin-left: 4px;
+  padding-left: 6px;
+}
+
+.playback-btn.active {
+  background: rgba(20, 184, 166, 0.2);
+  border-color: #14b8a6;
+  color: #14b8a6;
+}
+
+.playback-speed-btn {
+  min-width: 2rem;
+}
+
+.playback-speed-btn.active {
+  background: rgba(249, 115, 22, 0.2);
+  border-color: #f97316;
+  color: #f97316;
+}
+
 .timeline-brush-toggle.active {
   background: rgba(56, 189, 248, 0.15);
   border-color: #38bdf8;

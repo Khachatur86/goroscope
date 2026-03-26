@@ -318,6 +318,11 @@ export function App() {
   const [scrubTimeNS, setScrubTimeNS] = useState<number | null>(null);
   const [scrubSnapshot, setScrubSnapshot] = useState<ScrubSnapshot[]>([]);
 
+  // Playback controls (U-2) — state only; logic runs after timelineSegments is declared.
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState<1 | 2 | 4>(1);
+  const playbackRef = useRef<{ rafId: number; lastWall: number; traceNS: number } | null>(null);
+
   // Segments from the Timeline component — used to draw per-row lifetime bars.
   const [timelineSegments, setTimelineSegments] = useState<TimelineSegment[]>([]);
   const segmentsByGoroutine = useMemo(() => {
@@ -329,6 +334,56 @@ export function App() {
     }
     return map;
   }, [timelineSegments]);
+
+  // Compute the trace time extent from loaded segments (used by playback U-2).
+  const { traceMinNS, traceMaxNS } = useMemo(() => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const s of timelineSegments) {
+      if (s.start_ns < lo) lo = s.start_ns;
+      if (s.end_ns > hi) hi = s.end_ns;
+    }
+    return { traceMinNS: lo === Infinity ? 0 : lo, traceMaxNS: hi === -Infinity ? 0 : hi };
+  }, [timelineSegments]);
+
+  // Start/stop the rAF playback loop (U-2).
+  useEffect(() => {
+    if (!isPlaying || traceMaxNS <= traceMinNS) {
+      if (playbackRef.current) {
+        cancelAnimationFrame(playbackRef.current.rafId);
+        playbackRef.current = null;
+      }
+      return;
+    }
+    const startTrace = scrubTimeNS !== null && scrubTimeNS > traceMinNS && scrubTimeNS < traceMaxNS
+      ? scrubTimeNS
+      : traceMinNS;
+
+    const state = { rafId: 0, lastWall: performance.now(), traceNS: startTrace };
+    playbackRef.current = state;
+
+    const tick = (now: number) => {
+      const elapsed = now - state.lastWall; // ms
+      state.lastWall = now;
+      state.traceNS += elapsed * 1e6 * playSpeed; // ms → ns, scaled
+      if (state.traceNS >= traceMaxNS) {
+        setScrubTimeNS(traceMaxNS);
+        setIsPlaying(false);
+        return;
+      }
+      setScrubTimeNS(state.traceNS);
+      state.rafId = requestAnimationFrame(tick);
+      playbackRef.current = state;
+    };
+    state.rafId = requestAnimationFrame(tick);
+    playbackRef.current = state;
+
+    return () => {
+      cancelAnimationFrame(state.rafId);
+      playbackRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, playSpeed, traceMinNS, traceMaxNS]);
 
   // Memoised so that unrelated state changes (selectedId, inspectorTab, …)
   // do not trigger a full 200-goroutine re-sort on every render.
@@ -1200,6 +1255,39 @@ export function App() {
             >
               ⊞ Heatmap
             </button>
+
+            {/* ── Playback controls (U-2) ── */}
+            {traceMaxNS > traceMinNS && (
+              <span className="playback-controls">
+                <button
+                  type="button"
+                  className="timeline-control-button playback-btn"
+                  title="Reset playback to start"
+                  onClick={() => { setIsPlaying(false); setScrubTimeNS(traceMinNS); }}
+                >
+                  ⏮
+                </button>
+                <button
+                  type="button"
+                  className={`timeline-control-button playback-btn${isPlaying ? " active" : ""}`}
+                  title={isPlaying ? "Pause" : "Play"}
+                  onClick={() => setIsPlaying((v) => !v)}
+                >
+                  {isPlaying ? "⏸" : "▶"}
+                </button>
+                {([1, 2, 4] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={`timeline-control-button playback-speed-btn${playSpeed === s ? " active" : ""}`}
+                    onClick={() => setPlaySpeed(s)}
+                    title={`${s}× speed`}
+                  >
+                    {s}×
+                  </button>
+                ))}
+              </span>
+            )}
           </div>
           <Timeline
             ref={timelineRef}
