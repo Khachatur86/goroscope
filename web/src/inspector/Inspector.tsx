@@ -130,6 +130,8 @@ type Props = {
    * rather than a user click. Changes badge text and stack section label.
    */
   isScrubActive?: boolean;
+  /** Substring from a "stack:<needle>" search — matching frames are highlighted. */
+  stackFrameNeedle?: string;
 };
 
 function formatDuration(ns: number): string {
@@ -149,7 +151,7 @@ function formatTimestamp(s?: string): string {
   }
 }
 
-export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive, isScrubActive }: Props) {
+export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoroutine, onHighlightBranch, highlightActive, isScrubActive, stackFrameNeedle }: Props) {
   const [segmentStack, setSegmentStack] = useState<Goroutine["last_stack"] | null>(null);
   const [flameOpen, setFlameOpen] = useState(false);
   const [pprofOpen, setPprofOpen] = useState(false);
@@ -304,29 +306,36 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
           )}
         </div>
         {frames.length > 0 ? (
-          frames.map((frame, i) => (
-            <div
-              key={i}
-              className="stack-frame"
-              data-file={frame.file}
-              data-line={frame.line}
-              onClick={() => {
-                if (frame.file && window.parent !== window) {
-                  window.parent.postMessage(
-                    { type: "goroscope:openFile", file: frame.file, line: frame.line },
-                    "*"
-                  );
-                }
-              }}
-              role={frame.file ? "button" : undefined}
-              tabIndex={frame.file ? 0 : undefined}
-            >
-              <div className="stack-func">{frame.func}</div>
-              <div className="stack-path">
-                {frame.file}:{frame.line}
+          frames.map((frame, i) => {
+            const needle = stackFrameNeedle?.toLowerCase();
+            const isMatch = needle
+              ? frame.func?.toLowerCase().includes(needle) ||
+                (frame.file ?? "").toLowerCase().includes(needle)
+              : false;
+            return (
+              <div
+                key={i}
+                className={`stack-frame${isMatch ? " stack-frame--match" : ""}`}
+                data-file={frame.file}
+                data-line={frame.line}
+                onClick={() => {
+                  if (frame.file && window.parent !== window) {
+                    window.parent.postMessage(
+                      { type: "goroscope:openFile", file: frame.file, line: frame.line },
+                      "*"
+                    );
+                  }
+                }}
+                role={frame.file ? "button" : undefined}
+                tabIndex={frame.file ? 0 : undefined}
+              >
+                <div className="stack-func">{frame.func}</div>
+                <div className="stack-path">
+                  {frame.file}:{frame.line}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="empty-message">No stack snapshot yet.</div>
         )}

@@ -52,16 +52,30 @@ export function filterAndSortGoroutines(
       if (!Number.isFinite(min) || (g.wait_ns ?? 0) < min) return false;
     }
     if (filters.search) {
-      const haystack = [
-        String(g.goroutine_id),
-        g.state,
-        g.reason ?? "",
-        g.resource_id ?? "",
-        g.labels?.function ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
-      if (!haystack.includes(filters.search.toLowerCase())) return false;
+      const needle = filters.search.toLowerCase();
+      if (needle.startsWith("stack:")) {
+        const frameNeedle = needle.slice("stack:".length).trim();
+        if (frameNeedle) {
+          const frames = g.last_stack?.frames ?? [];
+          const matched = frames.some(
+            (f) =>
+              f.func?.toLowerCase().includes(frameNeedle) ||
+              (f.file ?? "").toLowerCase().includes(frameNeedle)
+          );
+          if (!matched) return false;
+        }
+      } else {
+        const haystack = [
+          String(g.goroutine_id),
+          g.state,
+          g.reason ?? "",
+          g.resource_id ?? "",
+          g.labels?.function ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
     }
     if (filters.labelFilter) {
       const eq = filters.labelFilter.indexOf("=");

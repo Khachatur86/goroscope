@@ -306,6 +306,12 @@ export function App() {
   const hasGoroutineInURL = parseGoroutineFromURL() !== null;
 
   // goroutineParams is shared between the full load and the live-refresh path.
+  // When the search field starts with "stack:" the substring is sent as the
+  // stack_frame param (backend scans all frames) instead of the generic search.
+  const stackFrameNeedle = filters.search.toLowerCase().startsWith("stack:")
+    ? filters.search.slice("stack:".length).trim()
+    : null;
+
   const goroutineParams = useMemo(
     () =>
       hasGoroutineInURL
@@ -313,11 +319,12 @@ export function App() {
         : {
             state: filters.state !== "ALL" ? filters.state : undefined,
             reason: filters.reason || undefined,
-            search: filters.search || undefined,
+            search: stackFrameNeedle !== null ? undefined : filters.search || undefined,
+            stack_frame: stackFrameNeedle || undefined,
             min_wait_ns: filters.minWaitNs || undefined,
             label: filters.labelFilter || undefined,
           },
-    [hasGoroutineInURL, filters.state, filters.reason, filters.search, filters.minWaitNs, filters.labelFilter]
+    [hasGoroutineInURL, filters.state, filters.reason, filters.search, stackFrameNeedle, filters.minWaitNs, filters.labelFilter]
   );
 
   // loadData fetches all endpoints (session, goroutines, resources, insights,
@@ -1093,6 +1100,7 @@ export function App() {
             onSelectGoroutine={handleSelect}
             onHighlightBranch={setHighlightedIds}
             highlightActive={highlightedIds !== null}
+            stackFrameNeedle={stackFrameNeedle ?? undefined}
           />
         </aside>
       </main>

@@ -1180,6 +1180,16 @@ body {
   background: rgba(59, 130, 246, 0.2);
 }
 
+.stack-frame--match {
+  background: rgba(20, 184, 166, 0.18);
+  border-left: 3px solid #14b8a6;
+  padding-left: calc(0.5rem - 3px);
+}
+
+.stack-frame--match .stack-func {
+  color: #5eead4;
+}
+
 .stack-func {
   font-family: monospace;
   font-size: 0.85rem;

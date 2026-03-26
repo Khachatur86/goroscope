@@ -268,7 +268,7 @@
 | D-3 | Graceful degradation (sampling) | P2 | Production | L | ✅ Done |
 | E-2 | VS Code inline annotations | P2 | DevEx | L | ✅ Done |
 | F-2 | Fuzz testing для trace parser | P2 | Код | S | ✅ Done |
-| G-1 | Full call-stack search | P1 | Анализ | S | |
+| G-1 | Full call-stack search | P1 | Анализ | S | ✅ Done |
 | G-5 | HTTP request correlation view | P1 | Интеграция | L | |
 | U-1 | Drag-to-resize panels | P2 | UI | S | |
 | U-2 | Playback mode | P2 | UI | M | |

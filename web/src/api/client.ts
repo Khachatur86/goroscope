@@ -80,6 +80,7 @@ export async function fetchGoroutines(params?: {
   state?: string;
   reason?: string;
   search?: string;
+  stack_frame?: string;
   min_wait_ns?: string;
   label?: string;
   limit?: number;
@@ -89,6 +90,7 @@ export async function fetchGoroutines(params?: {
   if (params?.state && params.state !== "ALL") q.set("state", params.state);
   if (params?.reason) q.set("reason", params.reason);
   if (params?.search) q.set("search", params.search);
+  if (params?.stack_frame) q.set("stack_frame", params.stack_frame);
   if (params?.min_wait_ns) q.set("min_wait_ns", params.min_wait_ns);
   if (params?.label) q.set("label", params.label);
   if (params?.limit) q.set("limit", String(params.limit));

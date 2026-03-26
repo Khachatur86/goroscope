@@ -112,7 +112,7 @@ export function Filters({ filters, onFiltersChange, onJumpTo, jumpToInputRef, di
           <span>Search</span>
           <input
             type="search"
-            placeholder="id, function, reason"
+            placeholder="id, function, reason, stack:net/http"
             value={filters.search}
             onChange={(e) =>
               onFiltersChange({ ...filters, search: e.target.value })
