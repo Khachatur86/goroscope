@@ -274,7 +274,7 @@
 | U-2 | Playback mode | P2 | UI | M | ✅ Done |
 | U-3 | Goroutine watchlist / pinning | P2 | UI | S | ✅ Done |
 | G-2 | Resource contention heatmap | P2 | Анализ | M | |
-| G-3 | Goroutine birth/death markers | P2 | UI | S | |
+| G-3 | Goroutine birth/death markers | P2 | UI | S | ✅ Done |
 | G-4 | `goroscope watch` — anomaly alerts | P2 | CLI | M | ✅ Done |
 | U-4 | Timeline bookmarks | P3 | UI | S | |
 | U-5 | Dark/light theme + accent color | P3 | UI | S | |

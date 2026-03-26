@@ -150,6 +150,8 @@ type Props = {
    * Used by the parent to lazy-load segments for the visible slice.
    */
   onVisibleRangeChange?: (firstIndex: number, lastIndex: number) => void;
+  /** When true, draw ▲ (born) and ▼ (died) lifecycle markers on goroutine rows (G-3). */
+  showLifecycleMarkers?: boolean;
 };
 
 export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function TimelineCanvas({
@@ -170,6 +172,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
   scrubTimeNS,
   onScrubChange,
   onVisibleRangeChange,
+  showLifecycleMarkers = false,
 }: Props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -735,6 +738,42 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       ctx.globalAlpha = 1;
     }
 
+    // ── Lifecycle markers (G-3) ───────────────────────────────────────────────
+    if (showLifecycleMarkers) {
+      for (let index = firstVisibleIndex; index <= lastVisibleIndex; index++) {
+        const g = goroutines[index];
+        const drawY = index * METRICS.rowHeight - rowScrollTop;
+        const markerCy = drawY + METRICS.rowHeight / 2;
+        const markerH = 8;
+
+        const drawTriangle = (cx: number, up: boolean, color: string) => {
+          if (cx < plotLeft || cx > plotLeft + innerWidth) return;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          if (up) {
+            ctx.moveTo(cx, markerCy - markerH);
+            ctx.lineTo(cx + markerH * 0.6, markerCy);
+            ctx.lineTo(cx - markerH * 0.6, markerCy);
+          } else {
+            ctx.moveTo(cx, markerCy + markerH);
+            ctx.lineTo(cx + markerH * 0.6, markerCy);
+            ctx.lineTo(cx - markerH * 0.6, markerCy);
+          }
+          ctx.closePath();
+          ctx.fill();
+        };
+
+        if (g.born_ns && g.born_ns > 0) {
+          const bx = plotLeft + ((g.born_ns - visibleStart) / visibleSpan) * innerWidth;
+          drawTriangle(bx, true, "rgba(16, 207, 184, 0.9)");
+        }
+        if (g.died_ns && g.died_ns > 0) {
+          const dx = plotLeft + ((g.died_ns - visibleStart) / visibleSpan) * innerWidth;
+          drawTriangle(dx, false, "rgba(100, 116, 139, 0.9)");
+        }
+      }
+    }
+
     // Draw brush overlay (active drag or committed brushRange)
     const drawBrush = (startNS: number, endNS: number) => {
       const container2 = containerRef.current;
@@ -822,6 +861,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     pxToNS,
     scrubTimeNS,
     annotations,
+    showLifecycleMarkers,
   ]);
 
   useEffect(() => {

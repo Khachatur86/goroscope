@@ -15,6 +15,12 @@ export type Goroutine = {
   wait_ns?: number;
   created_at?: string;
   last_seen_at?: string;
+  /** Nanosecond timestamp when the goroutine was first observed (H-2). */
+  born_ns?: number;
+  /** Nanosecond timestamp when the goroutine reached DONE state (H-2). */
+  died_ns?: number;
+  /** False if the goroutine has finished (H-2). */
+  is_alive?: boolean;
   parent_id?: number;
   labels?: Record<string, string>;
   last_stack?: {

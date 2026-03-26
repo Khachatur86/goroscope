@@ -80,6 +80,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   onScrubSnapshot,
   onSegmentsChange,
 }: Props, ref) {
+  const [showLifecycleMarkers, setShowLifecycleMarkers] = useState(false);
   // segmentMap: goroutine_id → segments. Populated lazily as visible range changes.
   const [segmentMap, setSegmentMap] = useState<Map<number, TimelineSegment[]>>(new Map());
   // Track which goroutine IDs have already been fetched so we don't re-request them.
@@ -338,6 +339,15 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
               ⏱ Scrubbing — ESC to clear
             </span>
           )}
+          <button
+            type="button"
+            className={`timeline-control-button lifecycle-markers-toggle${showLifecycleMarkers ? " active" : ""}`}
+            onClick={() => setShowLifecycleMarkers((v) => !v)}
+            title="Toggle goroutine birth ▲ / death ▼ markers"
+            aria-pressed={showLifecycleMarkers}
+          >
+            ▲▼ Lifecycle
+          </button>
         </div>
       </div>
       <MetricsChart segments={filteredSegments} highlightRange={brushRange} />
@@ -382,6 +392,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
             scrubTimeNS={scrubTimeNS}
             onScrubChange={onScrubChange}
             onVisibleRangeChange={handleVisibleRangeChange}
+            showLifecycleMarkers={showLifecycleMarkers}
           />
         </div>
       )}
