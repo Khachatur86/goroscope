@@ -72,3 +72,57 @@ func BenchmarkEngineListGoroutines(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkEngineUpdate measures the cost of incremental engine updates (I-4).
+// The "stable" sub-benchmark calls ResourceContention/GroupByRequest with no
+// state changes between calls — it should hit the cache and be ~O(1).
+// The "update" sub-benchmark applies one new event before each call, forcing a
+// recompute, to validate that the dirty-flag path is still fast.
+func BenchmarkEngineUpdate(b *testing.B) {
+	const nGoroutines = 10_000
+	events := genEvents(nGoroutines)
+	capture := model.Capture{Name: "bench", Events: events}
+	sess := &model.Session{ID: "sess", Name: "bench", Target: "bench", Status: model.SessionStatusRunning, StartedAt: time.Now()}
+
+	b.Run(fmt.Sprintf("ResourceContention/stable/goroutines=%d", nGoroutines), func(b *testing.B) {
+		eng := NewEngine()
+		eng.LoadCapture(sess, capture)
+		// Warm up the cache.
+		_ = eng.ResourceContention()
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_ = eng.ResourceContention()
+		}
+	})
+
+	b.Run(fmt.Sprintf("ResourceContention/update/goroutines=%d", nGoroutines), func(b *testing.B) {
+		eng := NewEngine()
+		eng.LoadCapture(sess, capture)
+		base := time.Date(2026, time.March, 14, 12, 0, 0, 0, time.UTC)
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			// Force dirty on every iteration by applying a new event.
+			eng.ApplyEvents([]model.Event{{
+				Kind:        model.EventKindGoroutineState,
+				GoroutineID: int64(i%nGoroutines + 2),
+				Timestamp:   base.Add(time.Duration(i) * time.Second),
+				State:       model.StateRunning,
+			}})
+			_ = eng.ResourceContention()
+		}
+	})
+
+	b.Run(fmt.Sprintf("GroupByRequest/stable/goroutines=%d", nGoroutines), func(b *testing.B) {
+		eng := NewEngine()
+		eng.LoadCapture(sess, capture)
+		// Warm up the cache.
+		_ = eng.GroupByRequest()
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_ = eng.GroupByRequest()
+		}
+	})
+}

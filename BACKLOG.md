@@ -286,8 +286,8 @@
 | H-5 | Prometheus `/metrics` endpoint | P2 | Backend | S | ✅ Done |
 | H-7 | Multi-process monitoring | P2 | Backend | L | |
 | I-1 | OpenAPI spec + generated TS client | P2 | Infrastructure | S | |
-| I-4 | Engine incremental recompute | P1 | Infrastructure | M | |
-| I-5 | API integration test suite | P1 | Infrastructure | M | |
+| I-4 | Engine incremental recompute | P1 | Infrastructure | M | ✅ Done |
+| I-5 | API integration test suite | P1 | Infrastructure | M | ✅ Done |
 | I-2 | Docker image + Compose пример | P2 | Infrastructure | S | |
 | I-6 | CSP + CORS headers | P2 | Infrastructure | S | ✅ Done |
 | I-7 | `goroscope diff` CLI command | P2 | Infrastructure | S | ✅ Done |

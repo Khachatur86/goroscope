@@ -27,10 +27,27 @@ type RequestGroup struct {
 
 // GroupByRequest returns goroutines grouped by HTTP request.
 // Groups are sorted by DurationNS descending, falling back to GoroutineCount.
+// Results are cached and only recomputed when goroutine labels or stacks
+// have changed since the last call (I-4 incremental recompute).
 func (e *Engine) GroupByRequest() []RequestGroup {
+	// Fast path: read lock, return cache when clean.
 	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return buildRequestGroups(e)
+	if !e.groupsDirty {
+		out := cloneRequestGroups(e.groupsCache)
+		e.mu.RUnlock()
+		return out
+	}
+	e.mu.RUnlock()
+
+	// Slow path: recompute under write lock (double-check after acquiring).
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.groupsDirty {
+		return cloneRequestGroups(e.groupsCache)
+	}
+	e.groupsCache = buildRequestGroups(e)
+	e.groupsDirty = false
+	return cloneRequestGroups(e.groupsCache)
 }
 
 func buildRequestGroups(e *Engine) []RequestGroup {

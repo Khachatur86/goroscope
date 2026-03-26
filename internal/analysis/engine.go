@@ -89,6 +89,16 @@ type Engine struct {
 
 	subsMu      sync.Mutex
 	subscribers map[chan struct{}]struct{}
+
+	// Incremental-recompute cache (I-4).
+	// contentionDirty is true whenever segments or edges have changed since the
+	// last ResourceContention call. groupsDirty is true whenever goroutine
+	// labels or stacks changed since the last GroupByRequest call.
+	// Both start as true so the first call always computes a fresh result.
+	contentionDirty bool
+	contentionCache []ResourceContention
+	groupsDirty     bool
+	groupsCache     []RequestGroup
 }
 
 type activeSegment struct {
@@ -130,6 +140,8 @@ func NewEngine(opts ...Option) *Engine {
 		goroutineBornAt:    make(map[int64]uint64),
 		goroutineChangedAt: make(map[int64]uint64),
 		retention:          DefaultRetentionPolicy(),
+		contentionDirty:    true,
+		groupsDirty:        true,
 	}
 	for _, o := range opts {
 		o(e)
@@ -296,6 +308,7 @@ func (e *Engine) SetLabelOverrides(overrides map[int64]model.Labels) {
 		}
 	}
 	e.dataVersion++
+	e.groupsDirty = true
 }
 
 // Flush notifies all subscribers that engine state has been updated.
@@ -311,6 +324,7 @@ func (e *Engine) SetResourceGraph(edges []model.ResourceEdge) {
 
 	e.edges = append([]model.ResourceEdge(nil), edges...)
 	e.dataVersion++
+	e.contentionDirty = true
 }
 
 // DataVersion returns a monotonic version that changes whenever engine state changes.
@@ -491,8 +505,25 @@ func (e *Engine) LeakCandidates(thresholdNS int64) []model.Goroutine {
 }
 
 // ResourceContention returns contention metrics per resource from the timeline.
+// Results are cached and only recomputed when segments or edges have changed
+// since the last call (I-4 incremental recompute).
 func (e *Engine) ResourceContention() []ResourceContention {
+	// Fast path: read lock, return cache when clean.
 	e.mu.RLock()
+	if !e.contentionDirty {
+		out := cloneContention(e.contentionCache)
+		e.mu.RUnlock()
+		return out
+	}
+	e.mu.RUnlock()
+
+	// Slow path: recompute under write lock (double-check after acquiring).
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.contentionDirty {
+		return cloneContention(e.contentionCache)
+	}
+
 	segments := make([]model.TimelineSegment, 0, len(e.closedSegments)+len(e.activeSegments))
 	segments = append(segments, e.closedSegments...)
 	for goroutineID, segment := range e.activeSegments {
@@ -504,8 +535,9 @@ func (e *Engine) ResourceContention() []ResourceContention {
 			segments = append(segments, derived)
 		}
 	}
-	e.mu.RUnlock()
-	return ComputeResourceContention(segments)
+	e.contentionCache = ComputeResourceContention(segments)
+	e.contentionDirty = false
+	return cloneContention(e.contentionCache)
 }
 
 // ResourceGraph returns the current set of resource dependency edges.
@@ -756,6 +788,10 @@ func (e *Engine) resetLocked(session *model.Session) {
 	e.goroutineBornAt = make(map[int64]uint64)
 	e.goroutineChangedAt = make(map[int64]uint64)
 	e.dataVersion++
+	e.contentionDirty = true
+	e.groupsDirty = true
+	e.contentionCache = nil
+	e.groupsCache = nil
 }
 
 func (e *Engine) applyEventsLocked(events []model.Event) {
@@ -798,6 +834,8 @@ func (e *Engine) applyEventLocked(event model.Event) {
 	e.updateSegmentsLocked(event.GoroutineID, current, next, event)
 	e.trimClosedSegmentsLocked()
 	e.dataVersion++
+	e.contentionDirty = true
+	e.groupsDirty = true
 	// Delta tracking (H-6): record born/changed revisions after dataVersion increment.
 	if _, exists := e.goroutineBornAt[next.ID]; !exists {
 		e.goroutineBornAt[next.ID] = e.dataVersion
@@ -835,6 +873,7 @@ func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot, appendTo
 		e.trimStacksForGoroutineLocked(snapshot.GoroutineID)
 	}
 	e.dataVersion++
+	e.groupsDirty = true
 }
 
 func (e *Engine) updateSegmentsLocked(id int64, current, next model.Goroutine, event model.Event) {
@@ -901,6 +940,27 @@ func buildTimelineSegment(goroutineID int64, segment activeSegment, end time.Tim
 		Reason:      segment.Reason,
 		ResourceID:  segment.ResourceID,
 	}, true
+}
+
+// cloneContention returns a shallow copy of a []ResourceContention slice so
+// callers cannot mutate the engine's cached result.
+func cloneContention(in []ResourceContention) []ResourceContention {
+	if in == nil {
+		return nil
+	}
+	out := make([]ResourceContention, len(in))
+	copy(out, in)
+	return out
+}
+
+// cloneRequestGroups returns a shallow copy of a []RequestGroup slice.
+func cloneRequestGroups(in []RequestGroup) []RequestGroup {
+	if in == nil {
+		return nil
+	}
+	out := make([]RequestGroup, len(in))
+	copy(out, in)
+	return out
 }
 
 func cloneGoroutine(in model.Goroutine) model.Goroutine {
