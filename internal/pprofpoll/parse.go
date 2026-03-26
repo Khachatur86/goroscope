@@ -6,7 +6,10 @@ package pprofpoll
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -247,6 +250,54 @@ func extractResourceID(frames []model.StackFrame) string {
 		return prefix + ":" + addr
 	}
 	return ""
+}
+
+// GoroutineSnapshot is a lightweight snapshot of a single goroutine suitable
+// for headless alerting (watch command) without requiring a full engine.
+type GoroutineSnapshot struct {
+	ID         int64
+	State      model.GoroutineState
+	Reason     model.BlockingReason
+	ResourceID string
+	Frames     []model.StackFrame
+}
+
+// FetchGoroutines fetches /debug/pprof/goroutine?debug=2 from targetURL and
+// returns one GoroutineSnapshot per goroutine in the dump. It is used by the
+// watch command for headless alerting without starting an engine.
+func FetchGoroutines(ctx context.Context, client *http.Client, targetURL string) ([]GoroutineSnapshot, error) {
+	endpoint := strings.TrimRight(targetURL, "/") + "/debug/pprof/goroutine?debug=2"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET %s: %w", endpoint, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s: HTTP %d", endpoint, resp.StatusCode)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	infos, err := parseGoroutineDump(string(data))
+	if err != nil {
+		return nil, err
+	}
+	snaps := make([]GoroutineSnapshot, len(infos))
+	for i, g := range infos {
+		snaps[i] = GoroutineSnapshot{
+			ID:         g.id,
+			State:      g.state,
+			Reason:     g.reason,
+			ResourceID: g.resourceID,
+			Frames:     g.frames,
+		}
+	}
+	return snaps, nil
 }
 
 // parseFileLine creates a StackFrame from a function name and a "file:line +0x…" string.
