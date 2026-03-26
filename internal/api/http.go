@@ -35,6 +35,10 @@ type Config struct {
 	// Token is a bearer token required for every request.
 	// When empty, no authentication is enforced.
 	Token string
+	// CORSOrigins is an allowlist of origins for cross-origin requests (I-6).
+	// When empty, cross-origin requests are not permitted.
+	// Use "*" to allow any origin (insecure; not recommended for remote access).
+	CORSOrigins []string
 }
 
 // Server is the goroscope local HTTP server.
@@ -75,6 +79,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.config.Token != "" {
 		handler = bearerAuth(s.config.Token, handler)
 	}
+	handler = securityHeaders(s.config, handler)
 
 	httpServer := &http.Server{
 		Addr:    s.addr,
@@ -135,6 +140,42 @@ func bearerAuth(token string, next http.Handler) http.Handler {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="goroscope"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeaders adds HTTP security headers to every response (I-6).
+// CORS preflight is handled when cfg.CORSOrigins is non-empty.
+func securityHeaders(cfg Config, next http.Handler) http.Handler {
+	allowedOrigins := make(map[string]bool, len(cfg.CORSOrigins))
+	for _, o := range cfg.CORSOrigins {
+		allowedOrigins[o] = true
+	}
+	useHSTS := cfg.Token != "" || cfg.TLSCertFile != ""
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "strict-origin")
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+		if useHSTS {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		if len(cfg.CORSOrigins) > 0 {
+			origin := r.Header.Get("Origin")
+			if origin != "" && (allowedOrigins["*"] || allowedOrigins[origin]) {
+				h.Set("Access-Control-Allow-Origin", origin)
+				h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				h.Set("Access-Control-Max-Age", "86400")
+				if r.Method == http.MethodOptions {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+			}
 		}
 		next.ServeHTTP(w, r)
 	})

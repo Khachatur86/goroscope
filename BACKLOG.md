@@ -289,8 +289,8 @@
 | I-4 | Engine incremental recompute | P1 | Infrastructure | M | |
 | I-5 | API integration test suite | P1 | Infrastructure | M | |
 | I-2 | Docker image + Compose пример | P2 | Infrastructure | S | |
-| I-6 | CSP + CORS headers | P2 | Infrastructure | S | |
-| I-7 | `goroscope diff` CLI command | P2 | Infrastructure | S | |
+| I-6 | CSP + CORS headers | P2 | Infrastructure | S | ✅ Done |
+| I-7 | `goroscope diff` CLI command | P2 | Infrastructure | S | ✅ Done |
 | I-9 | Stack pattern diff across captures | P2 | Infrastructure | M | |
 | I-3 | Shell autocomplete | P3 | Infrastructure | S | |
 | I-8 | `goroscope annotate` command | P3 | Infrastructure | S | |

@@ -58,6 +58,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return historyCommand(args[1:], stdout, stderr)
 	case "watch":
 		return watchCommand(ctx, args[1:], stdout, stderr)
+	case "diff":
+		return diffCommand(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return nil
@@ -82,6 +84,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  goroscope check <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope export [flags] <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope watch [flags] <target-url>")
+	_, _ = fmt.Fprintln(w, "  goroscope diff [flags] <baseline.gtrace> <compare.gtrace>")
 	_, _ = fmt.Fprintln(w, "  goroscope version")
 	_, _ = fmt.Fprintln(w, "  goroscope help")
 	_, _ = fmt.Fprintln(w, "")
@@ -96,6 +99,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  export    Export timeline segments to CSV or JSON (for pandas, analysis)")
 	_, _ = fmt.Fprintln(w, "  history   List saved captures from ~/.goroscope/captures/")
 	_, _ = fmt.Fprintln(w, "  watch     Headless monitor: emit alerts when anomaly thresholds are crossed")
+	_, _ = fmt.Fprintln(w, "  diff      Compare two .gtrace captures: goroutine state + wait-time deltas")
 	_, _ = fmt.Fprintln(w, "  version   Print version")
 	_, _ = fmt.Fprintln(w, "  help      Show this help")
 	_, _ = fmt.Fprintln(w, "")
