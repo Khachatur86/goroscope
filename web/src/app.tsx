@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { FixedSizeList, type ListChildComponentProps } from "react-window";
+import { FixedSizeList } from "react-window";
 import type { Goroutine, Session, DeadlockHint, TimelineSegment, SampleInfo } from "./api/client";
 import type { ScrubSnapshot, TimelineHandle } from "./timeline/Timeline";
 import {
@@ -14,244 +14,33 @@ import {
   uploadReplayCapture,
 } from "./api/client";
 import { Filters } from "./filters/Filters";
+import type { FiltersState } from "./filters/url";
+import { buildShareableURL, parseFiltersFromURL, parseGoroutineFromURL } from "./filters/url";
 import { Inspector } from "./inspector/Inspector";
-import { Hotspots, computeSpawnHotspots } from "./inspector/Hotspots";
-import { DeadlockHints } from "./inspector/DeadlockHints";
+import { computeSpawnHotspots } from "./inspector/Hotspots";
 import { Timeline } from "./timeline/Timeline";
 import { CompareView } from "./compare/CompareView";
-import { ResourceGraph } from "./resource-graph/ResourceGraph";
-import { GoroutineGroups } from "./groups/GoroutineGroups";
-import { SmartInsights } from "./insights/SmartInsights";
-import { DependencyGraph } from "./graph/DependencyGraph";
-import { ContentionHeatmap } from "./analysis/ContentionHeatmap";
-import { RequestsView } from "./requests/RequestsView";
-import { ThemeSwitcher } from "./theme/ThemeSwitcher";
 import { CommandPalette, type Command } from "./palette/CommandPalette";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
+import { usePanelResize, PanelDivider } from "./panels/PanelDivider";
+import { GoroutineRow } from "./goroutine-list/GoroutineRow";
+import { loadPinned, savePinned } from "./goroutine-list/pinned";
+import type { PinnedMap } from "./goroutine-list/pinned";
+import { usePlayback } from "./timeline/usePlayback";
+import { Topbar } from "./topbar/Topbar";
+import { AnalysisPanel } from "./analysis/AnalysisPanel";
+import type { AnalysisTabId } from "./analysis/AnalysisPanel";
 
-// ── Panel resize (U-1) ───────────────────────────────────────────────────────
+// ── Panel resize constants ────────────────────────────────────────────────────
 const LS_LANE_WIDTH = "goroscope:laneWidth";
 const LS_INSPECTOR_WIDTH = "goroscope:inspectorWidth";
 const LANE_WIDTH_DEFAULT = 280;
 const INSPECTOR_WIDTH_DEFAULT = 300;
-const PANEL_MIN = 180;
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
-}
-
-function usePanelResize(lsKey: string, defaultWidth: number) {
-  const [width, setWidth] = useState<number>(() => {
-    const stored = localStorage.getItem(lsKey);
-    return stored ? Number(stored) : defaultWidth;
-  });
-
-  const startDrag = useCallback(
-    (e: React.MouseEvent, side: "left" | "right") => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startW = width;
-      const onMove = (ev: MouseEvent) => {
-        const delta = side === "right" ? ev.clientX - startX : startX - ev.clientX;
-        setWidth(clamp(startW + delta, PANEL_MIN, 640));
-      };
-      const onUp = (ev: MouseEvent) => {
-        const delta = side === "right" ? ev.clientX - startX : startX - ev.clientX;
-        const next = clamp(startW + delta, PANEL_MIN, 640);
-        localStorage.setItem(lsKey, String(next));
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [width, lsKey]
-  );
-
-  return { width, startDrag };
-}
-
-/** Thin draggable strip between two panels. */
-function PanelDivider({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
-  return (
-    <div
-      className="panel-divider"
-      onMouseDown={onMouseDown}
-      role="separator"
-      aria-orientation="vertical"
-    />
-  );
-}
 
 /** Height of one row in the virtualised goroutine list (px). */
 const GOROUTINE_ITEM_HEIGHT = 44;
 /** Visible height of the virtualised goroutine list (px). */
 const GOROUTINE_LIST_HEIGHT = 400;
-
-const LIFETIME_COLORS: Record<string, string> = {
-  RUNNING: "#10cfb8",
-  RUNNABLE: "#8394a8",
-  WAITING: "#f59e0b",
-  BLOCKED: "#f43f5e",
-  SYSCALL: "#4da6ff",
-  DONE: "#4b5563",
-};
-
-/** Thin colour strip at the bottom of a goroutine list row showing its full lifecycle. */
-function LifetimeBar({ segments }: { segments: TimelineSegment[] | undefined }) {
-  if (!segments || segments.length === 0) {
-    return <div className="lifetime-bar lifetime-bar--empty" />;
-  }
-  let minStart = Infinity;
-  let maxEnd = -Infinity;
-  for (const s of segments) {
-    if (s.start_ns < minStart) minStart = s.start_ns;
-    if (s.end_ns > maxEnd) maxEnd = s.end_ns;
-  }
-  if (minStart === Infinity) minStart = 0;
-  if (maxEnd === -Infinity) maxEnd = 1;
-  const span = Math.max(maxEnd - minStart, 1);
-  const sorted = [...segments].sort((a, b) => a.start_ns - b.start_ns);
-
-  // Build gradient stops, inserting gap colour for uncovered intervals.
-  const stops: string[] = [];
-  let cursor = 0;
-  for (const seg of sorted) {
-    const x1 = ((seg.start_ns - minStart) / span) * 100;
-    const x2 = ((seg.end_ns - minStart) / span) * 100;
-    if (x1 > cursor + 0.01) {
-      // Brief gap between segments (scheduling latency, filter holes, etc.)
-      stops.push(`#1e293b ${cursor.toFixed(2)}%`, `#1e293b ${x1.toFixed(2)}%`);
-    }
-    const color = LIFETIME_COLORS[seg.state] ?? "#94a3b8";
-    stops.push(`${color} ${x1.toFixed(2)}%`, `${color} ${x2.toFixed(2)}%`);
-    cursor = x2;
-  }
-  if (cursor < 99.99) {
-    stops.push(`#1e293b ${cursor.toFixed(2)}%`, `#1e293b 100%`);
-  }
-
-  return (
-    <div
-      className="lifetime-bar"
-      style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}
-      title={`${segments.length} segments`}
-    />
-  );
-}
-
-// ── Goroutine watchlist / pinning (U-3) ─────────────────────────────────────
-const LS_PINNED = "goroscope:pinned";
-
-type PinnedMap = Map<number, string>; // goroutine_id → note (may be "")
-
-function loadPinned(): PinnedMap {
-  try {
-    const raw = localStorage.getItem(LS_PINNED);
-    if (!raw) return new Map();
-    const entries: [number, string][] = JSON.parse(raw);
-    return new Map(entries);
-  } catch {
-    return new Map();
-  }
-}
-
-function savePinned(m: PinnedMap) {
-  localStorage.setItem(LS_PINNED, JSON.stringify([...m.entries()]));
-}
-
-type GoroutineRowData = {
-  goroutines: Goroutine[];
-  selectedId: number | null;
-  onSelect: (id: number) => void;
-  segmentsByGoroutine: Map<number, TimelineSegment[]>;
-  pinned: PinnedMap;
-  onTogglePin: (id: number) => void;
-};
-
-function GoroutineRow({ index, style, data }: ListChildComponentProps<GoroutineRowData>) {
-  const g = data.goroutines[index];
-  const isPinned = data.pinned.has(g.goroutine_id);
-  const note = data.pinned.get(g.goroutine_id) ?? "";
-  return (
-    <div style={style}>
-      <button
-        type="button"
-        className={`lane-item ${data.selectedId === g.goroutine_id ? "active" : ""}${isPinned ? " pinned" : ""}`}
-        onClick={() => data.onSelect(g.goroutine_id)}
-      >
-        <button
-          type="button"
-          className="pin-btn"
-          title={isPinned ? "Unpin goroutine" : "Pin goroutine"}
-          onClick={(e) => { e.stopPropagation(); data.onTogglePin(g.goroutine_id); }}
-          aria-pressed={isPinned}
-        >
-          {isPinned ? "★" : "☆"}
-        </button>
-        <span className={`state-pill ${g.state}`}>{g.state}</span>
-        <span className="lane-item-title">G{g.goroutine_id}</span>
-        <span className="lane-item-meta">
-          {note || (g.labels?.function ?? g.reason ?? "—")}
-        </span>
-        <LifetimeBar segments={data.segmentsByGoroutine.get(g.goroutine_id)} />
-      </button>
-    </div>
-  );
-}
-
-type FiltersState = {
-  state: string;
-  reason: string;
-  resource: string;
-  search: string;
-  minWaitNs: string;
-  sortMode: string;
-  showLeakOnly?: boolean;
-  hideRuntime?: boolean;
-  hotspotIds?: number[] | null;
-  labelFilter?: string;
-};
-
-function buildShareableURL(filters: FiltersState, selectedId: number | null): string {
-  const params = new URLSearchParams();
-  if (selectedId) params.set("goroutine", String(selectedId));
-  if (filters.state && filters.state !== "ALL") params.set("state", filters.state);
-  if (filters.reason) params.set("reason", filters.reason);
-  if (filters.resource) params.set("resource", filters.resource);
-  if (filters.search) params.set("search", filters.search);
-  if (filters.labelFilter) params.set("label", filters.labelFilter);
-  if (filters.showLeakOnly) params.set("leak", "1");
-  if (filters.hideRuntime) params.set("hide_runtime", "1");
-  const qs = params.toString();
-  return qs ? `${window.location.origin}${window.location.pathname}?${qs}` : window.location.origin + window.location.pathname;
-}
-
-function parseFiltersFromURL(): Partial<FiltersState> {
-  const params = new URLSearchParams(window.location.search);
-  const out: Partial<FiltersState> = {};
-  const state = params.get("state");
-  if (state) out.state = state;
-  const reason = params.get("reason");
-  if (reason) out.reason = reason;
-  const resource = params.get("resource");
-  if (resource) out.resource = resource;
-  const search = params.get("search");
-  if (search) out.search = search;
-  const label = params.get("label");
-  if (label) out.labelFilter = label;
-  if (params.get("leak") === "1") out.showLeakOnly = true;
-  if (params.get("hide_runtime") === "1") out.hideRuntime = true;
-  return out;
-}
-
-function parseGoroutineFromURL(): number | null {
-  const params = new URLSearchParams(window.location.search);
-  const id = params.get("goroutine");
-  if (!id) return null;
-  const n = parseInt(id, 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -270,7 +59,7 @@ export function App() {
   const [relatedFocus, setRelatedFocus] = useState(false);
   const [zoomToSelected, setZoomToSelected] = useState(false);
   const [viewMode, setViewMode] = useState<"lanes" | "heatmap">("lanes");
-  const [analysisTab, setAnalysisTab] = useState<"insights" | "hotspots" | "resources" | "deadlock" | "groups" | "graph" | "heatmap" | "requests">("insights");
+  const [analysisTab, setAnalysisTab] = useState<AnalysisTabId>("insights");
   const [analysisOpen, setAnalysisOpen] = useState(true);
   const [brushFilterIds, setBrushFilterIds] = useState<Set<number> | null>(null);
   const [filters, setFilters] = useState<FiltersState>(() => {
@@ -316,14 +105,13 @@ export function App() {
     });
   }, []);
 
-  // Time scrubber: declared early because scrubMap/listGoroutines useMemos reference them.
+  // Time scrubber.
   const [scrubTimeNS, setScrubTimeNS] = useState<number | null>(null);
   const [scrubSnapshot, setScrubSnapshot] = useState<ScrubSnapshot[]>([]);
 
-  // Playback controls (U-2) — state only; logic runs after timelineSegments is declared.
+  // Playback controls (U-2).
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState<1 | 2 | 4>(1);
-  const playbackRef = useRef<{ rafId: number; lastWall: number; traceNS: number } | null>(null);
 
   // Segments from the Timeline component — used to draw per-row lifetime bars.
   const [timelineSegments, setTimelineSegments] = useState<TimelineSegment[]>([]);
@@ -337,7 +125,6 @@ export function App() {
     return map;
   }, [timelineSegments]);
 
-  // Compute the trace time extent from loaded segments (used by playback U-2).
   const { traceMinNS, traceMaxNS } = useMemo(() => {
     let lo = Infinity;
     let hi = -Infinity;
@@ -348,47 +135,16 @@ export function App() {
     return { traceMinNS: lo === Infinity ? 0 : lo, traceMaxNS: hi === -Infinity ? 0 : hi };
   }, [timelineSegments]);
 
-  // Start/stop the rAF playback loop (U-2).
-  useEffect(() => {
-    if (!isPlaying || traceMaxNS <= traceMinNS) {
-      if (playbackRef.current) {
-        cancelAnimationFrame(playbackRef.current.rafId);
-        playbackRef.current = null;
-      }
-      return;
-    }
-    const startTrace = scrubTimeNS !== null && scrubTimeNS > traceMinNS && scrubTimeNS < traceMaxNS
-      ? scrubTimeNS
-      : traceMinNS;
+  usePlayback({
+    isPlaying,
+    playSpeed,
+    traceMinNS,
+    traceMaxNS,
+    scrubTimeNS,
+    onScrubChange: setScrubTimeNS,
+    onStop: () => setIsPlaying(false),
+  });
 
-    const state = { rafId: 0, lastWall: performance.now(), traceNS: startTrace };
-    playbackRef.current = state;
-
-    const tick = (now: number) => {
-      const elapsed = now - state.lastWall; // ms
-      state.lastWall = now;
-      state.traceNS += elapsed * 1e6 * playSpeed; // ms → ns, scaled
-      if (state.traceNS >= traceMaxNS) {
-        setScrubTimeNS(traceMaxNS);
-        setIsPlaying(false);
-        return;
-      }
-      setScrubTimeNS(state.traceNS);
-      state.rafId = requestAnimationFrame(tick);
-      playbackRef.current = state;
-    };
-    state.rafId = requestAnimationFrame(tick);
-    playbackRef.current = state;
-
-    return () => {
-      cancelAnimationFrame(state.rafId);
-      playbackRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, playSpeed, traceMinNS, traceMaxNS]);
-
-  // Memoised so that unrelated state changes (selectedId, inspectorTab, …)
-  // do not trigger a full 200-goroutine re-sort on every render.
   const filteredGoroutines = useMemo(
     () => filterAndSortGoroutines(goroutines, filters),
     [goroutines, filters]
@@ -417,18 +173,14 @@ export function App() {
   }
 
   if (brushFilterIds !== null) {
-    // Always keep the selected goroutine visible even if it has no segments in range
     displayGoroutines = displayGoroutines.filter(
       (g) => brushFilterIds.has(g.goroutine_id) || g.goroutine_id === selectedId
     );
   }
 
-  // Pinned goroutines always appear at the top (U-3). Pinned goroutines not in
-  // the current filter set are also injected so they remain accessible.
   if (pinned.size > 0) {
     const pinnedInList = displayGoroutines.filter((g) => pinned.has(g.goroutine_id));
     const rest = displayGoroutines.filter((g) => !pinned.has(g.goroutine_id));
-    // Add pinned goroutines that were filtered out.
     const pinnedNotVisible = [...pinned.keys()]
       .filter((id) => !displayGoroutines.some((g) => g.goroutine_id === id))
       .map((id) => goroutines.find((g) => g.goroutine_id === id))
@@ -436,16 +188,11 @@ export function App() {
     displayGoroutines = [...pinnedNotVisible, ...pinnedInList, ...rest];
   }
 
-  // When the time scrubber is active, merge historical states from the snapshot
-  // into the display list so the goroutine list reflects what each goroutine was
-  // doing at the scrubbed moment rather than its current live state.
   const scrubMap = useMemo(
     () => new Map(scrubSnapshot.map((s) => [s.goroutine_id, s])),
     [scrubSnapshot]
   );
 
-  // Synthetic TimelineSegment passed to Inspector when scrubbing.
-  // start_ns = scrubTimeNS so fetchStackAt fetches the closest stack ≤ T.
   const scrubSegmentOverride = useMemo<TimelineSegment | null>(() => {
     if (scrubTimeNS == null || selectedId == null) return null;
     const snap = scrubMap.get(selectedId);
@@ -489,9 +236,6 @@ export function App() {
 
   const hasGoroutineInURL = parseGoroutineFromURL() !== null;
 
-  // goroutineParams is shared between the full load and the live-refresh path.
-  // When the search field starts with "stack:" the substring is sent as the
-  // stack_frame param (backend scans all frames) instead of the generic search.
   const stackFrameNeedle = filters.search.toLowerCase().startsWith("stack:")
     ? filters.search.slice("stack:".length).trim()
     : null;
@@ -511,18 +255,13 @@ export function App() {
     [hasGoroutineInURL, filters.state, filters.reason, filters.search, stackFrameNeedle, filters.minWaitNs, filters.labelFilter]
   );
 
-  // loadData fetches all endpoints (session, goroutines, resources, insights,
-  // deadlock hints).  Used for initial load, manual Refresh, and filter changes.
   const loadData = useCallback(async () => {
     const [sess, gs, res, contentionData, ins, deadlock] = await Promise.all([
       fetchCurrentSession(),
       fetchGoroutines(goroutineParams),
       fetchResourceGraph(),
       fetchResourceContention(),
-      fetchInsights(
-        filters.minWaitNs || undefined,
-        "30000000000"
-      ),
+      fetchInsights(filters.minWaitNs || undefined, "30000000000"),
       fetchDeadlockHints(),
     ]);
     setSession(sess ?? null);
@@ -540,11 +279,6 @@ export function App() {
     setDataRevision((v) => v + 1);
   }, [goroutineParams, filters.minWaitNs]);
 
-  // refreshLive fetches only goroutines — the hot path called on every SSE
-  // "update" event.  Skipping the 5 slower endpoints (resources, contention,
-  // insights, deadlock) reduces React renders per second and eliminates the
-  // DOM jitter visible with 200+ live goroutines.  The slower endpoints are
-  // kept fresh by the periodic full reload in loadData (every 5 s).
   const refreshLive = useCallback(async () => {
     const gs = await fetchGoroutines(goroutineParams).catch(() => null);
     if (!gs) return;
@@ -559,12 +293,7 @@ export function App() {
   }, [goroutineParams]);
 
   useEffect(() => {
-    // Initial full load on mount.
     loadData();
-
-    // Periodic full refresh every 5 s keeps slow data (resources, insights,
-    // deadlock hints) reasonably fresh without hammering the API on every
-    // goroutine state change.
     const fullRefreshTimer = setInterval(loadData, 5000);
 
     let source: EventSource | null = null;
@@ -575,25 +304,13 @@ export function App() {
       if (!alive) return;
       setStreamStatus("connecting");
       source = new EventSource("/api/v1/stream");
-
-      source.addEventListener("connected", () => {
-        setStreamStatus("live");
-      });
-
-      // SSE "update" uses the lightweight goroutines-only refresh so that
-      // fast-changing live data (state, reason) does not pull 5 extra
-      // endpoints on every 200 ms tick.
-      source.addEventListener("update", () => {
-        refreshLive();
-      });
-
+      source.addEventListener("connected", () => { setStreamStatus("live"); });
+      source.addEventListener("update", () => { refreshLive(); });
       source.onerror = () => {
         setStreamStatus("disconnected");
         source?.close();
         source = null;
-        if (alive) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
+        if (alive) reconnectTimer = setTimeout(connect, 3000);
       };
     };
 
@@ -679,7 +396,6 @@ export function App() {
     }
   };
 
-
   const handleCopyLink = () => {
     const url = buildShareableURL(filters, selectedId);
     navigator.clipboard.writeText(url).then(() => {
@@ -690,14 +406,6 @@ export function App() {
         setTimeout(() => { btn!.textContent = prev; }, 1500);
       }
     });
-  };
-
-  const handleLongBlockedClick = () => {
-    setFilters((f) => ({ ...f, minWaitNs: "1000000000" }));
-  };
-
-  const handleLeakClick = () => {
-    setFilters((f) => ({ ...f, showLeakOnly: true }));
   };
 
   const processReplayFile = useCallback(
@@ -753,7 +461,6 @@ export function App() {
   const [gifExporting, setGifExporting] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState<Set<number> | null>(null);
 
-  // Direct canvas composite export — no html2canvas needed.
   const handleSavePng = useCallback(() => {
     timelineRef.current?.exportPng();
   }, []);
@@ -792,55 +499,40 @@ export function App() {
   // ── Global keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // ⌘K / Ctrl+K → open palette
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setPaletteOpen((v) => !v);
         return;
       }
-      // Only fire shortcuts when no input/textarea is focused and palette is closed.
       const tag = (document.activeElement?.tagName ?? "").toLowerCase();
       if (tag === "input" || tag === "textarea" || paletteOpen) return;
 
       switch (e.key) {
         case "Escape":
-          // Clear selection
           setSelectedId(null);
           setSelectedGoroutine(null);
           setSelectedSegment(null);
           break;
         case "r":
-          // Refresh
           if (!e.metaKey && !e.ctrlKey) loadData();
           break;
         case "z":
-          // Zoom to selected
           if (selectedId !== null) setZoomToSelected(true);
           break;
         case "f":
-          // Toggle related-focus
           if (selectedId !== null) setRelatedFocus((v) => !v);
           break;
         case "p":
-          // Save PNG
           handleSavePng();
           break;
-        case "1":
-          setAnalysisTab("insights");   setAnalysisOpen(true); break;
-        case "2":
-          setAnalysisTab("hotspots");   setAnalysisOpen(true); break;
-        case "3":
-          setAnalysisTab("resources");  setAnalysisOpen(true); break;
-        case "4":
-          setAnalysisTab("deadlock");   setAnalysisOpen(true); break;
-        case "5":
-          setAnalysisTab("groups");     setAnalysisOpen(true); break;
-        case "6":
-          setAnalysisTab("graph");      setAnalysisOpen(true); break;
-        case "7":
-          setAnalysisTab("heatmap");    setAnalysisOpen(true); break;
-        case "`":
-          setAnalysisOpen((v) => !v);  break;
+        case "1": setAnalysisTab("insights");  setAnalysisOpen(true); break;
+        case "2": setAnalysisTab("hotspots");  setAnalysisOpen(true); break;
+        case "3": setAnalysisTab("resources"); setAnalysisOpen(true); break;
+        case "4": setAnalysisTab("deadlock");  setAnalysisOpen(true); break;
+        case "5": setAnalysisTab("groups");    setAnalysisOpen(true); break;
+        case "6": setAnalysisTab("graph");     setAnalysisOpen(true); break;
+        case "7": setAnalysisTab("heatmap");   setAnalysisOpen(true); break;
+        case "`": setAnalysisOpen((v) => !v);  break;
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -848,9 +540,52 @@ export function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paletteOpen, selectedId, handleSavePng]);
 
-  // ── Command palette command list ─────────────────────────────────────────
+  // ── Arrow-key / scrub keyboard shortcuts ────────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (compareOpen) return;
+      const active = document.activeElement;
+      const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+      if ((e.ctrlKey || e.metaKey) && e.key === "g") {
+        e.preventDefault();
+        jumpToInputRef.current?.focus();
+        return;
+      }
+      if (e.key === "Escape" && scrubTimeNS != null) {
+        e.preventDefault();
+        setScrubTimeNS(null);
+        return;
+      }
+      if (isInput) return;
+      if (displayGoroutines.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const idx = selectedId ? displayGoroutines.findIndex((g) => g.goroutine_id === selectedId) : -1;
+        const next = idx < 0 ? 0 : Math.min(displayGoroutines.length - 1, idx + 1);
+        if (displayGoroutines[next]) setSelectedId(displayGoroutines[next].goroutine_id);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const idx = selectedId ? displayGoroutines.findIndex((g) => g.goroutine_id === selectedId) : -1;
+        const next = idx <= 0 ? displayGoroutines.length - 1 : idx - 1;
+        if (displayGoroutines[next]) setSelectedId(displayGoroutines[next].goroutine_id);
+        return;
+      }
+      if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        if (selectedId && displayGoroutines.some((g) => g.goroutine_id === selectedId)) {
+          setZoomToSelected(true);
+        }
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedId, displayGoroutines, compareOpen, scrubTimeNS]);
+
+  // ── Command palette commands ─────────────────────────────────────────────
   const paletteCommands = useMemo<Command[]>(() => [
-    // Navigation
     { id: "tab-insights",   group: "Analysis tabs", icon: "💡", label: "Open Insights tab",   hint: "1", action: () => { setAnalysisTab("insights");  setAnalysisOpen(true); } },
     { id: "tab-hotspots",   group: "Analysis tabs", icon: "🔥", label: "Open Hotspots tab",   hint: "2", action: () => { setAnalysisTab("hotspots");  setAnalysisOpen(true); } },
     { id: "tab-resources",  group: "Analysis tabs", icon: "🔗", label: "Open Resources tab",  hint: "3", action: () => { setAnalysisTab("resources"); setAnalysisOpen(true); } },
@@ -858,17 +593,14 @@ export function App() {
     { id: "tab-groups",     group: "Analysis tabs", icon: "📦", label: "Open Groups tab",     hint: "5", action: () => { setAnalysisTab("groups");    setAnalysisOpen(true); } },
     { id: "tab-graph",      group: "Analysis tabs", icon: "🕸️", label: "Open Graph tab",      hint: "6", action: () => { setAnalysisTab("graph");     setAnalysisOpen(true); } },
     { id: "tab-heatmap",    group: "Analysis tabs", icon: "🌡️", label: "Open Heatmap tab",    hint: "7", action: () => { setAnalysisTab("heatmap");   setAnalysisOpen(true); } },
-    // Timeline
     { id: "zoom-selected",  group: "Timeline", icon: "🔎", label: "Zoom to selected goroutine", hint: "Z", keywords: ["zoom"], action: () => { if (selectedId !== null) setZoomToSelected(true); } },
     { id: "reset-zoom",     group: "Timeline", icon: "↩",  label: "Reset timeline zoom",                 keywords: ["zoom", "reset"], action: () => setZoomToSelected(false) },
     { id: "related-focus",  group: "Timeline", icon: "👁",  label: "Toggle related-focus",      hint: "F", keywords: ["focus", "related", "filter"], action: () => { if (selectedId !== null) setRelatedFocus((v) => !v); } },
     { id: "save-png",       group: "Timeline", icon: "🖼", label: "Save timeline as PNG",       hint: "P", keywords: ["export", "image", "screenshot"], action: handleSavePng },
     { id: "save-gif",       group: "Timeline", icon: "🎞", label: "Export timeline as GIF",              keywords: ["export", "gif", "animation", "animated"], action: handleSaveGif },
-    // Data
     { id: "refresh",        group: "Data",     icon: "♻",  label: "Refresh data",               hint: "R", keywords: ["reload", "refresh"], action: loadData },
     { id: "open-capture",   group: "Data",     icon: "📂", label: "Open .gtrace capture",                 keywords: ["open", "file", "upload", "trace"], action: () => captureInputRef.current?.click() },
     { id: "compare",        group: "Data",     icon: "⚖",  label: "Compare two captures",                keywords: ["diff", "compare", "traces"], action: () => setCompareOpen(true) },
-    // View
     { id: "toggle-analysis",group: "View",     icon: "📊", label: "Toggle analysis panel",      hint: "`", keywords: ["collapse", "hide", "panel"], action: () => setAnalysisOpen((v) => !v) },
     { id: "clear-selection",group: "View",     icon: "✕",  label: "Clear selection",             hint: "Esc", keywords: ["deselect", "clear"], action: () => { setSelectedId(null); setSelectedGoroutine(null); setSelectedSegment(null); } },
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -889,9 +621,7 @@ export function App() {
       segments: filteredSegs.length,
       timeline: filteredSegs,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `goroscope-${Date.now()}.json`;
@@ -924,10 +654,7 @@ export function App() {
         ...(s.resource_id && { resource_id: s.resource_id }),
       },
     }));
-    const payload = { traceEvents: events };
-    const blob = new Blob([JSON.stringify(payload)], {
-      type: "application/json",
-    });
+    const blob = new Blob([JSON.stringify({ traceEvents: events })], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `goroscope-trace-${Date.now()}.json`;
@@ -935,60 +662,8 @@ export function App() {
     URL.revokeObjectURL(a.href);
   };
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (compareOpen) return;
-      const active = document.activeElement;
-      const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
-      if ((e.ctrlKey || e.metaKey) && e.key === "g") {
-        e.preventDefault();
-        jumpToInputRef.current?.focus();
-        return;
-      }
-      // ESC clears the scrub cursor when active.
-      if (e.key === "Escape" && scrubTimeNS != null) {
-        e.preventDefault();
-        setScrubTimeNS(null);
-        return;
-      }
-      if (isInput) return;
-      if (displayGoroutines.length === 0) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        const idx = selectedId
-          ? displayGoroutines.findIndex((g) => g.goroutine_id === selectedId)
-          : -1;
-        const next = idx < 0 ? 0 : Math.min(displayGoroutines.length - 1, idx + 1);
-        if (displayGoroutines[next]) setSelectedId(displayGoroutines[next].goroutine_id);
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        const idx = selectedId
-          ? displayGoroutines.findIndex((g) => g.goroutine_id === selectedId)
-          : -1;
-        const next = idx <= 0 ? displayGoroutines.length - 1 : idx - 1;
-        if (displayGoroutines[next]) setSelectedId(displayGoroutines[next].goroutine_id);
-        return;
-      }
-      if (e.key === "z" || e.key === "Z") {
-        e.preventDefault();
-        if (selectedId && displayGoroutines.some((g) => g.goroutine_id === selectedId)) {
-          setZoomToSelected(true);
-        }
-        return;
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, displayGoroutines, compareOpen, scrubTimeNS]);
-
   return (
-    <div
-      className="app"
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
+    <div className="app" onDragOver={handleDragOver} onDrop={handleDrop}>
       <input
         ref={captureInputRef}
         type="file"
@@ -998,125 +673,24 @@ export function App() {
         aria-hidden
       />
 
-      {/* ── Compact top bar ──────────────────────────────────────────────── */}
-      <header className="topbar">
-        <div className="topbar-brand">
-          <span className="topbar-title">Goroscope</span>
-          <span className="topbar-legend">
-            <span className="legend-chip running">RUN</span>
-            <span className="legend-chip runnable">RUNNABLE</span>
-            <span className="legend-chip waiting">WAIT</span>
-            <span className="legend-chip blocked">BLOCK</span>
-            <span className="legend-chip syscall">SYSCALL</span>
-            <span className="legend-chip done">DONE</span>
-          </span>
-        </div>
-
-        <div className="topbar-stats">
-          <span className="topbar-stat" title={`Session: ${session?.name}`}>
-            <span className="topbar-stat-label">Session</span>
-            <strong>{session?.name ?? "—"}</strong>
-          </span>
-          <span className="topbar-stat-sep" />
-          <span className="topbar-stat">
-            <span className="topbar-stat-label">Goroutines</span>
-            <strong>
-              {filteredGoroutines.length === goroutines.length
-                ? goroutines.length
-                : `${filteredGoroutines.length}/${goroutines.length}`}
-            </strong>
-          </span>
-          <span className="topbar-stat-sep" />
-          <span
-            className={`topbar-stat topbar-stat-btn ${filters.minWaitNs ? "active" : ""}`}
-            role="button"
-            tabIndex={0}
-            title="Filter to long-blocked goroutines (≥1s)"
-            onClick={handleLongBlockedClick}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleLongBlockedClick()}
-          >
-            <span className="topbar-stat-label">Long blocked</span>
-            <strong>{insights.long_blocked_count}</strong>
-          </span>
-          <span className="topbar-stat-sep" />
-          <span
-            className={`topbar-stat topbar-stat-btn ${filters.showLeakOnly ? "active" : ""}`}
-            role="button"
-            tabIndex={0}
-            title="Filter to leak candidates (≥30s)"
-            onClick={handleLeakClick}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleLeakClick()}
-          >
-            <span className="topbar-stat-label">Leaks</span>
-            <strong>{insights.leak_candidates_count ?? 0}</strong>
-          </span>
-          {deadlockHints.length > 0 && (
-            <>
-              <span className="topbar-stat-sep" />
-              <span
-                className="topbar-stat topbar-stat-btn topbar-stat-warn"
-                role="button"
-                tabIndex={0}
-                title="View deadlock hints"
-                onClick={() => { setAnalysisTab("deadlock"); setAnalysisOpen(true); }}
-                onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setAnalysisTab("deadlock")}
-              >
-                <span className="topbar-stat-label">Deadlock</span>
-                <strong>{deadlockHints.length}</strong>
-              </span>
-            </>
-          )}
-        </div>
-
-        <div className="topbar-actions">
-          <span
-            className={`stream-status stream-status--${streamStatus}`}
-            title={`Stream: ${streamStatus}`}
-          >
-            ● {streamStatus}
-          </span>
-          <button
-            type="button"
-            className="action-button palette-trigger"
-            onClick={() => setPaletteOpen(true)}
-            title="Command palette (⌘K)"
-          >
-            ⌘K
-          </button>
-          <button id="copy-link-btn" type="button" className="action-button secondary" onClick={handleCopyLink}>
-            Link
-          </button>
-          <button type="button" className="action-button" onClick={loadData}>
-            Refresh
-          </button>
-          <button
-            type="button"
-            className="action-button secondary"
-            onClick={handleOpenCapture}
-            disabled={replayUploading}
-            title="Open .gtrace capture file (or drag-and-drop)"
-          >
-            {replayUploading ? "Loading…" : "Open"}
-          </button>
-          <button
-            type="button"
-            className="action-button secondary"
-            onClick={() => setCompareOpen(true)}
-            title="Compare two .gtrace captures"
-          >
-            Compare
-          </button>
-          <a
-            href="/api/v1/replay/export"
-            download
-            className="action-button secondary"
-            title="Download current session as .gtrace file"
-          >
-            Export
-          </a>
-          <ThemeSwitcher />
-        </div>
-      </header>
+      <Topbar
+        session={session}
+        goroutineCount={goroutines.length}
+        filteredCount={filteredGoroutines.length}
+        insights={insights}
+        deadlockHints={deadlockHints}
+        streamStatus={streamStatus}
+        replayUploading={replayUploading}
+        filters={filters}
+        onLongBlockedClick={() => setFilters((f) => ({ ...f, minWaitNs: "1000000000" }))}
+        onLeakClick={() => setFilters((f) => ({ ...f, showLeakOnly: true }))}
+        onDeadlockClick={() => { setAnalysisTab("deadlock"); setAnalysisOpen(true); }}
+        onCopyLink={handleCopyLink}
+        onRefresh={loadData}
+        onOpenCapture={handleOpenCapture}
+        onCompare={() => setCompareOpen(true)}
+        onOpenPalette={() => setPaletteOpen(true)}
+      />
 
       {compareOpen && (
         <div className="compare-overlay">
@@ -1330,108 +904,27 @@ export function App() {
         </aside>
       </main>
 
-      {/* ── Analysis panel (session-wide) ──────────────────────────────── */}
-      <section className="analysis-panel">
-        <div className="analysis-panel-header">
-          <div className="analysis-tabs">
-            {(
-              [
-                { id: "insights",  label: "Insights"  },
-                { id: "hotspots",  label: "Hotspots"  },
-                { id: "resources", label: "Resources" },
-                { id: "deadlock",  label: "Deadlock"  },
-                { id: "groups",    label: "Groups"    },
-                { id: "graph",     label: "Graph"     },
-                { id: "heatmap",   label: "Heatmap"   },
-                { id: "requests",  label: "Requests"  },
-              ] as const
-            ).map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                className={`analysis-tab ${analysisTab === id ? "active" : ""}`}
-                onClick={() => {
-                  if (analysisTab === id && analysisOpen) {
-                    setAnalysisOpen(false);
-                  } else {
-                    setAnalysisTab(id);
-                    setAnalysisOpen(true);
-                  }
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="analysis-collapse-btn"
-            onClick={() => setAnalysisOpen((v) => !v)}
-            title={analysisOpen ? "Collapse analysis panel" : "Expand analysis panel"}
-            aria-expanded={analysisOpen}
-          >
-            {analysisOpen ? "▾" : "▴"}
-          </button>
-        </div>
-
-        {analysisOpen && (
-          <div className="analysis-panel-body">
-            {analysisTab === "insights" && (
-              <SmartInsights refreshKey={dataRevision} onSelectGoroutine={handleSelect} />
-            )}
-            {analysisTab === "hotspots" && (
-              <Hotspots
-                hotspots={hotspots}
-                activeHotspotIds={filters.hotspotIds ?? null}
-                onFilterByHotspot={(ids) =>
-                  setFilters((f) => ({ ...f, hotspotIds: ids }))
-                }
-                onClearHotspotFilter={() =>
-                  setFilters((f) => ({ ...f, hotspotIds: null }))
-                }
-              />
-            )}
-            {analysisTab === "resources" && (
-              <ResourceGraph
-                resources={resources}
-                contention={contention}
-                selectedId={selectedId}
-                onSelectGoroutine={handleSelect}
-              />
-            )}
-            {analysisTab === "deadlock" && (
-              <DeadlockHints hints={deadlockHints} onSelectGoroutine={handleSelect} />
-            )}
-            {analysisTab === "groups" && (
-              <GoroutineGroups onSelectGoroutine={handleSelect} />
-            )}
-            {analysisTab === "graph" && (
-              <DependencyGraph
-                goroutines={goroutines}
-                selectedId={selectedId}
-                onSelectGoroutine={handleSelect}
-              />
-            )}
-            {analysisTab === "heatmap" && (
-              <ContentionHeatmap
-                segments={timelineSegments}
-                onSelectResource={(id, bucketMidNS) => {
-                  setFilters((f) => ({ ...f, search: id }));
-                  setScrubTimeNS(bucketMidNS);
-                }}
-              />
-            )}
-            {analysisTab === "requests" && (
-              <RequestsView
-                onSelectRequest={(ids) => {
-                  // Highlight the goroutines belonging to the selected request.
-                  setHighlightedIds(ids);
-                }}
-              />
-            )}
-          </div>
-        )}
-      </section>
+      <AnalysisPanel
+        tab={analysisTab}
+        open={analysisOpen}
+        onTabChange={setAnalysisTab}
+        onToggleOpen={() => setAnalysisOpen((v) => !v)}
+        dataRevision={dataRevision}
+        goroutines={goroutines}
+        selectedId={selectedId}
+        resources={resources}
+        contention={contention}
+        deadlockHints={deadlockHints}
+        timelineSegments={timelineSegments}
+        hotspots={hotspots}
+        filters={filters}
+        onSelectGoroutine={handleSelect}
+        onFilterByHotspot={(ids) => setFilters((f) => ({ ...f, hotspotIds: ids }))}
+        onClearHotspotFilter={() => setFilters((f) => ({ ...f, hotspotIds: null }))}
+        onSetFilters={setFilters}
+        onSetScrubTime={setScrubTimeNS}
+        onHighlightRequest={setHighlightedIds}
+      />
 
       <CommandPalette
         open={paletteOpen}

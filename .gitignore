@@ -1,5 +1,7 @@
 .DS_Store
 tmp_trace_probe.out
+tmp_sse_demo/
+tmp_stream_ui_demo/
 bin/
 coverage.out
 captures/*.gtrace
