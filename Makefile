@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client
+.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client wasm
 
 build:
 	mkdir -p bin
@@ -71,6 +71,20 @@ vscode:
 #   make gen-client           # generate web/src/api/schema.d.ts
 gen-client:
 	npx openapi-typescript internal/api/openapi.yaml -o web/src/api/schema.d.ts
+
+# ── WASM offline mode (I-10) ──────────────────────────────────────────────────
+# Builds engine.wasm + copies wasm_exec.js into web/offline/ so the directory
+# can be served (or opened from file://) without a Go server.
+#
+# Usage:
+#   make wasm                     # build into web/offline/
+#   open web/offline/index.html   # or: python3 -m http.server -d web/offline
+wasm:
+	mkdir -p web/offline
+	GOOS=js GOARCH=wasm go build -o web/offline/engine.wasm ./cmd/wasm
+	@WASM_JS="$$(go env GOROOT)/misc/wasm/wasm_exec.js"; \
+	 [ -f "$$WASM_JS" ] || WASM_JS="$$(go env GOROOT)/lib/wasm/wasm_exec.js"; \
+	 cp "$$WASM_JS" web/offline/wasm_exec.js
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 IMAGE ?= ghcr.io/khachatur86/goroscope

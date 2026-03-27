@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Goroscope — Offline Analyzer</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --critical: #f85149;
+      --warning: #d29922;
+      --info: #3fb950;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      font-size: 13px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+    }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .subtitle { color: var(--muted); margin-bottom: 32px; }
+
+    #drop-zone {
+      width: 100%;
+      max-width: 640px;
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(88, 166, 255, 0.06);
+    }
+    #drop-zone p { color: var(--muted); margin-top: 8px; font-size: 12px; }
+    #file-input { display: none; }
+
+    #status {
+      margin-top: 16px;
+      color: var(--muted);
+      min-height: 20px;
+    }
+    #status.error { color: var(--critical); }
+
+    #results {
+      width: 100%;
+      max-width: 1100px;
+      margin-top: 32px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+
+    /* Insights */
+    #insights-list { margin-bottom: 32px; }
+    .insight {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+    }
+    .insight .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-right: 8px;
+    }
+    .badge.critical { background: rgba(248,81,73,0.15); color: var(--critical); border: 1px solid var(--critical); }
+    .badge.warning  { background: rgba(210,153,34,0.15); color: var(--warning); border: 1px solid var(--warning); }
+    .badge.info     { background: rgba(63,185,80,0.15);  color: var(--info);    border: 1px solid var(--info); }
+    .insight .msg { color: var(--text); }
+    .insight .detail { color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+    /* Goroutine table */
+    #goroutine-section { margin-bottom: 32px; }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th {
+      text-align: left;
+      padding: 6px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    td {
+      padding: 5px 12px;
+      border-bottom: 1px solid rgba(48,54,61,0.5);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 320px;
+    }
+    tr:hover td { background: var(--surface); }
+
+    /* Annotations */
+    #annotations-section { margin-bottom: 32px; }
+    .annotation-item {
+      display: flex;
+      gap: 16px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .annotation-time { color: var(--accent); width: 120px; flex-shrink: 0; }
+    .annotation-note { color: var(--text); }
+
+    /* Footer */
+    .footer { margin-top: auto; padding-top: 32px; color: var(--muted); font-size: 11px; }
+    .footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>Goroscope — Offline Analyzer</h1>
+  <p class="subtitle">Drop a <code>.gtrace</code> file to analyze it locally — no server required.</p>
+
+  <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="1.5">
+      <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0l-4 4m4-4v9"/>
+    </svg>
+    <p>Drag &amp; drop a <code>.gtrace</code> file here, or click to browse</p>
+    <input id="file-input" type="file" accept=".gtrace,.json" />
+  </div>
+
+  <div id="status"></div>
+  <div id="results" style="display:none"></div>
+
+  <div class="footer">
+    <a href="https://github.com/Khachatur86/goroscope" target="_blank">goroscope</a>
+    — offline WASM mode (I-10)
+  </div>
+
+  <!-- Load Go WASM glue code, then engine.wasm -->
+  <script src="wasm_exec.js"></script>
+  <script>
+    const go = new Go();
+    let wasmReady = false;
+
+    WebAssembly.instantiateStreaming(fetch("engine.wasm"), go.importObject)
+      .then(result => {
+        go.run(result.instance);
+        wasmReady = true;
+        setStatus("Ready. Drop a .gtrace file to analyze.", false);
+      })
+      .catch(err => {
+        setStatus("Failed to load engine.wasm: " + err.message, true);
+      });
+
+    // ── Drag-and-drop ───────────────────────────────────────────────────────
+    const dropZone = document.getElementById("drop-zone");
+    const fileInput = document.getElementById("file-input");
+
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+
+    function handleFile(file) {
+      if (!wasmReady) { setStatus("Engine not ready yet, please wait…", false); return; }
+      setStatus("Analyzing " + file.name + "…", false);
+      const reader = new FileReader();
+      reader.onload = e => {
+        const t0 = performance.now();
+        let result;
+        try {
+          result = JSON.parse(window.goroscope.analyzeCapture(e.target.result));
+        } catch (err) {
+          setStatus("Analysis error: " + err.message, true);
+          return;
+        }
+        const elapsed = Math.round(performance.now() - t0);
+        if (result.error) { setStatus("Error: " + result.error, true); return; }
+        setStatus("Analyzed in " + elapsed + "ms — " + (result.goroutines || []).length + " goroutines", false);
+        renderResults(result);
+      };
+      reader.readAsText(file);
+    }
+
+    // ── Render ──────────────────────────────────────────────────────────────
+    function renderResults(data) {
+      const el = document.getElementById("results");
+      el.style.display = "";
+      el.innerHTML = "";
+
+      // Insights
+      if (data.insights && data.insights.length > 0) {
+        el.insertAdjacentHTML("beforeend", `<div class="section-title">Insights (${data.insights.length})</div>`);
+        const list = document.createElement("div");
+        list.id = "insights-list";
+        for (const ins of data.insights) {
+          list.insertAdjacentHTML("beforeend", `
+            <div class="insight">
+              <span class="badge ${ins.severity}">${ins.severity}</span>
+              <span class="msg">${escHtml(ins.message)}</span>
+              ${ins.detail ? `<div class="detail">${escHtml(ins.detail)}</div>` : ""}
+            </div>
+          `);
+        }
+        el.appendChild(list);
+      }
+
+      // Goroutine table
+      const goroutines = data.goroutines || [];
+      el.insertAdjacentHTML("beforeend",
+        `<div id="goroutine-section"><div class="section-title">Goroutines (${goroutines.length})</div>`);
+      const section = document.getElementById("goroutine-section");
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      wrap.innerHTML = `
+        <table>
+          <thead><tr>
+            <th>ID</th><th>State</th><th>Wait (ms)</th><th>Top Frame</th>
+          </tr></thead>
+          <tbody id="goroutine-tbody"></tbody>
+        </table>`;
+      section.appendChild(wrap);
+      const tbody = document.getElementById("goroutine-tbody");
+      // Render up to 500 rows for performance
+      for (const g of goroutines.slice(0, 500)) {
+        const topFrame = (g.stack && g.stack[0]) ? g.stack[0].func : (g.top_frame || "");
+        const waitMs = g.total_wait_ns ? (g.total_wait_ns / 1e6).toFixed(1) : "—";
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${g.id}</td>
+          <td>${escHtml(g.state || "")}</td>
+          <td>${waitMs}</td>
+          <td title="${escHtml(topFrame)}">${escHtml(topFrame)}</td>
+        `;
+        tbody.appendChild(row);
+      }
+      if (goroutines.length > 500) {
+        section.insertAdjacentHTML("beforeend",
+          `<div style="color:var(--muted);font-size:11px;margin-top:6px">Showing first 500 of ${goroutines.length} goroutines.</div>`);
+      }
+      el.appendChild(section);
+
+      // Annotations
+      const annotations = data.annotations || [];
+      if (annotations.length > 0) {
+        el.insertAdjacentHTML("beforeend",
+          `<div id="annotations-section"><div class="section-title">Annotations (${annotations.length})</div></div>`);
+        const annSection = document.getElementById("annotations-section");
+        for (const a of annotations) {
+          annSection.insertAdjacentHTML("beforeend", `
+            <div class="annotation-item">
+              <span class="annotation-time">${nsToHuman(a.time_ns)}</span>
+              <span class="annotation-note">${escHtml(a.note)}</span>
+            </div>
+          `);
+        }
+        el.appendChild(annSection);
+      }
+    }
+
+    function setStatus(msg, isError) {
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      el.className = isError ? "error" : "";
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function nsToHuman(ns) {
+      if (ns >= 1e9) return (ns / 1e9).toFixed(2) + "s";
+      if (ns >= 1e6) return (ns / 1e6).toFixed(1) + "ms";
+      if (ns >= 1e3) return (ns / 1e3).toFixed(0) + "µs";
+      return ns + "ns";
+    }
+  </script>
+</body>
+</html>

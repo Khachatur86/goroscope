@@ -137,3 +137,6 @@ jobs:
 
       - name: Web tests
         run: cd web && npm run test
+
+      - name: Build WASM engine (I-10)
+        run: make wasm

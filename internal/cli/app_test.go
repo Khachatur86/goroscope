@@ -434,3 +434,67 @@ func TestRun_Export_JSON(t *testing.T) {
 		}
 	}
 }
+
+// ── completion tests ─────────────────────────────────────────────────────────
+
+func TestCompletionSubcommand_MissingArg(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	err := completionSubcommand(nil, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected error for missing shell argument, got nil")
+	}
+	if !strings.Contains(stderr.String(), "Usage") {
+		t.Errorf("expected usage hint in stderr, got %q", stderr.String())
+	}
+}
+
+func TestCompletionSubcommand_UnknownShell(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	err := completionSubcommand([]string{"powershell"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected error for unknown shell, got nil")
+	}
+	if !strings.Contains(err.Error(), "powershell") {
+		t.Errorf("error should mention the unknown shell, got %q", err.Error())
+	}
+}
+
+func TestCompletionSubcommand_Shells(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		shell   string
+		contain string
+	}{
+		{"zsh", "#compdef goroscope"},
+		{"bash", "complete -F _goroscope_completions goroscope"},
+		{"fish", "complete -c goroscope"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.shell, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			err := completionSubcommand([]string{tc.shell}, &stdout, &stderr)
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.shell, err)
+			}
+			if !strings.Contains(stdout.String(), tc.contain) {
+				t.Errorf("%s: output missing %q", tc.shell, tc.contain)
+			}
+		})
+	}
+}
+
+func TestRun_Completion_Dispatch(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	err := Run(context.Background(), []string{"completion", "zsh"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run completion zsh: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "_goroscope") {
+		t.Error("expected zsh completion output containing _goroscope")
+	}
+}

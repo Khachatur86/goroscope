@@ -286,9 +286,9 @@
 | I-6 | CSP + CORS headers | P2 | Infrastructure | S | ✅ Done |
 | I-7 | `goroscope diff` CLI command | P2 | Infrastructure | S | ✅ Done |
 | I-9 | Stack pattern diff across captures | P2 | Infrastructure | M | |
-| I-3 | Shell autocomplete | P3 | Infrastructure | S | |
-| I-8 | `goroscope annotate` command | P3 | Infrastructure | S | |
-| I-10 | WASM offline mode | P3 | Infrastructure | L | |
+| I-3 | Shell autocomplete | P3 | Infrastructure | S | ✅ РЕАЛИЗОВАНО (I-3) |
+| I-8 | `goroscope annotate` command | P3 | Infrastructure | S | ✅ РЕАЛИЗОВАНО (I-8) |
+| I-10 | WASM offline mode | P3 | Infrastructure | L | ✅ РЕАЛИЗОВАНО (I-10) |
 
 > **Effort:** S = 1-3 дня, M = 1-2 недели, L = 2-4 недели
 
@@ -482,7 +482,7 @@ goroscope_session_duration_seconds 3600
 
 ---
 
-### I-3. Shell autocomplete (zsh / bash / fish) (P3)
+### ~~I-3. Shell autocomplete (zsh / bash / fish)~~ — ✅ РЕАЛИЗОВАНО (I-3)
 
 **Gap:** CLI не поддерживает автодополнение. `goroscope <Tab>` ничего не делает.
 
@@ -532,7 +532,7 @@ goroscope_session_duration_seconds 3600
 
 ---
 
-### I-8. `goroscope annotate` command (P3)
+### ~~I-8. `goroscope annotate` command~~ — ✅ РЕАЛИЗОВАНО (I-8)
 
 **Gap:** .gtrace файлы содержат только goroutine данные. Нет способа добавить контекст: «тут началась деградация», «это после деплоя v2.3».
 
@@ -548,7 +548,7 @@ goroscope_session_duration_seconds 3600
 
 ---
 
-### I-10. WASM offline mode (P3)
+### ~~I-10. WASM offline mode~~ — ✅ РЕАЛИЗОВАНО (I-10)
 
 **Gap:** Goroscope требует запущенного Go-сервера. В air-gapped окружениях или при быстром шаринге трейса — барьер входа.
 

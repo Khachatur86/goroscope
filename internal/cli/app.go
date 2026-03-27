@@ -71,6 +71,10 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return watchCommand(ctx, args[1:], stdout, stderr)
 	case "diff":
 		return diffCommand(ctx, args[1:], stdout, stderr)
+	case "completion":
+		return completionSubcommand(args[1:], stdout, stderr)
+	case "annotate":
+		return annotateCommand(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return nil
@@ -110,8 +114,10 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  export    Export timeline segments to CSV or JSON (for pandas, analysis)")
 	_, _ = fmt.Fprintln(w, "  history   List saved captures from ~/.goroscope/captures/")
 	_, _ = fmt.Fprintln(w, "  watch     Headless monitor: emit alerts when anomaly thresholds are crossed")
-	_, _ = fmt.Fprintln(w, "  diff      Compare two .gtrace captures: goroutine state + wait-time deltas")
-	_, _ = fmt.Fprintln(w, "  version   Print version")
+	_, _ = fmt.Fprintln(w, "  diff        Compare two .gtrace captures: goroutine state + wait-time deltas")
+	_, _ = fmt.Fprintln(w, "  completion  Generate shell completion script (zsh, bash, fish)")
+	_, _ = fmt.Fprintln(w, "  annotate    Add, list, or delete named annotations in a .gtrace file")
+	_, _ = fmt.Fprintln(w, "  version     Print version")
 	_, _ = fmt.Fprintln(w, "  help      Show this help")
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Common flags (run, test, collect, ui, replay):")
@@ -548,9 +554,10 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "replay", Target: target,
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
-		ServerConfig:  api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
-		MaxGoroutines: *maxGoroutinesReplay,
-		Stdout:        stdout, Stderr: stderr,
+		ServerConfig:    api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
+		MaxGoroutines:   *maxGoroutinesReplay,
+		BrowserURLSuffix: annotationsToBookmarkParam(capture.Annotations),
+		Stdout:          stdout, Stderr: stderr,
 	})
 }
 

@@ -1,6 +1,15 @@
 // Package model defines the core domain types shared across goroscope packages.
 package model
 
+// Annotation is a user-supplied note attached to a specific point in time
+// within a capture. Stored inside the .gtrace file; loaded by the UI as
+// named timeline bookmarks.
+type Annotation struct {
+	ID     string `json:"id"`
+	TimeNS int64  `json:"time_ns"`
+	Note   string `json:"note"`
+}
+
 // Capture is a point-in-time snapshot of goroutine events and stack traces.
 type Capture struct {
 	Name      string          `json:"name"`
@@ -20,4 +29,7 @@ type Capture struct {
 	// LabelOverrides merges into goroutine Labels (e.g. from agent.WithRequestID).
 	// Keys are goroutine IDs; values are label key-value pairs to merge.
 	LabelOverrides map[int64]Labels `json:"label_overrides,omitempty"`
+	// Annotations are user-supplied notes added via `goroscope annotate`.
+	// They are stored in the .gtrace file and loaded by the UI as named bookmarks.
+	Annotations []Annotation `json:"annotations,omitempty"`
 }
