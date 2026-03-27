@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist
+.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down
 
 build:
 	mkdir -p bin
@@ -62,3 +62,23 @@ ui-react: build web
 
 vscode:
 	cd vscode && npm install && npm run compile
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+IMAGE ?= ghcr.io/khachatur86/goroscope
+
+# Build the Docker image locally (tag: latest + git sha).
+docker:
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):latest -t $(IMAGE):$(shell git rev-parse --short HEAD) .
+
+# Push the locally built image to GHCR (requires docker login ghcr.io).
+docker-push: docker
+	docker push $(IMAGE):latest
+	docker push $(IMAGE):$(shell git rev-parse --short HEAD)
+
+# Start the full demo stack (goroscope + sample app).
+docker-compose-up:
+	docker compose up --build
+
+# Tear down the demo stack.
+docker-compose-down:
+	docker compose down

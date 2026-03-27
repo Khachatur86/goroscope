@@ -1,0 +1,16 @@
+# Dockerfile.demo — builds the trace_demo sample application.
+# Used by docker-compose.yml to demonstrate goroscope attach mode.
+FROM golang:1.24-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -trimpath \
+      -o /demo-app \
+      ./examples/trace_demo
+
+FROM scratch
+COPY --from=builder /demo-app /demo-app
+EXPOSE 6060
+ENTRYPOINT ["/demo-app"]

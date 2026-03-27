@@ -121,5 +121,56 @@ brews:
     test: |
       system "#{bin}/goroscope", "version"
 
+# ── Docker images (I-2) ───────────────────────────────────────────────────────
+# Published to GHCR on every tagged release.
+# The Dockerfile is a multi-stage build: Node (React) → Go → scratch.
+dockers:
+  - id: goroscope-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/khachatur86/goroscope:{{ .Tag }}-amd64"
+      - "ghcr.io/khachatur86/goroscope:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--label=org.opencontainers.image.title=goroscope"
+      - "--label=org.opencontainers.image.description=Local Go concurrency debugger"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/Khachatur86/goroscope"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+
+  - id: goroscope-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/khachatur86/goroscope:{{ .Tag }}-arm64"
+      - "ghcr.io/khachatur86/goroscope:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--label=org.opencontainers.image.title=goroscope"
+      - "--label=org.opencontainers.image.description=Local Go concurrency debugger"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/Khachatur86/goroscope"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+
+# Multi-arch manifest combining amd64 + arm64 images.
+docker_manifests:
+  - name_template: "ghcr.io/khachatur86/goroscope:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/khachatur86/goroscope:{{ .Tag }}-amd64"
+      - "ghcr.io/khachatur86/goroscope:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/khachatur86/goroscope:latest"
+    image_templates:
+      - "ghcr.io/khachatur86/goroscope:latest-amd64"
+      - "ghcr.io/khachatur86/goroscope:latest-arm64"
+
 # ── Announce ──────────────────────────────────────────────────────────────────
 # (Slack/Discord announce can be added here when ready)

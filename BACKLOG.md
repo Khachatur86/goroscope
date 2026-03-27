@@ -480,13 +480,9 @@ goroscope_session_duration_seconds 3600
 
 ---
 
-### I-2. Docker image + docker-compose пример (P2)
+### ~~I-2. Docker image + docker-compose пример~~ — ✅ РЕАЛИЗОВАНО (I-2)
 
-**Gap:** Установка только через Homebrew / go install. Нет контейнеризованного варианта, нет примера для мониторинга Go-сервиса "одной командой".
-
-**Задача:** `Dockerfile` (multi-stage: builder Go + Node, финальный образ scratch/alpine). Публикация в GHCR через goreleaser. `docker-compose.yml` пример: goroscope + sample Go app. README: секция "Docker quickstart".
-
-**Критерий готовности:** `docker run ghcr.io/khachatur86/goroscope:latest ui` запускает UI. `docker compose up` поднимает демо-сервис с goroscope.
+> **Реализовано:** `Dockerfile` — multi-stage build (node:22-alpine → golang:1.24-alpine → scratch), React UI встроен через `go:embed`. `Dockerfile.demo` — sample app (trace_demo) для docker-compose. `docker-compose.yml` — полный стек: goroscope attach + demo app, `docker compose up` → UI на :7070. `.goreleaser.yaml` расширен: dockers (amd64 + arm64 с buildx) + docker_manifests (multi-arch тег). Makefile: `make docker`, `make docker-push`, `make docker-compose-up/down`.
 
 ---
 

@@ -1,0 +1,36 @@
+# docker-compose.yml — goroscope + sample Go app demo
+#
+# Usage:
+#   docker compose up
+#   open http://localhost:7070
+#
+# The sample app (trace_demo) exposes /debug/pprof on port 6060.
+# Goroscope attaches to it and serves the UI on port 7070.
+
+services:
+  # Sample Go application instrumented with the goroscope agent.
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.demo
+    environment:
+      GOROSCOPE_ADDR: ":6060"
+    expose:
+      - "6060"
+
+  # Goroscope monitoring UI — attaches to the sample app via pprof.
+  goroscope:
+    build:
+      context: .
+      target: go-builder   # reuse the go-builder stage to avoid a full rebuild
+      dockerfile: Dockerfile
+    image: goroscope:local
+    ports:
+      - "7070:7070"
+    command:
+      - attach
+      - "--addr=0.0.0.0:7070"
+      - "http://app:6060"
+    depends_on:
+      - app
+    restart: on-failure
