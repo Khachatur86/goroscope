@@ -263,6 +263,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/replay/load", s.handleReplayLoad)
 	mux.HandleFunc("/api/v1/replay/export", s.handleReplayExport)
 	mux.HandleFunc("/api/v1/compare", s.handleCompare)
+	mux.HandleFunc("/api/v1/compare/stacks", s.handleCompareStacks)
 	mux.HandleFunc("/api/v1/memory", s.handleMemoryStats)
 	mux.HandleFunc("/api/v1/pprof/stacks", s.handlePprofStacks)
 	mux.HandleFunc("/api/v1/requests", s.handleRequests)
@@ -1138,38 +1139,14 @@ func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileA, _, err := r.FormFile("file_a")
+	captureA, err := readCaptureFormFile(r, "file_a")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("missing or invalid file_a field: %v", err), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	defer func() { _ = fileA.Close() }()
-	dataA, err := io.ReadAll(fileA)
+	captureB, err := readCaptureFormFile(r, "file_b")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("read file_a: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	fileB, _, err := r.FormFile("file_b")
-	if err != nil {
-		http.Error(w, fmt.Sprintf("missing or invalid file_b field: %v", err), http.StatusBadRequest)
-		return
-	}
-	defer func() { _ = fileB.Close() }()
-	dataB, err := io.ReadAll(fileB)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("read file_b: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	captureA, err := tracebridge.LoadCaptureFromBytes(dataA)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid capture file_a: %v", err), http.StatusBadRequest)
-		return
-	}
-	captureB, err := tracebridge.LoadCaptureFromBytes(dataB)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid capture file_b: %v", err), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -1197,6 +1174,56 @@ func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 		},
 		"diff": diff,
 	})
+}
+
+// handleCompareStacks computes a stack-pattern diff between two captures (I-9).
+// POST /api/v1/compare/stacks with multipart fields "file_a" (baseline) and
+// "file_b" (compare). Returns appeared/disappeared/common_count.
+func (s *Server) handleCompareStacks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	const maxUploadSize = 100 << 20 // 100 MiB
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		http.Error(w, fmt.Sprintf("parse multipart: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	captureA, err := readCaptureFormFile(r, "file_a")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	captureB, err := readCaptureFormFile(r, "file_b")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	result := analysis.StackPatternDiff(captureA, captureB)
+	writeJSON(w, http.StatusOK, result)
+}
+
+// readCaptureFormFile reads a multipart form file field and parses it as a
+// capture. Returns a descriptive error for missing or invalid files.
+func readCaptureFormFile(r *http.Request, field string) (model.Capture, error) {
+	f, _, err := r.FormFile(field)
+	if err != nil {
+		return model.Capture{}, fmt.Errorf("missing or invalid %s field: %w", field, err)
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return model.Capture{}, fmt.Errorf("read %s: %w", field, err)
+	}
+	cap, err := tracebridge.LoadCaptureFromBytes(data)
+	if err != nil {
+		return model.Capture{}, fmt.Errorf("invalid capture %s: %w", field, err)
+	}
+	return cap, nil
 }
 
 // handleStream implements a Server-Sent Events (SSE) endpoint with delta

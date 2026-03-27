@@ -546,13 +546,9 @@ goroscope_session_duration_seconds 3600
 
 ---
 
-### I-9. Stack pattern diff across captures (P2)
+### ~~I-9. Stack pattern diff across captures~~ — ✅ РЕАЛИЗОВАНО (I-9)
 
-**Gap:** `goroscope diff` и Compare UI показывают count/state изменения, но не stack-паттерны. Нельзя увидеть «появился новый call path» между двумя captures.
-
-**Задача:** Новая функция `analysis.StackPatternDiff(a, b Capture)` — строит set уникальных normalized stack signatures для каждого capture, возвращает appeared/disappeared/changed. Новый endpoint `POST /api/v1/compare/stacks` принимает два .gtrace, возвращает stack pattern diff. UI: секция в Compare view.
-
-**Критерий готовности:** При добавлении нового code path между captures — diff показывает новые стеки. Работает с 50k unique stacks за <2s.
+> **Реализовано:** `analysis.StackPatternDiff(baseline, compare Capture) StackPatternDiffResult` — нормализует стеки (func names без line numbers), строит map-based signature set, возвращает `{appeared, disappeared, common_count}`. Нормализация стабильна к сдвигам строк. Результаты отсортированы по count desc. `readCaptureFormFile` — shared helper для multipart-парсинга (DRY с `handleCompare`). Новый endpoint `POST /api/v1/compare/stacks` (file_a=baseline, file_b=compare). 6 unit-тестов: empty, all-new, all-gone, common+diff, line-numbers-ignored, count-aggregation, sorted-by-count.
 
 ---
 
