@@ -26,9 +26,20 @@ import (
 	"github.com/Khachatur86/goroscope/internal/pprofpoll"
 	"github.com/Khachatur86/goroscope/internal/session"
 	"github.com/Khachatur86/goroscope/internal/store"
+	"github.com/Khachatur86/goroscope/internal/target"
 	"github.com/Khachatur86/goroscope/internal/tracebridge"
 	"github.com/Khachatur86/goroscope/internal/version"
 )
+
+// multiFlag is a flag.Value that accumulates repeated --flag=value occurrences
+// into a string slice.
+type multiFlag []string
+
+func (f *multiFlag) String() string { return strings.Join(*f, ",") }
+func (f *multiFlag) Set(v string) error {
+	*f = append(*f, v)
+	return nil
+}
 
 // Run is the CLI entry point; it parses args and dispatches to the appropriate command.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -434,7 +445,11 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage: goroscope ui [flags]\n\n")
-		_, _ = fmt.Fprintf(stderr, "Load demo data and serve the UI.\n\n")
+		_, _ = fmt.Fprintf(stderr, "Load demo data and serve the UI.\n")
+		_, _ = fmt.Fprintf(stderr, "With --target flags, monitor live Go processes instead of demo data.\n\n")
+		_, _ = fmt.Fprintf(stderr, "Examples:\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope ui\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope ui --target=http://localhost:6060 --target=http://localhost:6061\n\n")
 		fs.PrintDefaults()
 	}
 
@@ -446,15 +461,13 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests")
 	maxGoroutinesUI := fs.Int("max-goroutines", 15_000, "Maximum goroutines to display in the UI (0 = unlimited); excess goroutines are sampled by anomaly score")
+	var targets multiFlag
+	fs.Var(&targets, "target", "Monitor a live Go process (repeatable). Format: http://host:port or label=http://host:port")
+
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
-		return err
-	}
-
-	capture, err := tracebridge.LoadDemoCapture()
-	if err != nil {
 		return err
 	}
 
@@ -463,10 +476,30 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
+	cfg := api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token}
+
+	// Multi-target mode: skip demo data, use live pprof pollers.
+	if len(targets) > 0 {
+		return serveMultiTargetSession(ctx, serveMultiTargetInput{
+			Addr:        *addr,
+			Targets:     targets,
+			OpenBrowser: *openBrowser,
+			UIPath:      uiPathResolved,
+			ServerConfig: cfg,
+			Stdout:      stdout,
+			Stderr:      stderr,
+		})
+	}
+
+	capture, err := tracebridge.LoadDemoCapture()
+	if err != nil {
+		return err
+	}
+
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "ui-demo", Target: "demo://ui",
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
-		ServerConfig:  api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
+		ServerConfig:  cfg,
 		MaxGoroutines: *maxGoroutinesUI,
 		Stdout:        stdout, Stderr: stderr,
 	})
@@ -1074,6 +1107,67 @@ func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
 	}
 
 	return server.Serve(ctx)
+}
+
+// serveMultiTargetInput holds parameters for serveMultiTargetSession (CS-5).
+type serveMultiTargetInput struct {
+	Addr         string
+	// Targets is a list of target specifiers in the form "http://host:port"
+	// or "label=http://host:port".
+	Targets      []string
+	OpenBrowser  bool
+	UIPath       string
+	ServerConfig api.Config
+	Stdout       io.Writer
+	Stderr       io.Writer
+}
+
+// serveMultiTargetSession starts a pprof poller for each target URL, registers
+// them in a target.Registry, and serves the goroscope UI. Switching between
+// targets in the UI is done via the ?target_id= query parameter (H-7).
+func serveMultiTargetSession(ctx context.Context, in serveMultiTargetInput) error {
+	reg := target.New()
+	// Use a fallback engine+sessions so the server starts even before any target
+	// has reported goroutine data.
+	engine := analysis.NewEngine()
+	sessions := session.NewManager()
+
+	for _, spec := range in.Targets {
+		addr, label := parseTargetSpec(spec)
+		reg.Add(ctx, target.AddInput{Addr: addr, Label: label, Stderr: in.Stderr})
+		_, _ = fmt.Fprintf(in.Stdout, "goroscope ui: monitoring %s (label=%q)\n", addr, label)
+	}
+
+	server := api.NewServer(in.Addr, engine, sessions, in.UIPath, in.ServerConfig)
+	server.WithRegistry(reg)
+
+	scheme := "http"
+	if in.ServerConfig.TLSCertFile != "" {
+		scheme = "https"
+	}
+	url := scheme + "://" + in.Addr
+	_, _ = fmt.Fprintf(in.Stdout, "goroscope ui: serving %d target(s) at %s\n", len(in.Targets), url)
+
+	if in.OpenBrowser {
+		scheduleOpenBrowser(ctx, 500*time.Millisecond, url)
+	}
+	return server.Serve(ctx)
+}
+
+// parseTargetSpec splits a target specifier into (addr, label).
+// Accepted forms:
+//
+//	http://localhost:6060          → addr="http://localhost:6060", label="http://localhost:6060"
+//	auth-svc=http://localhost:6060 → addr="http://localhost:6060", label="auth-svc"
+func parseTargetSpec(spec string) (addr, label string) {
+	if idx := strings.IndexByte(spec, '='); idx > 0 {
+		candidate := spec[idx+1:]
+		// Only treat as label=addr if the part after '=' looks like a URL.
+		if strings.HasPrefix(candidate, "http://") || strings.HasPrefix(candidate, "https://") {
+			return candidate, spec[:idx]
+		}
+	}
+	return spec, spec
 }
 
 func serveLiveRunSession(ctx context.Context, in serveLiveRunInput) error {

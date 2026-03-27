@@ -20,6 +20,7 @@ import (
 	"github.com/Khachatur86/goroscope/internal/analysis"
 	"github.com/Khachatur86/goroscope/internal/model"
 	"github.com/Khachatur86/goroscope/internal/session"
+	"github.com/Khachatur86/goroscope/internal/target"
 	"github.com/Khachatur86/goroscope/internal/tracebridge"
 	"github.com/Khachatur86/goroscope/internal/version"
 )
@@ -48,6 +49,11 @@ type Server struct {
 	sessions *session.Manager
 	uiPath   string // if non-empty, serve React UI from this dir instead of embedded vanilla UI
 	config   Config
+	// registry holds the multi-target state when more than one process is
+	// being monitored (H-7). When nil, s.engine / s.sessions are used directly.
+	registry *target.Registry
+	// serveCtx is set in Serve and passed to target additions requested via API.
+	serveCtx context.Context
 }
 
 // NewServer returns a Server bound to addr with the given engine and session manager.
@@ -67,6 +73,46 @@ func NewServer(addr string, engine *analysis.Engine, sessions *session.Manager, 
 	}
 }
 
+// WithRegistry attaches a multi-target registry to the server. When set,
+// requests carrying a ?target_id= query parameter are routed to the
+// corresponding target's engine; requests without target_id fall back to
+// the registry's default target (or s.engine when registry is also empty).
+func (s *Server) WithRegistry(r *target.Registry) {
+	s.registry = r
+}
+
+// engineFor returns the analysis engine for the request. If the request
+// carries a ?target_id= parameter the matching registry target is used;
+// otherwise the server's primary engine is returned.
+func (s *Server) engineFor(r *http.Request) *analysis.Engine {
+	if s.registry != nil {
+		if id := r.URL.Query().Get("target_id"); id != "" {
+			if t, ok := s.registry.Get(id); ok {
+				return t.Engine
+			}
+		}
+		if t, ok := s.registry.Default(); ok {
+			return t.Engine
+		}
+	}
+	return s.engine
+}
+
+// sessionsFor returns the session manager for the request, mirroring engineFor.
+func (s *Server) sessionsFor(r *http.Request) *session.Manager {
+	if s.registry != nil {
+		if id := r.URL.Query().Get("target_id"); id != "" {
+			if t, ok := s.registry.Get(id); ok {
+				return t.Sessions
+			}
+		}
+		if t, ok := s.registry.Default(); ok {
+			return t.Sessions
+		}
+	}
+	return s.sessions
+}
+
 // Serve starts the HTTP server and blocks until ctx is cancelled.
 // When Config.TLSCertFile is set, the server uses HTTPS.
 // When Config.Token is set, every request must carry a matching Bearer token.
@@ -74,6 +120,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if err := s.validateConfig(); err != nil {
 		return err
 	}
+	s.serveCtx = ctx // stored for use by handleTargetsCreate
 
 	handler := s.routes()
 	if s.config.Token != "" {
@@ -221,6 +268,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/requests", s.handleRequests)
 	mux.HandleFunc("/api/v1/requests/{id}/goroutines", s.handleRequestGoroutines)
 	mux.HandleFunc("/metrics", s.handleMetrics)
+	// H-7: multi-target monitoring endpoints.
+	mux.HandleFunc("/api/v1/targets", s.handleTargets)
+	mux.HandleFunc("/api/v1/targets/{id}", s.handleTargetByID)
 
 	if isLocalhostAddr(s.addr) {
 		mux.Handle("/debug/pprof/", http.StripPrefix("/debug/pprof", http.HandlerFunc(pprof.Index)))
@@ -290,12 +340,12 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-func (s *Server) handleSessions(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.sessions.History())
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.sessionsFor(r).History())
 }
 
-func (s *Server) handleSessionCurrent(w http.ResponseWriter, _ *http.Request) {
-	current := s.sessions.Current()
+func (s *Server) handleSessionCurrent(w http.ResponseWriter, r *http.Request) {
+	current := s.sessionsFor(r).Current()
 	if current == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active session"})
 		return
@@ -438,7 +488,7 @@ func goroutineMatchesSearch(g model.Goroutine, search string) bool {
 }
 
 func (s *Server) handleGoroutines(w http.ResponseWriter, r *http.Request) {
-	etag := fmt.Sprintf(`"%x"`, s.engine.DataVersion())
+	etag := fmt.Sprintf(`"%x"`, s.engineFor(r).DataVersion())
 	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
@@ -446,7 +496,7 @@ func (s *Server) handleGoroutines(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", etag)
 
 	params := parseGoroutineListParams(r)
-	all := s.engine.ListGoroutines()
+	all := s.engineFor(r).ListGoroutines()
 	filtered := filterGoroutines(all, params)
 	total := len(filtered)
 
@@ -473,7 +523,7 @@ func (s *Server) handleGoroutines(w http.ResponseWriter, r *http.Request) {
 
 	// Apply display-level sampling when no explicit pagination is requested.
 	// This keeps responses fast and the UI smooth for very large traces.
-	sample := analysis.SampleGoroutines(filtered, s.engine.GetSamplingPolicy())
+	sample := analysis.SampleGoroutines(filtered, s.engineFor(r).GetSamplingPolicy())
 	if sample.Sampled {
 		w.Header().Set("X-Sampled", "true")
 		w.Header().Set("X-Total-Count", strconv.Itoa(sample.TotalCount))
@@ -513,7 +563,7 @@ func (s *Server) handleGoroutineByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goroutine, ok := s.engine.GetGoroutine(id)
+	goroutine, ok := s.engineFor(r).GetGoroutine(id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "goroutine not found"})
 		return
@@ -538,7 +588,7 @@ func (s *Server) handleGoroutineStackAt(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ns"})
 		return
 	}
-	snapshot := s.engine.GetStackAt(id, ns)
+	snapshot := s.engineFor(r).GetStackAt(id, ns)
 	if snapshot == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no stack at that time"})
 		return
@@ -554,7 +604,7 @@ func (s *Server) handleGoroutineStacks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid goroutine id"})
 		return
 	}
-	stacks := s.engine.GetStacksFor(id)
+	stacks := s.engineFor(r).GetStacksFor(id)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"goroutine_id": id,
 		"stacks":       stacks,
@@ -572,7 +622,7 @@ func (s *Server) handlePprofStacks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_ns and end_ns must be valid positive integers with start_ns < end_ns"})
 		return
 	}
-	stacks := s.engine.GetStacksInRange(startNS, endNS)
+	stacks := s.engineFor(r).GetStacksInRange(startNS, endNS)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"stacks":   stacks,
 		"start_ns": startNS,
@@ -587,7 +637,7 @@ func (s *Server) handleGoroutineChildren(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	all := s.engine.ListGoroutines()
+	all := s.engineFor(r).ListGoroutines()
 	var children []model.Goroutine
 	for _, g := range all {
 		if g.ParentID == parentID {
@@ -611,8 +661,8 @@ func (s *Server) handleGoroutineGroups(w http.ResponseWriter, r *http.Request) {
 	}
 	labelKey := strings.TrimSpace(r.URL.Query().Get("label_key"))
 
-	goroutines := s.engine.ListGoroutines()
-	segments := s.engine.Timeline()
+	goroutines := s.engineFor(r).ListGoroutines()
+	segments := s.engineFor(r).Timeline()
 
 	groups, err := analysis.GroupGoroutines(analysis.GroupGoroutinesInput{
 		Goroutines: goroutines,
@@ -658,7 +708,7 @@ func (s *Server) handleInsights(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	all := s.engine.ListGoroutines()
+	all := s.engineFor(r).ListGoroutines()
 	var longBlocked []model.Goroutine
 	for _, g := range all {
 		if isWaitState(g.State) && g.WaitNS >= minWaitNS {
@@ -726,9 +776,9 @@ func (s *Server) handleSmartInsights(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	goroutines := s.engine.ListGoroutines()
-	segments := s.engine.Timeline()
-	edges := s.engine.ResourceGraph()
+	goroutines := s.engineFor(r).ListGoroutines()
+	segments := s.engineFor(r).Timeline()
+	edges := s.engineFor(r).ResourceGraph()
 	if len(edges) == 0 {
 		edges = analysis.DeriveCurrentContentionEdges(goroutines)
 	}
@@ -791,7 +841,7 @@ func parseTimelineListParams(r *http.Request) timelineListParams {
 }
 
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
-	etag := fmt.Sprintf(`"%x"`, s.engine.DataVersion())
+	etag := fmt.Sprintf(`"%x"`, s.engineFor(r).DataVersion())
 	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
@@ -799,7 +849,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", etag)
 
 	params := parseTimelineListParams(r)
-	all := s.engine.Timeline()
+	all := s.engineFor(r).Timeline()
 
 	// Fast path: no filters at all.
 	hasFilters := params.State != "" || params.Reason != "" || params.Search != "" || params.Label != "" || params.GoroutineIDs != nil
@@ -812,7 +862,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	// When GoroutineIDs is set, use it as the primary allow-list and skip the goroutine scan.
 	matchIDs := params.GoroutineIDs
 	if params.State != "" || params.Reason != "" || params.Search != "" || params.Label != "" {
-		goroutines := s.engine.ListGoroutines()
+		goroutines := s.engineFor(r).ListGoroutines()
 		matchIDs = make(map[int64]bool, len(goroutines))
 		for _, g := range goroutines {
 			// If the caller also supplied goroutine_ids, intersect.
@@ -851,13 +901,13 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, filtered)
 }
 
-func (s *Server) handleProcessorTimeline(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.engine.ProcessorTimeline())
+func (s *Server) handleProcessorTimeline(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.engineFor(r).ProcessorTimeline())
 }
 
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("view") == "contention" {
-		contention := s.engine.ResourceContention()
+		contention := s.engineFor(r).ResourceContention()
 		// Sort by peak waiters descending
 		sort.Slice(contention, func(i, j int) bool {
 			return contention[i].PeakWaiters > contention[j].PeakWaiters
@@ -865,12 +915,12 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"contention": contention})
 		return
 	}
-	writeJSON(w, http.StatusOK, s.engine.ResourceGraph())
+	writeJSON(w, http.StatusOK, s.engineFor(r).ResourceGraph())
 }
 
-func (s *Server) handleDeadlockHints(w http.ResponseWriter, _ *http.Request) {
-	goroutines := s.engine.ListGoroutines()
-	edges := s.engine.ResourceGraph()
+func (s *Server) handleDeadlockHints(w http.ResponseWriter, r *http.Request) {
+	goroutines := s.engineFor(r).ListGoroutines()
+	edges := s.engineFor(r).ResourceGraph()
 	if len(edges) == 0 {
 		edges = analysis.DeriveCurrentContentionEdges(goroutines)
 	}
@@ -884,8 +934,8 @@ func (s *Server) handleDeadlockHints(w http.ResponseWriter, _ *http.Request) {
 // handleMemoryStats returns the current in-memory data volumes and the
 // configured retention policy.
 // GET /api/v1/memory
-func (s *Server) handleMemoryStats(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.engine.MemoryStats())
+func (s *Server) handleMemoryStats(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.engineFor(r).MemoryStats())
 }
 
 // handleRequests returns request groups (H-4 / G-5).
@@ -895,7 +945,7 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	groups := s.engine.GroupByRequest()
+	groups := s.engineFor(r).GroupByRequest()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"groups": groups,
 		"total":  len(groups),
@@ -914,10 +964,10 @@ func (s *Server) handleRequestGoroutines(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "missing request id", http.StatusBadRequest)
 		return
 	}
-	groups := s.engine.GroupByRequest()
+	groups := s.engineFor(r).GroupByRequest()
 	for _, g := range groups {
 		if g.RequestID == reqID {
-			all := s.engine.ListGoroutines()
+			all := s.engineFor(r).ListGoroutines()
 			idSet := make(map[int64]bool, len(g.GoroutineIDs))
 			for _, id := range g.GoroutineIDs {
 				idSet[id] = true
@@ -940,26 +990,26 @@ func (s *Server) handleRequestGoroutines(w http.ResponseWriter, r *http.Request)
 
 // handleMetrics serves Prometheus text exposition format (H-5).
 // GET /metrics — compatible with prometheus scrape_config, no dependencies.
-func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
-	goroutines := s.engine.ListGoroutines()
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	goroutines := s.engineFor(r).ListGoroutines()
 	stateCounts := make(map[model.GoroutineState]int)
 	for _, g := range goroutines {
 		stateCounts[g.State]++
 	}
 
-	edges := s.engine.ResourceGraph()
+	edges := s.engineFor(r).ResourceGraph()
 	if len(edges) == 0 {
 		edges = analysis.DeriveCurrentContentionEdges(goroutines)
 	}
 	hints := analysis.FindDeadlockHints(edges, goroutines)
 
 	const leakThresholdNS = 30_000_000_000 // 30 s
-	leaks := s.engine.LeakCandidates(leakThresholdNS)
+	leaks := s.engineFor(r).LeakCandidates(leakThresholdNS)
 
-	mem := s.engine.MemoryStats()
+	mem := s.engineFor(r).MemoryStats()
 
 	var sessionDurationSecs float64
-	if sess := s.engine.CurrentSession(); sess != nil && !sess.StartedAt.IsZero() {
+	if sess := s.engineFor(r).CurrentSession(); sess != nil && !sess.StartedAt.IsZero() {
 		sessionDurationSecs = time.Since(sess.StartedAt).Seconds()
 	}
 
@@ -1030,9 +1080,9 @@ func (s *Server) handleReplayLoad(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	current := s.sessions.StartSession("replay", "upload.gtrace")
+	current := s.sessionsFor(r).StartSession("replay", "upload.gtrace")
 	capture = tracebridge.BindCaptureSession(capture, current.ID)
-	s.engine.LoadCapture(current, capture)
+	s.engineFor(r).LoadCapture(current, capture)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "session_id": current.ID})
 }
@@ -1047,13 +1097,13 @@ func (s *Server) handleReplayExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	current := s.sessions.Current()
+	current := s.sessionsFor(r).Current()
 	if current == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active session"})
 		return
 	}
 
-	capture := s.engine.ExportCapture()
+	capture := s.engineFor(r).ExportCapture()
 	if len(capture.Events) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -1183,12 +1233,13 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ch := s.engine.Subscribe()
-	defer s.engine.Unsubscribe(ch)
+	eng := s.engineFor(r)
+	ch := eng.Subscribe()
+	defer eng.Unsubscribe(ch)
 
 	// Send the initial delta immediately (full snapshot when clientRevision==0).
-	s.sendSSEDelta(w, flusher, clientRevision)
-	clientRevision = s.engine.DataVersion()
+	s.sendSSEDelta(w, flusher, eng, clientRevision)
+	clientRevision = eng.DataVersion()
 
 	for {
 		select {
@@ -1198,16 +1249,16 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			s.sendSSEDelta(w, flusher, clientRevision)
-			clientRevision = s.engine.DataVersion()
+			s.sendSSEDelta(w, flusher, eng, clientRevision)
+			clientRevision = eng.DataVersion()
 		}
 	}
 }
 
 // sendSSEDelta fetches a StreamDelta since revision, serialises it and
 // writes one SSE event. Empty deltas are suppressed to save bandwidth.
-func (s *Server) sendSSEDelta(w http.ResponseWriter, flusher http.Flusher, revision uint64) {
-	delta := s.engine.DeltaSince(revision)
+func (s *Server) sendSSEDelta(w http.ResponseWriter, flusher http.Flusher, eng *analysis.Engine, revision uint64) {
+	delta := eng.DeltaSince(revision)
 	if len(delta.Added) == 0 && len(delta.Updated) == 0 && len(delta.Removed) == 0 && revision != 0 {
 		return
 	}
@@ -1217,6 +1268,72 @@ func (s *Server) sendSSEDelta(w http.ResponseWriter, flusher http.Flusher, revis
 	}
 	_, _ = fmt.Fprintf(w, "id: %d\nevent: update\ndata: %s\n\n", delta.Revision, data)
 	flusher.Flush()
+}
+
+// handleTargets handles GET /api/v1/targets and POST /api/v1/targets (H-7).
+//
+// GET  — returns the list of all registered targets.
+// POST — adds a new target; body: {"addr":"http://localhost:6060","label":"svc"}.
+func (s *Server) handleTargets(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		if s.registry == nil {
+			writeJSON(w, http.StatusOK, []target.Info{})
+			return
+		}
+		writeJSON(w, http.StatusOK, s.registry.List())
+
+	case http.MethodPost:
+		if s.registry == nil {
+			writeJSON(w, http.StatusServiceUnavailable,
+				map[string]string{"error": "multi-target mode not enabled; start goroscope with --target flags"})
+			return
+		}
+		var body struct {
+			Addr  string `json:"addr"`
+			Label string `json:"label"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		if body.Addr == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "addr is required"})
+			return
+		}
+		parentCtx := s.serveCtx
+		if parentCtx == nil {
+			parentCtx = r.Context()
+		}
+		t := s.registry.Add(parentCtx, target.AddInput{Addr: body.Addr, Label: body.Label})
+		writeJSON(w, http.StatusCreated, target.Info{
+			ID:      t.ID,
+			Addr:    t.Addr,
+			Label:   t.Label,
+			AddedAt: t.AddedAt,
+		})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleTargetByID handles DELETE /api/v1/targets/{id} (H-7).
+func (s *Server) handleTargetByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing target id"})
+		return
+	}
+	if s.registry == nil || !s.registry.Remove(id) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "target not found"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

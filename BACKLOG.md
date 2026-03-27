@@ -462,19 +462,9 @@ goroscope_session_duration_seconds 3600
 
 ---
 
-### H-7. Multi-process monitoring (P2)
+### ~~H-7. Multi-process monitoring~~ — ✅ РЕАЛИЗОВАНО (H-7)
 
-**Gap:** Goroscope мониторит один Go-процесс. Микросервисные архитектуры требуют видеть несколько процессов одновременно.
-
-**Задача:** Новый API:
-- `POST /api/v1/targets` — `{addr: "localhost:6060", label: "auth-service"}` — добавить процесс для мониторинга
-- `GET /api/v1/targets` — список активных targets со статусом
-- `DELETE /api/v1/targets/{id}` — удалить target
-- Query-параметр `?target_id=` во всех goroutine/timeline/insights endpoints
-
-Каждый target — отдельный Engine + goroutine-поллер. UI: dropdown в topbar для выбора target.
-
-**Критерий готовности:** `goroscope ui --target=localhost:6060 --target=localhost:6061` мониторит два процесса. Переключение между ними в UI без перезапуска.
+> **Реализовано:** Новый пакет `internal/target` — `Registry` управляет несколькими targets, каждый со своим `Engine` + pprof-поллером (goroutine lifetime tied to context, CC-2). API: `GET /api/v1/targets`, `POST /api/v1/targets {addr, label}`, `DELETE /api/v1/targets/{id}`. `Server.WithRegistry(r)` привязывает registry к серверу; хелперы `engineFor(r)` и `sessionsFor(r)` роутят запросы по `?target_id=`. CLI: `goroscope ui --target=http://localhost:6060 --target=label=http://localhost:6061`. `parseTargetSpec` поддерживает формат `label=http://addr`. Юнит-тесты: `TestRegistry_*` (4 кейса) + `TestParseTargetSpec` (5 кейсов).
 
 ---
 

@@ -286,6 +286,38 @@ func TestRun_Test_UnknownPackage(t *testing.T) {
 	}
 }
 
+// TestParseTargetSpec verifies that parseTargetSpec correctly splits target
+// specifiers into addr and label components.
+func TestParseTargetSpec(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		spec      string
+		wantAddr  string
+		wantLabel string
+	}{
+		{"http://localhost:6060", "http://localhost:6060", "http://localhost:6060"},
+		{"https://svc.example.com:8080", "https://svc.example.com:8080", "https://svc.example.com:8080"},
+		{"auth-svc=http://localhost:6060", "http://localhost:6060", "auth-svc"},
+		{"my-service=https://remote:443", "https://remote:443", "my-service"},
+		// '=' present but value is not a URL — treat whole thing as addr.
+		{"not-a-url=value", "not-a-url=value", "not-a-url=value"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.spec, func(t *testing.T) {
+			t.Parallel()
+			gotAddr, gotLabel := parseTargetSpec(tc.spec)
+			if gotAddr != tc.wantAddr {
+				t.Errorf("addr: got %q, want %q", gotAddr, tc.wantAddr)
+			}
+			if gotLabel != tc.wantLabel {
+				t.Errorf("label: got %q, want %q", gotLabel, tc.wantLabel)
+			}
+		})
+	}
+}
+
 // TestExtractRunFilter verifies that extractRunFilter correctly parses -run
 // values from go test argument slices.
 func TestExtractRunFilter(t *testing.T) {
