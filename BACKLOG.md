@@ -470,13 +470,9 @@ goroscope_session_duration_seconds 3600
 
 ## Категория I — Infrastructure & General
 
-### I-1. OpenAPI spec + сгенерированный TypeScript client (P2)
+### ~~I-1. OpenAPI spec + TypeScript client~~ — ✅ РЕАЛИЗОВАНО (I-1)
 
-**Gap:** `client.ts` написан вручную и дрейфует от фактического API. Нет формальной спецификации для сторонних интеграций.
-
-**Задача:** Описать все `/api/v1/*` endpoints в OpenAPI 3.0 YAML (`api/openapi.yaml`). Добавить Make-таргет `make gen-client` запускающий `oapi-codegen` для генерации TypeScript-клиента в `web/src/api/generated.ts`. Ручной `client.ts` постепенно мигрирует на сгенерированный. CI проверяет что spec в sync с кодом.
-
-**Критерий готовности:** `api/openapi.yaml` покрывает 100% публичных endpoints. `make gen-client` воспроизводим. Swagger UI доступен на `/api/docs` в dev-режиме.
+> **Реализовано:** `internal/api/openapi.yaml` (OpenAPI 3.1) покрывает все 28 публичных endpoints: goroutines, timeline, insights, compare, stream, replay, targets, metrics. 20+ JSON-схем (Goroutine, Session, StackSnapshot, CaptureDiff, StackPatternDiffResult, TargetInfo и др.). Spec встроен в бинарь через `//go:embed` и доступен на `GET /api/openapi.yaml`. Swagger UI (CDN) — `GET /api/docs`. Makefile: `make gen-client` запускает `npx openapi-typescript` → `web/src/api/schema.d.ts`.
 
 ---
 

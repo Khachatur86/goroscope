@@ -1,0 +1,1126 @@
+openapi: "3.1.0"
+info:
+  title: Goroscope API
+  description: |
+    Local Go concurrency debugger — goroutine lifecycle, blocking analysis,
+    mutex contention, and timeline visualization.
+
+    All endpoints return `application/json` unless noted. The SSE endpoint
+    (`/api/v1/stream`) uses `text/event-stream`.
+  version: "1.0.0"
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:7070
+    description: Default local server
+
+security: []   # Bearer token auth is optional; set via --token flag
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "goroutine not found"
+
+    GoroutineState:
+      type: string
+      enum: [RUNNING, RUNNABLE, WAITING, BLOCKED, SYSCALL, DEAD, UNKNOWN]
+
+    StackFrame:
+      type: object
+      properties:
+        func:
+          type: string
+          example: "main.worker"
+        file:
+          type: string
+          example: "worker.go"
+        line:
+          type: integer
+          example: 42
+
+    StackSnapshot:
+      type: object
+      properties:
+        session_id:
+          type: string
+        seq:
+          type: integer
+          format: uint64
+        timestamp:
+          type: string
+          format: date-time
+        stack_id:
+          type: string
+        goroutine_id:
+          type: integer
+          format: int64
+        frames:
+          type: array
+          items:
+            $ref: "#/components/schemas/StackFrame"
+
+    Goroutine:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        state:
+          $ref: "#/components/schemas/GoroutineState"
+        reason:
+          type: string
+          example: "chan_recv"
+        resource_id:
+          type: string
+          example: "chan:0xc000120080"
+        wait_ns:
+          type: integer
+          format: int64
+          description: Time spent in current wait state (nanoseconds)
+        created_at_ns:
+          type: integer
+          format: int64
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        last_stack:
+          $ref: "#/components/schemas/StackSnapshot"
+        parent_id:
+          type: integer
+          format: int64
+
+    GoroutineListResponse:
+      type: object
+      properties:
+        goroutines:
+          type: array
+          items:
+            $ref: "#/components/schemas/Goroutine"
+        total:
+          type: integer
+          description: Total goroutines before pagination
+        sampled:
+          type: boolean
+          description: True if results were sampled due to display cap
+        sample_cap:
+          type: integer
+
+    TimelineSegment:
+      type: object
+      properties:
+        goroutine_id:
+          type: integer
+          format: int64
+        state:
+          $ref: "#/components/schemas/GoroutineState"
+        reason:
+          type: string
+        resource_id:
+          type: string
+        start_ns:
+          type: integer
+          format: int64
+        end_ns:
+          type: integer
+          format: int64
+        duration_ns:
+          type: integer
+          format: int64
+
+    ResourceEdge:
+      type: object
+      properties:
+        from_goroutine_id:
+          type: integer
+          format: int64
+        to_goroutine_id:
+          type: integer
+          format: int64
+        resource_id:
+          type: string
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, failed]
+        started_at:
+          type: string
+          format: date-time
+        target:
+          type: string
+
+    DeadlockHint:
+      type: object
+      properties:
+        cycle:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: Goroutine IDs forming the detected cycle
+
+    GoroutineGroup:
+      type: object
+      properties:
+        key:
+          type: string
+        goroutine_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        count:
+          type: integer
+        blocked_count:
+          type: integer
+        avg_wait_ns:
+          type: integer
+          format: int64
+
+    Insight:
+      type: object
+      properties:
+        kind:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        title:
+          type: string
+        description:
+          type: string
+        goroutine_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    ResourceContention:
+      type: object
+      properties:
+        resource_id:
+          type: string
+        peak_waiters:
+          type: integer
+        segment_count:
+          type: integer
+        total_wait_ns:
+          type: integer
+          format: int64
+        avg_wait_ns:
+          type: integer
+          format: int64
+
+    ProcessorSegment:
+      type: object
+      properties:
+        goroutine_id:
+          type: integer
+          format: int64
+        processor_id:
+          type: integer
+        start_ns:
+          type: integer
+          format: int64
+        end_ns:
+          type: integer
+          format: int64
+
+    MemoryStats:
+      type: object
+      properties:
+        goroutine_count:
+          type: integer
+        segment_count:
+          type: integer
+        stack_snapshot_count:
+          type: integer
+        event_count:
+          type: integer
+
+    GoroutineDelta:
+      type: object
+      properties:
+        state:
+          $ref: "#/components/schemas/GoroutineState"
+        reason:
+          type: string
+        wait_delta_ns:
+          type: integer
+          format: int64
+
+    CaptureDiff:
+      type: object
+      properties:
+        goroutine_deltas:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/GoroutineDelta"
+        only_in_baseline:
+          type: array
+          items:
+            type: integer
+            format: int64
+        only_in_compare:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    StackSignature:
+      type: object
+      properties:
+        signature:
+          type: string
+          description: Pipe-separated normalized function names
+          example: "main.worker|sync.(*Mutex).Lock|runtime.gopark"
+        frames:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+          description: Number of goroutines with this stack
+
+    StackPatternDiffResult:
+      type: object
+      properties:
+        appeared:
+          type: array
+          items:
+            $ref: "#/components/schemas/StackSignature"
+        disappeared:
+          type: array
+          items:
+            $ref: "#/components/schemas/StackSignature"
+        common_count:
+          type: integer
+
+    TargetInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        addr:
+          type: string
+          example: "http://localhost:6060"
+        label:
+          type: string
+          example: "auth-service"
+        added_at:
+          type: string
+          format: date-time
+
+    RequestGroup:
+      type: object
+      properties:
+        request_id:
+          type: string
+        goroutine_count:
+          type: integer
+        goroutine_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      operationId: healthz
+      tags: [health]
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                    example: "0.1.0"
+
+  /api/v1/sessions:
+    get:
+      summary: List all sessions
+      operationId: listSessions
+      tags: [sessions]
+      responses:
+        "200":
+          description: Session history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+
+  /api/v1/session/current:
+    get:
+      summary: Get the current active session
+      operationId: getCurrentSession
+      tags: [sessions]
+      responses:
+        "200":
+          description: Current session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: No active session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/goroutines:
+    get:
+      summary: List goroutines
+      operationId: listGoroutines
+      tags: [goroutines]
+      parameters:
+        - name: target_id
+          in: query
+          description: Target ID for multi-process mode
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/GoroutineState"
+        - name: reason
+          in: query
+          schema:
+            type: string
+        - name: resource
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Filter by goroutine ID, function name, or file path
+          schema:
+            type: string
+        - name: label
+          in: query
+          description: Filter by pprof label key=value
+          schema:
+            type: string
+        - name: leak
+          in: query
+          description: Show only leak candidates (1=true)
+          schema:
+            type: string
+        - name: hide_runtime
+          in: query
+          description: Exclude runtime-internal goroutines (1=true)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort field (wait_ns, id, state)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: min_wait_ns
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Goroutine list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoroutineListResponse"
+
+  /api/v1/goroutines/groups:
+    get:
+      summary: List goroutine groups
+      operationId: listGoroutineGroups
+      tags: [goroutines]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+        - name: by
+          in: query
+          description: Group by field (state, reason, resource, top_frame, label)
+          schema:
+            type: string
+            default: state
+      responses:
+        "200":
+          description: Goroutine groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GoroutineGroup"
+
+  /api/v1/goroutines/{id}:
+    get:
+      summary: Get goroutine by ID
+      operationId: getGoroutine
+      tags: [goroutines]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Goroutine details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goroutine"
+        "404":
+          description: Goroutine not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/goroutines/{id}/children:
+    get:
+      summary: Get goroutines spawned by this goroutine
+      operationId: getGoroutineChildren
+      tags: [goroutines]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Child goroutines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Goroutine"
+
+  /api/v1/goroutines/{id}/stack-at:
+    get:
+      summary: Get goroutine stack at a specific timestamp
+      operationId: getGoroutineStackAt
+      tags: [goroutines]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: ns
+          in: query
+          required: true
+          description: Timestamp in nanoseconds
+          schema:
+            type: integer
+            format: int64
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stack snapshot at the given timestamp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StackSnapshot"
+        "404":
+          description: No stack available at that time
+
+  /api/v1/goroutines/{id}/stacks:
+    get:
+      summary: Get all stack snapshots for a goroutine
+      operationId: getGoroutineStacks
+      tags: [goroutines]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: All stack snapshots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stacks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StackSnapshot"
+
+  /api/v1/insights:
+    get:
+      summary: Get goroutine insights (blocking, leaks, contention)
+      operationId: getInsights
+      tags: [analysis]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Insights summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  long_blocked_count:
+                    type: integer
+                  leak_candidates_count:
+                    type: integer
+                  contention:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ResourceContention"
+                  leaks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Goroutine"
+                  uptime_ns:
+                    type: integer
+                    format: int64
+
+  /api/v1/smart-insights:
+    get:
+      summary: Get AI-style smart insights
+      operationId: getSmartInsights
+      tags: [analysis]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Smart insights
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  insights:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Insight"
+
+  /api/v1/timeline:
+    get:
+      summary: Get timeline segments
+      operationId: getTimeline
+      tags: [timeline]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+        - name: goroutine_ids
+          in: query
+          description: Comma-separated goroutine IDs to include
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/GoroutineState"
+        - name: reason
+          in: query
+          schema:
+            type: string
+        - name: resource
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: start_ns
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: end_ns
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Timeline segments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimelineSegment"
+
+  /api/v1/processor-timeline:
+    get:
+      summary: Get processor (P) timeline segments
+      operationId: getProcessorTimeline
+      tags: [timeline]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Processor timeline
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProcessorSegment"
+
+  /api/v1/resources/graph:
+    get:
+      summary: Get resource dependency graph
+      operationId: getResourceGraph
+      tags: [analysis]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resource graph edges
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceEdge"
+
+  /api/v1/deadlock-hints:
+    get:
+      summary: Get deadlock hints
+      operationId: getDeadlockHints
+      tags: [analysis]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deadlock hint cycles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hints:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DeadlockHint"
+
+  /api/v1/memory:
+    get:
+      summary: Get engine memory statistics
+      operationId: getMemoryStats
+      tags: [health]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Memory stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryStats"
+
+  /api/v1/pprof/stacks:
+    get:
+      summary: Get cross-goroutine stacks in a time range (flame graph data)
+      operationId: getPprofStacks
+      tags: [goroutines]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+        - name: start_ns
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: end_ns
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Stack snapshots in range
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stacks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StackSnapshot"
+
+  /api/v1/requests:
+    get:
+      summary: List HTTP request groups (correlated goroutines)
+      operationId: listRequests
+      tags: [analysis]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Request groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RequestGroup"
+
+  /api/v1/requests/{id}/goroutines:
+    get:
+      summary: Get goroutines for a request group
+      operationId: getRequestGoroutines
+      tags: [analysis]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Goroutines in request
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Goroutine"
+
+  /api/v1/stream:
+    get:
+      summary: Subscribe to goroutine state changes via Server-Sent Events
+      operationId: stream
+      tags: [realtime]
+      parameters:
+        - name: target_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: |
+            SSE stream. Each event has `event: update` and JSON data:
+            `{revision, added, updated, removed}`.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /api/v1/replay/load:
+    post:
+      summary: Upload and load a capture file for replay
+      operationId: replayLoad
+      tags: [replay]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: ".gtrace or raw Go trace file"
+      responses:
+        "200":
+          description: Capture loaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  session_id:
+                    type: string
+
+  /api/v1/replay/export:
+    get:
+      summary: Export the current capture as a .gtrace file
+      operationId: replayExport
+      tags: [replay]
+      responses:
+        "200":
+          description: Capture file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /api/v1/compare:
+    post:
+      summary: Compare two capture files
+      operationId: compareCaptures
+      tags: [analysis]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file_a, file_b]
+              properties:
+                file_a:
+                  type: string
+                  format: binary
+                  description: Baseline capture (.gtrace)
+                file_b:
+                  type: string
+                  format: binary
+                  description: Compare capture (.gtrace)
+      responses:
+        "200":
+          description: Comparison result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  baseline:
+                    type: object
+                    properties:
+                      goroutines:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Goroutine"
+                      timeline:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/TimelineSegment"
+                  compare:
+                    type: object
+                    properties:
+                      goroutines:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Goroutine"
+                      timeline:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/TimelineSegment"
+                  diff:
+                    $ref: "#/components/schemas/CaptureDiff"
+
+  /api/v1/compare/stacks:
+    post:
+      summary: Compare stack patterns between two captures
+      operationId: compareStacks
+      tags: [analysis]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file_a, file_b]
+              properties:
+                file_a:
+                  type: string
+                  format: binary
+                  description: Baseline capture (.gtrace)
+                file_b:
+                  type: string
+                  format: binary
+                  description: Compare capture (.gtrace)
+      responses:
+        "200":
+          description: Stack pattern diff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StackPatternDiffResult"
+
+  /api/v1/targets:
+    get:
+      summary: List monitored targets (multi-process mode)
+      operationId: listTargets
+      tags: [targets]
+      responses:
+        "200":
+          description: Target list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TargetInfo"
+    post:
+      summary: Add a new monitoring target
+      operationId: addTarget
+      tags: [targets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [addr]
+              properties:
+                addr:
+                  type: string
+                  example: "http://localhost:6060"
+                label:
+                  type: string
+                  example: "auth-service"
+      responses:
+        "201":
+          description: Target added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetInfo"
+        "503":
+          description: Multi-target mode not enabled
+
+  /api/v1/targets/{id}:
+    delete:
+      summary: Remove a monitoring target
+      operationId: deleteTarget
+      tags: [targets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Target removed
+        "404":
+          description: Target not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      operationId: metrics
+      tags: [health]
+      responses:
+        "200":
+          description: Prometheus text format metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+tags:
+  - name: health
+    description: Health and diagnostics
+  - name: sessions
+    description: Session management
+  - name: goroutines
+    description: Goroutine inspection
+  - name: timeline
+    description: Timeline and processor data
+  - name: analysis
+    description: Analysis — insights, contention, deadlocks, comparison
+  - name: realtime
+    description: Server-Sent Events stream
+  - name: replay
+    description: Capture file upload and export
+  - name: targets
+    description: Multi-process monitoring targets

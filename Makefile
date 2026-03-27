@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down
+.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client
 
 build:
 	mkdir -p bin
@@ -62,6 +62,15 @@ ui-react: build web
 
 vscode:
 	cd vscode && npm install && npm run compile
+
+# ── OpenAPI client generation (I-1) ───────────────────────────────────────────
+# Generates a TypeScript type definition file from the embedded OpenAPI spec.
+# Requires: npm install -g openapi-typescript  (or npx openapi-typescript)
+#
+# Usage:
+#   make gen-client           # generate web/src/api/schema.d.ts
+gen-client:
+	npx openapi-typescript internal/api/openapi.yaml -o web/src/api/schema.d.ts
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 IMAGE ?= ghcr.io/khachatur86/goroscope
