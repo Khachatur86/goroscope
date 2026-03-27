@@ -540,6 +540,30 @@ func (e *Engine) ResourceContention() []ResourceContention {
 	return cloneContention(e.contentionCache)
 }
 
+// ContentionHeatmap builds a time × resource matrix of concurrent-waiter counts
+// from the engine's current timeline (closed + active segments).
+func (e *Engine) ContentionHeatmap(resolutionNS int64, limitResources int) ContentionHeatmapResult {
+	e.mu.RLock()
+	segments := make([]model.TimelineSegment, 0, len(e.closedSegments)+len(e.activeSegments))
+	segments = append(segments, e.closedSegments...)
+	for goroutineID, seg := range e.activeSegments {
+		g, ok := e.goroutines[goroutineID]
+		if !ok {
+			continue
+		}
+		if derived, ok := buildTimelineSegment(goroutineID, seg, g.LastSeenAt); ok {
+			segments = append(segments, derived)
+		}
+	}
+	e.mu.RUnlock()
+
+	return ContentionHeatmap(ContentionHeatmapInput{
+		Segments:       segments,
+		ResolutionNS:   resolutionNS,
+		LimitResources: limitResources,
+	})
+}
+
 // ResourceGraph returns the current set of resource dependency edges.
 func (e *Engine) ResourceGraph() []model.ResourceEdge {
 	e.mu.RLock()

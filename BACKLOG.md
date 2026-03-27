@@ -276,7 +276,7 @@
 | H-4 | Request correlation engine + API | P1 | Backend | L | ✅ Done |
 | H-6 | SSE delta streaming | P1 | Backend | M | ✅ Done |
 | H-2 | Goroutine lifecycle timestamps в API | P2 | Backend | S | ✅ Done |
-| H-3 | Contention heatmap endpoint | P2 | Backend | M | |
+| H-3 | Contention heatmap endpoint | P2 | Backend | M | ✅ РЕАЛИЗОВАНО (H-3) |
 | H-5 | Prometheus `/metrics` endpoint | P2 | Backend | S | ✅ Done |
 | H-7 | Multi-process monitoring | P2 | Backend | L | |
 | I-1 | OpenAPI spec + generated TS client | P2 | Infrastructure | S | |
@@ -412,7 +412,7 @@
 
 ---
 
-### H-3. Contention heatmap endpoint (P2)
+### ~~H-3. Contention heatmap endpoint~~ — ✅ РЕАЛИЗОВАНО (H-3)
 
 **Gap:** Contention-данные накапливаются в Engine, но только как статичные агрегаты (peak_waiters, avg_wait). Нет временно́го измерения — невозможно построить heatmap.
 

@@ -6,6 +6,120 @@ import (
 	"github.com/Khachatur86/goroscope/internal/model"
 )
 
+// HeatmapRow holds per-bin concurrent-waiter counts for one resource.
+type HeatmapRow struct {
+	ResourceID string  `json:"resource_id"`
+	Counts     []int32 `json:"counts"`
+}
+
+// ContentionHeatmapResult is the response shape for GET /api/v1/contention/heatmap.
+type ContentionHeatmapResult struct {
+	// BinsNS contains the nanosecond start timestamp of each bin.
+	BinsNS    []int64      `json:"bins_ns"`
+	Resources []HeatmapRow `json:"resources"`
+}
+
+// ContentionHeatmapInput bundles parameters for ContentionHeatmap (CS-5).
+type ContentionHeatmapInput struct {
+	Segments       []model.TimelineSegment
+	ResolutionNS   int64 // width of each bin; must be > 0
+	LimitResources int   // max rows returned; 0 = no limit
+}
+
+// ContentionHeatmap builds a time × resource matrix of concurrent-waiter counts.
+//
+// Algorithm (per resource):
+//  1. Build a delta array: delta[b_start]++ and delta[b_end+1]-- for each segment.
+//  2. Prefix-sum gives the instantaneous concurrent count at the start of each bin.
+//
+// This runs in O(S + B) per resource (S=segments, B=bins) and handles 1000
+// resources × 1000 bins well within the 100ms budget.
+func ContentionHeatmap(in ContentionHeatmapInput) ContentionHeatmapResult {
+	if in.ResolutionNS <= 0 {
+		return ContentionHeatmapResult{}
+	}
+
+	// Collect segments by resource and find the overall time range.
+	byResource := make(map[string][]segBounds)
+	var minNS, maxNS int64
+	first := true
+	for _, s := range in.Segments {
+		if s.ResourceID == "" || s.EndNS <= s.StartNS {
+			continue
+		}
+		byResource[s.ResourceID] = append(byResource[s.ResourceID], segBounds{s.StartNS, s.EndNS})
+		if first || s.StartNS < minNS {
+			minNS = s.StartNS
+		}
+		if first || s.EndNS > maxNS {
+			maxNS = s.EndNS
+		}
+		first = false
+	}
+
+	if len(byResource) == 0 {
+		return ContentionHeatmapResult{}
+	}
+
+	numBins := int((maxNS-minNS)/in.ResolutionNS) + 1
+
+	// Build bins_ns slice.
+	binsNS := make([]int64, numBins)
+	for i := range binsNS {
+		binsNS[i] = minNS + int64(i)*in.ResolutionNS
+	}
+
+	// Sort resources by total segment count (most contended first) and apply limit.
+	type resourceEntry struct {
+		id   string
+		segs []segBounds
+	}
+	resources := make([]resourceEntry, 0, len(byResource))
+	for id, segs := range byResource {
+		resources = append(resources, resourceEntry{id, segs})
+	}
+	sort.Slice(resources, func(i, j int) bool {
+		if len(resources[i].segs) != len(resources[j].segs) {
+			return len(resources[i].segs) > len(resources[j].segs)
+		}
+		return resources[i].id < resources[j].id
+	})
+	if in.LimitResources > 0 && len(resources) > in.LimitResources {
+		resources = resources[:in.LimitResources]
+	}
+
+	// Build rows using delta arrays.
+	rows := make([]HeatmapRow, len(resources))
+	for ri, res := range resources {
+		delta := make([]int32, numBins+1)
+		for _, seg := range res.segs {
+			bStart := int((seg.start - minNS) / in.ResolutionNS)
+			// seg.end is exclusive; subtract 1 so a segment ending exactly on a
+			// bin boundary doesn't bleed into the following bin.
+			bEnd := int((seg.end - 1 - minNS) / in.ResolutionNS)
+			if bStart < 0 {
+				bStart = 0
+			}
+			if bEnd >= numBins {
+				bEnd = numBins - 1
+			}
+			delta[bStart]++
+			if bEnd+1 <= numBins {
+				delta[bEnd+1]--
+			}
+		}
+		counts := make([]int32, numBins)
+		var running int32
+		for i := range counts {
+			running += delta[i]
+			counts[i] = running
+		}
+		rows[ri] = HeatmapRow{ResourceID: res.id, Counts: counts}
+	}
+
+	return ContentionHeatmapResult{BinsNS: binsNS, Resources: rows}
+}
+
 // ResourceContention holds contention metrics for a single resource.
 type ResourceContention struct {
 	ResourceID   string  `json:"resource_id"`

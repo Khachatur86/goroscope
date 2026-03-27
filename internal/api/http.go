@@ -264,6 +264,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
 	mux.HandleFunc("/api/v1/processor-timeline", s.handleProcessorTimeline)
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
+	mux.HandleFunc("/api/v1/contention/heatmap", s.handleContentionHeatmap)
 	mux.HandleFunc("/api/v1/deadlock-hints", s.handleDeadlockHints)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 	mux.HandleFunc("/api/v1/replay/load", s.handleReplayLoad)
@@ -923,6 +924,37 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.engineFor(r).ResourceGraph())
+}
+
+// handleContentionHeatmap serves GET /api/v1/contention/heatmap.
+//
+// Query params:
+//
+//	resolution_ms   int  (default 100) — bin width in milliseconds
+//	limit_resources int  (default 50)  — max resources returned (most-contended first)
+func (s *Server) handleContentionHeatmap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+
+	resolutionMS := int64(100)
+	if v := q.Get("resolution_ms"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			resolutionMS = n
+		}
+	}
+
+	limitResources := 50
+	if v := q.Get("limit_resources"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limitResources = n
+		}
+	}
+
+	result := s.engineFor(r).ContentionHeatmap(resolutionMS*int64(time.Millisecond), limitResources)
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleDeadlockHints(w http.ResponseWriter, r *http.Request) {

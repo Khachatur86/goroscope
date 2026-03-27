@@ -716,3 +716,80 @@ func TestCORSHeaders(t *testing.T) {
 		}
 	})
 }
+
+// ─── handleContentionHeatmap (H-3) ───────────────────────────────────────────
+
+func TestHandleContentionHeatmap(t *testing.T) {
+	t.Parallel()
+
+	// Two goroutines blocked on the same resource to generate contention segments.
+	goroutines := []model.Goroutine{
+		{ID: 1, State: model.StateWaiting, Reason: model.ReasonMutexLock, ResourceID: "mutex:0xABCD", WaitNS: int64(500 * time.Millisecond)},
+		{ID: 2, State: model.StateWaiting, Reason: model.ReasonMutexLock, ResourceID: "mutex:0xABCD", WaitNS: int64(300 * time.Millisecond)},
+		{ID: 3, State: model.StateRunning},
+	}
+	srv := newTestServer(t, goroutines)
+	handler := srv.routes()
+
+	t.Run("returns 200 with bins and resources", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/contention/heatmap?resolution_ms=50")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		var body struct {
+			BinsNS    []int64 `json:"bins_ns"`
+			Resources []struct {
+				ResourceID string  `json:"resource_id"`
+				Counts     []int32 `json:"counts"`
+			} `json:"resources"`
+		}
+		decodeJSON(t, rec, &body)
+		if len(body.BinsNS) == 0 {
+			t.Error("expected non-empty bins_ns")
+		}
+		if len(body.Resources) == 0 {
+			t.Error("expected at least one resource row")
+		}
+		if body.Resources[0].ResourceID != "mutex:0xABCD" {
+			t.Errorf("resource_id = %q, want mutex:0xABCD", body.Resources[0].ResourceID)
+		}
+		if len(body.Resources[0].Counts) != len(body.BinsNS) {
+			t.Errorf("counts length %d != bins_ns length %d",
+				len(body.Resources[0].Counts), len(body.BinsNS))
+		}
+	})
+
+	t.Run("default resolution when param omitted", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/contention/heatmap")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("rejects non-GET", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/contention/heatmap", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected 405, got %d", rec.Code)
+		}
+	})
+
+	t.Run("limit_resources respected", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/contention/heatmap?limit_resources=1")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		var body struct {
+			Resources []any `json:"resources"`
+		}
+		decodeJSON(t, rec, &body)
+		if len(body.Resources) > 1 {
+			t.Errorf("expected at most 1 resource (limit=1), got %d", len(body.Resources))
+		}
+	})
+}
