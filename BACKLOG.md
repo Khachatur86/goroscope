@@ -178,15 +178,9 @@
 
 ## Категория E — Developer Experience
 
-### E-1. `go test -trace` интеграция (P1)
+### ~~E-1. `go test -trace` интеграция~~ — ✅ РЕАЛИЗОВАНО (E-1)
 
-**Gap:** Goroscope может replay `go test -trace=out.trace`, но нет удобного one-liner и нет связи с тестами.
-
-**Потребность гоферов:** Тестирование конкурентности — типичный use case. Гоферы хотят видеть goroutine поведение конкретного теста.
-
-**Задача:** Добавить `goroscope test ./pkg/...` — обёртка над `go test -trace`, которая автоматически запускает UI с результатом. Фильтрация по test function name.
-
-**Критерий готовности:** `goroscope test -run TestWorkerPool ./pkg/worker` запускает тест, собирает трейс, открывает UI с goroutines отфильтрованными по этому тесту.
+> **Реализовано:** `goroscope test` уже запускал `go test -trace=<tmpfile>` и поднимал UI. Добавлена фильтрация по test function name: `extractRunFilter(args)` парсит `-run=<value>` и `-run <value>` из аргументов go test. Новый флаг `--filter` для явного переопределения. При открытии браузера к URL добавляется `?search=<filter>` — UI открывается с уже заполненным полем поиска. Примеры: `goroscope test -run TestWorkerPool ./pkg/worker -open-browser` → браузер открывается с goroutines, отфильтрованными по "TestWorkerPool". Юнит-тест `TestExtractRunFilter` (8 cases) + интеграционный `TestRun_Test_FilterFlag`.
 
 ---
 

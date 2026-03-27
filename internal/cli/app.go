@@ -715,8 +715,12 @@ type testCaptureInput struct {
 	SavePath    string
 	UIPath      string
 	GoTestArgs  []string
-	Stdout      io.Writer
-	Stderr      io.Writer
+	// TestFilter is the goroutine search term pre-populated in the UI when
+	// the browser is opened. If empty, no filter is applied. When not set
+	// explicitly via --filter, it is auto-derived from the -run flag in GoTestArgs.
+	TestFilter string
+	Stdout     io.Writer
+	Stderr     io.Writer
 }
 
 func testCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -738,6 +742,7 @@ func testCommand(ctx context.Context, args []string, stdout, stderr io.Writer) e
 	addr := fs.String("addr", "127.0.0.1:7070", "HTTP bind address")
 	openBrowser := fs.Bool("open-browser", false, "Open the default browser to the UI")
 	savePath := fs.String("save", "", "Save capture to .gtrace file after tests complete")
+	filterFlag := fs.String("filter", "", "Pre-populate UI search with this term (default: auto-derived from -run flag)")
 	ui := fs.String("ui", "vanilla", "UI to serve: vanilla (default) or react")
 	uiPath := fs.String("ui-path", "web/dist", "Path to React build (when -ui=react)")
 
@@ -753,12 +758,19 @@ func testCommand(ctx context.Context, args []string, stdout, stderr io.Writer) e
 		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
+	goTestArgs := fs.Args()
+	testFilter := *filterFlag
+	if testFilter == "" {
+		testFilter = extractRunFilter(goTestArgs)
+	}
+
 	return runTestCapture(ctx, testCaptureInput{
 		Addr:        *addr,
 		OpenBrowser: *openBrowser,
 		SavePath:    *savePath,
 		UIPath:      uiPathResolved,
-		GoTestArgs:  fs.Args(),
+		GoTestArgs:  goTestArgs,
+		TestFilter:  testFilter,
 		Stdout:      stdout,
 		Stderr:      stderr,
 	})
@@ -822,10 +834,16 @@ func runTestCapture(ctx context.Context, in testCaptureInput) error {
 		sessionName = "test " + strings.Join(in.GoTestArgs, " ")
 	}
 
+	var browserURLSuffix string
+	if in.TestFilter != "" {
+		browserURLSuffix = "?search=" + in.TestFilter
+	}
+
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: in.Addr, SessionName: sessionName, Target: tracePath,
 		Capture: capture, OpenBrowser: in.OpenBrowser, UIPath: in.UIPath,
-		Stdout: in.Stdout, Stderr: in.Stderr,
+		BrowserURLSuffix: browserURLSuffix,
+		Stdout:           in.Stdout, Stderr: in.Stderr,
 	})
 }
 
@@ -962,6 +980,31 @@ func openForWrite(path string) (*writeCloser, error) {
 	return &writeCloser{f}, nil
 }
 
+// extractRunFilter parses the value of the -run (or --run) flag from a slice
+// of go test arguments and returns it as a search filter string.
+// Returns "" if no -run flag is present.
+//
+// Handles both forms:
+//
+//	-run TestWorkerPool      (space-separated)
+//	-run=TestWorkerPool      (equals sign)
+//	--run=TestWorkerPool
+func extractRunFilter(args []string) string {
+	for i, arg := range args {
+		// -run=VALUE or --run=VALUE
+		for _, prefix := range []string{"-run=", "--run="} {
+			if strings.HasPrefix(arg, prefix) {
+				return strings.TrimPrefix(arg, prefix)
+			}
+		}
+		// -run VALUE or --run VALUE
+		if (arg == "-run" || arg == "--run") && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
 func resolveUIPath(ui, uiPath string) string {
 	if ui != "react" {
 		return ""
@@ -1004,8 +1047,11 @@ type serveCaptureInput struct {
 	ServerConfig api.Config
 	// MaxGoroutines caps the number of goroutines returned by the API (0 = no limit).
 	MaxGoroutines int
-	Stdout        io.Writer
-	Stderr        io.Writer
+	// BrowserURLSuffix is appended to the browser URL (e.g. "?search=TestWorkerPool").
+	// It is only used when OpenBrowser is true.
+	BrowserURLSuffix string
+	Stdout           io.Writer
+	Stderr           io.Writer
 }
 
 func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
@@ -1023,7 +1069,8 @@ func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
 	_, _ = fmt.Fprintf(in.Stdout, "goroscope scaffold serving %q at %s\n", in.Target, url)
 
 	if in.OpenBrowser {
-		scheduleOpenBrowser(ctx, 500*time.Millisecond, url)
+		browserURL := url + in.BrowserURLSuffix
+		scheduleOpenBrowser(ctx, 500*time.Millisecond, browserURL)
 	}
 
 	return server.Serve(ctx)

@@ -286,6 +286,85 @@ func TestRun_Test_UnknownPackage(t *testing.T) {
 	}
 }
 
+// TestExtractRunFilter verifies that extractRunFilter correctly parses -run
+// values from go test argument slices.
+func TestExtractRunFilter(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "empty", args: nil, want: ""},
+		{name: "no run flag", args: []string{"./pkg/...", "-count=1"}, want: ""},
+		{name: "dash run equals", args: []string{"-run=TestWorkerPool", "./..."}, want: "TestWorkerPool"},
+		{name: "dash dash run equals", args: []string{"--run=TestWorkerPool"}, want: "TestWorkerPool"},
+		{name: "dash run space", args: []string{"-run", "TestWorkerPool", "./..."}, want: "TestWorkerPool"},
+		{name: "dash dash run space", args: []string{"--run", "TestWorkerPool"}, want: "TestWorkerPool"},
+		{name: "run flag last no value", args: []string{"./pkg", "-run"}, want: ""},
+		{name: "regex run value", args: []string{"-run=TestWorker|TestPool"}, want: "TestWorker|TestPool"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := extractRunFilter(tc.args)
+			if got != tc.want {
+				t.Errorf("extractRunFilter(%v) = %q, want %q", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRun_Test_FilterFlag verifies that "goroscope test --filter=TestFoo"
+// runs go test and logs the expected messages. The context is cancelled as
+// soon as the server starts so the test does not block.
+func TestRun_Test_FilterFlag(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go binary not in PATH")
+	}
+
+	modRootBytes, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}").Output()
+	if err != nil {
+		t.Skipf("cannot determine module root: %v", err)
+	}
+	modRoot := strings.TrimSpace(string(modRootBytes))
+	if modRoot == "" {
+		t.Skip("module root is empty")
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(modRoot); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	out := &onMatchWriter{pattern: "serving", fn: cancel}
+	var stderr bytes.Buffer
+
+	err = Run(ctx, []string{
+		"test",
+		"-addr=127.0.0.1:17071",
+		"-filter=TestDummy",
+		"./testdata/tracepkg",
+		"-run=TestDummy",
+	}, out, &stderr)
+
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("unexpected error: %v\nstdout: %s\nstderr: %s", err, out.String(), stderr.String())
+	}
+	if !strings.Contains(out.String(), "loading trace") {
+		t.Errorf("expected 'loading trace' in output, got:\n%s", out.String())
+	}
+}
+
 func TestRun_Export_JSON(t *testing.T) {
 	t.Parallel()
 
