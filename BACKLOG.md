@@ -278,14 +278,14 @@
 | H-2 | Goroutine lifecycle timestamps в API | P2 | Backend | S | ✅ Done |
 | H-3 | Contention heatmap endpoint | P2 | Backend | M | ✅ РЕАЛИЗОВАНО (H-3) |
 | H-5 | Prometheus `/metrics` endpoint | P2 | Backend | S | ✅ Done |
-| H-7 | Multi-process monitoring | P2 | Backend | L | |
-| I-1 | OpenAPI spec + generated TS client | P2 | Infrastructure | S | |
+| H-7 | Multi-process monitoring | P2 | Backend | L | ✅ РЕАЛИЗОВАНО (H-7) |
+| I-1 | OpenAPI spec + generated TS client | P2 | Infrastructure | S | ✅ РЕАЛИЗОВАНО (I-1) |
 | I-4 | Engine incremental recompute | P1 | Infrastructure | M | ✅ Done |
 | I-5 | API integration test suite | P1 | Infrastructure | M | ✅ Done |
-| I-2 | Docker image + Compose пример | P2 | Infrastructure | S | |
+| I-2 | Docker image + Compose пример | P2 | Infrastructure | S | ✅ РЕАЛИЗОВАНО (I-2) |
 | I-6 | CSP + CORS headers | P2 | Infrastructure | S | ✅ Done |
 | I-7 | `goroscope diff` CLI command | P2 | Infrastructure | S | ✅ Done |
-| I-9 | Stack pattern diff across captures | P2 | Infrastructure | M | |
+| I-9 | Stack pattern diff across captures | P2 | Infrastructure | M | ✅ РЕАЛИЗОВАНО (I-9) |
 | I-3 | Shell autocomplete | P3 | Infrastructure | S | ✅ РЕАЛИЗОВАНО (I-3) |
 | I-8 | `goroscope annotate` command | P3 | Infrastructure | S | ✅ РЕАЛИЗОВАНО (I-8) |
 | I-10 | WASM offline mode | P3 | Infrastructure | L | ✅ РЕАЛИЗОВАНО (I-10) |
