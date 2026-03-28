@@ -136,13 +136,29 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
     }
   }, []);
 
-  // When goroutine list changes (new session, filters, live reload) reset the segment cache.
+  // When the goroutine list changes, reset the segment cache — but only when
+  // genuinely new goroutine IDs appear (new session or live data arriving).
+  // If every ID in the new list was already fetched or failed, the change came
+  // from a client-side filter being applied; keep the cache so the timeline
+  // updates instantly without the blank-then-reload flash.
   useEffect(() => {
     if (useOverride) return;
-    setSegmentMap(new Map());
-    loadedGoroutineIds.current = new Set();
-    // Clear failure marks so that a fresh goroutine epoch retries all IDs.
-    failedGoroutineIds.current = new Set();
+
+    const hasNewIds = goroutines.some(
+      (g) =>
+        !loadedGoroutineIds.current.has(g.goroutine_id) &&
+        !failedGoroutineIds.current.has(g.goroutine_id),
+    );
+    if (hasNewIds) {
+      // New goroutine IDs arrived — purge stale cache so old segments don't
+      // linger for IDs that may be reused across sessions (Go IDs are monotone
+      // in practice, but we reset defensively).
+      setSegmentMap(new Map());
+      loadedGoroutineIds.current = new Set();
+      // Clear failure marks so that a fresh goroutine epoch retries all IDs.
+      failedGoroutineIds.current = new Set();
+    }
+
     // Eagerly load the first batch so the timeline isn't blank on initial render.
     const firstBatch = goroutines.slice(0, SEGMENT_BATCH_SIZE).map((g) => g.goroutine_id);
     if (firstBatch.length > 0) loadSegmentsBatch(firstBatch);
