@@ -75,8 +75,9 @@ type Engine struct {
 	activeSegments    map[int64]activeSegment
 	edges             []model.ResourceEdge
 	processorSegments []model.ProcessorSegment
-	dataVersion       uint64                // incremented on any state change, for ETag
-	stacks            []model.StackSnapshot // historical stacks for stack-at-segment lookup
+	dataVersion   uint64 // incremented on any state change, for ETag
+	stacksByGID   map[int64][]model.StackSnapshot // goroutineID → snapshots (P-4: O(1) per-goroutine lookup)
+	stackCount    int                             // total snapshots across all goroutines
 
 	// Delta tracking for SSE streaming (H-6).
 	// goroutineBornAt records the dataVersion when each goroutine first appeared.
@@ -139,6 +140,7 @@ func NewEngine(opts ...Option) *Engine {
 		subscribers:        make(map[chan struct{}]struct{}),
 		goroutineBornAt:    make(map[int64]uint64),
 		goroutineChangedAt: make(map[int64]uint64),
+		stacksByGID:        make(map[int64][]model.StackSnapshot),
 		retention:          DefaultRetentionPolicy(),
 		contentionDirty:    true,
 		groupsDirty:        true,
@@ -200,7 +202,12 @@ func (e *Engine) LoadCapture(session *model.Session, capture model.Capture) {
 		for _, snapshot := range capture.Stacks {
 			e.applyStackSnapshotLocked(snapshot, false)
 		}
-		e.stacks = append([]model.StackSnapshot(nil), capture.Stacks...)
+		for _, s := range capture.Stacks {
+			cp := s
+			cp.Frames = append([]model.StackFrame(nil), s.Frames...)
+			e.stacksByGID[s.GoroutineID] = append(e.stacksByGID[s.GoroutineID], cp)
+		}
+		e.stackCount = len(capture.Stacks)
 		e.edges = append([]model.ResourceEdge(nil), capture.Resources...)
 		e.processorSegments = append([]model.ProcessorSegment(nil), capture.ProcessorSegments...)
 
@@ -427,25 +434,17 @@ func (e *Engine) GetStackAt(goroutineID int64, ns int64) *model.StackSnapshot {
 	defer e.mu.RUnlock()
 
 	target := time.Unix(0, ns)
-	var best *model.StackSnapshot
-	for i := range e.stacks {
-		s := &e.stacks[i]
-		if s.GoroutineID != goroutineID {
-			continue
-		}
-		if s.Timestamp.After(target) {
-			continue
-		}
-		if best == nil || s.Timestamp.After(best.Timestamp) {
-			best = s
+	snaps := e.stacksByGID[goroutineID]
+	// Snapshots are appended chronologically; scan backwards for the latest ≤ target.
+	for i := len(snaps) - 1; i >= 0; i-- {
+		s := &snaps[i]
+		if !s.Timestamp.After(target) {
+			out := *s
+			out.Frames = append([]model.StackFrame(nil), s.Frames...)
+			return &out
 		}
 	}
-	if best == nil {
-		return nil
-	}
-	out := *best
-	out.Frames = append([]model.StackFrame(nil), best.Frames...)
-	return &out
+	return nil
 }
 
 // GetStacksFor returns all historical stack snapshots for the given goroutine,
@@ -454,17 +453,18 @@ func (e *Engine) GetStacksFor(goroutineID int64) []model.StackSnapshot {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	var out []model.StackSnapshot
-	for i := range e.stacks {
-		s := &e.stacks[i]
-		if s.GoroutineID != goroutineID {
-			continue
-		}
-		cp := *s
-		cp.Frames = append([]model.StackFrame(nil), s.Frames...)
-		out = append(out, cp)
+	snaps := e.stacksByGID[goroutineID]
+	if len(snaps) == 0 {
+		return nil
 	}
-	// Sort ascending by timestamp so callers get a chronological sequence.
+	out := make([]model.StackSnapshot, len(snaps))
+	for i, s := range snaps {
+		cp := s
+		cp.Frames = append([]model.StackFrame(nil), s.Frames...)
+		out[i] = cp
+	}
+	// Snapshots are stored in insertion (chronological) order; sort is a no-op
+	// in the common case but ensures correctness if bulk-loaded out of order.
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].Timestamp.Before(out[j].Timestamp)
 	})
@@ -479,15 +479,17 @@ func (e *Engine) GetStacksInRange(startNS, endNS int64) []model.StackSnapshot {
 	defer e.mu.RUnlock()
 
 	var out []model.StackSnapshot
-	for i := range e.stacks {
-		s := &e.stacks[i]
-		ts := s.Timestamp.UnixNano()
-		if ts < startNS || ts > endNS {
-			continue
+	for _, snaps := range e.stacksByGID {
+		for i := range snaps {
+			s := &snaps[i]
+			ts := s.Timestamp.UnixNano()
+			if ts < startNS || ts > endNS {
+				continue
+			}
+			cp := *s
+			cp.Frames = append([]model.StackFrame(nil), s.Frames...)
+			out = append(out, cp)
 		}
-		cp := *s
-		cp.Frames = append([]model.StackFrame(nil), s.Frames...)
-		out = append(out, cp)
 	}
 	return out
 }
@@ -681,11 +683,13 @@ func (e *Engine) ExportCapture() model.Capture {
 		events[i].Seq = uint64(i) + 1 //nolint:gosec // i is a non-negative loop index
 	}
 
-	stacks := make([]model.StackSnapshot, len(e.stacks))
-	for i, s := range e.stacks {
-		cp := s
-		cp.Frames = append([]model.StackFrame(nil), s.Frames...)
-		stacks[i] = cp
+	stacks := make([]model.StackSnapshot, 0, e.stackCount)
+	for _, snaps := range e.stacksByGID {
+		for _, s := range snaps {
+			cp := s
+			cp.Frames = append([]model.StackFrame(nil), s.Frames...)
+			stacks = append(stacks, cp)
+		}
 	}
 
 	edges := make([]model.ResourceEdge, len(e.edges))
@@ -762,7 +766,7 @@ func (e *Engine) MemoryStats() MemoryStats {
 		ClosedSegments:        len(e.closedSegments),
 		ActiveSegments:        len(e.activeSegments),
 		Goroutines:            len(e.goroutines),
-		StackSnapshots:        len(e.stacks),
+		StackSnapshots:        e.stackCount,
 		ProcessorSegments:     len(e.processorSegments),
 		MaxClosedSegments:     e.retention.MaxClosedSegments,
 		MaxStacksPerGoroutine: e.retention.MaxStacksPerGoroutine,
@@ -804,35 +808,18 @@ func (e *Engine) trimStacksForGoroutineLocked(goroutineID int64) {
 	if maxPer <= 0 {
 		return
 	}
-	// Count how many snapshots exist for this goroutine, newest-first.
-	count := 0
-	for i := len(e.stacks) - 1; i >= 0; i-- {
-		if e.stacks[i].GoroutineID == goroutineID {
-			count++
-		}
-	}
-	if count <= maxPer {
+	snaps := e.stacksByGID[goroutineID]
+	if len(snaps) <= maxPer {
 		return
 	}
-	// Remove the oldest (count - maxPer) snapshots for this goroutine.
-	toRemove := count - maxPer
-	removed := 0
-	origLen := len(e.stacks)
-	out := e.stacks[:0]
-	for _, s := range e.stacks {
-		if s.GoroutineID == goroutineID && removed < toRemove {
-			removed++
-			continue
-		}
-		out = append(out, s)
+	// Remove oldest snapshots; they are stored in chronological order.
+	toRemove := len(snaps) - maxPer
+	// Zero evicted entries so the GC can reclaim Frames slices.
+	for i := 0; i < toRemove; i++ {
+		snaps[i] = model.StackSnapshot{}
 	}
-	// Zero the tail before reassigning so the GC can reclaim Frames slices
-	// held by evicted snapshots. Using origLen (captured before the filter
-	// loop) makes the bounds explicit and independent of the assignment below.
-	for i := len(out); i < origLen; i++ {
-		e.stacks[i] = model.StackSnapshot{}
-	}
-	e.stacks = out
+	e.stacksByGID[goroutineID] = snaps[toRemove:]
+	e.stackCount -= toRemove
 }
 
 func (e *Engine) resetLocked(session *model.Session) {
@@ -842,7 +829,8 @@ func (e *Engine) resetLocked(session *model.Session) {
 	e.activeSegments = make(map[int64]activeSegment)
 	e.edges = nil
 	e.processorSegments = nil
-	e.stacks = nil
+	e.stacksByGID = make(map[int64][]model.StackSnapshot)
+	e.stackCount = 0
 	e.goroutineBornAt = make(map[int64]uint64)
 	e.goroutineChangedAt = make(map[int64]uint64)
 	e.dataVersion++
@@ -927,7 +915,8 @@ func (e *Engine) applyStackSnapshotLocked(snapshot model.StackSnapshot, appendTo
 	goroutine.LastStack = &stackCopy
 	e.goroutines[goroutine.ID] = goroutine
 	if appendToHistory {
-		e.stacks = append(e.stacks, stackCopy)
+		e.stacksByGID[snapshot.GoroutineID] = append(e.stacksByGID[snapshot.GoroutineID], stackCopy)
+		e.stackCount++
 		e.trimStacksForGoroutineLocked(snapshot.GoroutineID)
 	}
 	e.dataVersion++
