@@ -17,7 +17,7 @@ const indexFile = "index.json"
 // Entry describes one persisted capture in the history index.
 type Entry struct {
 	ID             string    `json:"id"`
-	Filename       string    `json:"filename"`        // relative to store dir
+	Filename       string    `json:"filename"` // relative to store dir
 	Target         string    `json:"target"`
 	CreatedAt      time.Time `json:"created_at"`
 	DurationNS     int64     `json:"duration_ns"`

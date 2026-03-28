@@ -84,12 +84,12 @@ func runDoctor(ctx context.Context, in doctorInput) error {
 	}
 
 	report := buildDoctorReport(doctorReportData{
-		CaptureFile:   in.CaptureFile,
-		GeneratedAt:   time.Now().UTC().Format(time.RFC1123),
-		Goroutines:    goroutines,
-		Insights:      insights,
-		Hints:         hints,
-		Contention:    contention,
+		CaptureFile:    in.CaptureFile,
+		GeneratedAt:    time.Now().UTC().Format(time.RFC1123),
+		Goroutines:     goroutines,
+		Insights:       insights,
+		Hints:          hints,
+		Contention:     contention,
 		FlamegraphJSON: string(flamegraphJSON),
 	})
 	_, err = fmt.Fprint(in.Stdout, report)

@@ -14,6 +14,7 @@ import (
 // Severity classifies how urgent a finding is.
 type Severity int
 
+// Severity levels, ordered from most to least urgent.
 const (
 	SeverityCritical Severity = iota // Data race or definite deadlock path
 	SeverityHigh                     // Likely concurrency bug under load
@@ -37,6 +38,7 @@ func (s Severity) String() string {
 // RuleID identifies a specific concurrency detector.
 type RuleID string
 
+// Rule IDs for each concurrency detector.
 const (
 	RuleLockWithoutDefer   RuleID = "SA-1" // sync.Mutex.Lock() not followed by defer Unlock()
 	RuleLoopClosure        RuleID = "SA-2" // goroutine closure captures loop variable

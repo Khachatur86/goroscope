@@ -109,6 +109,8 @@ func runTop(ctx context.Context, in topInput) error {
 }
 
 // renderTopFrame writes one full top-frame to stdout.
+//
+//nolint:errcheck // writes to terminal stdout; errors are intentionally ignored.
 func renderTopFrame(in topInput, snaps []pprofpoll.GoroutineSnapshot) {
 	now := time.Now().Format("15:04:05")
 

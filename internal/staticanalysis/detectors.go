@@ -1,3 +1,4 @@
+//nolint:revive // unexported detector types implement the detector interface; Detect methods are intentionally exported.
 package staticanalysis
 
 import (

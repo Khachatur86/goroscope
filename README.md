@@ -200,6 +200,9 @@ make run-react          # builds React + starts goroscope with -ui-path=web/dist
 make test-race          # go test -race ./...
 make lint               # golangci-lint
 make pre-commit         # fmt + vet + test-race + lint
+
+# Install git hooks (gofmt + go vet + golangci-lint on every commit)
+git config core.hooksPath .githooks
 ```
 
 Use `make lint-fix` to auto-fix what lint can fix.

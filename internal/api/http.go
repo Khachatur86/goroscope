@@ -1081,6 +1081,8 @@ func (s *Server) handleRequestGoroutines(w http.ResponseWriter, r *http.Request)
 
 // handleMetrics serves Prometheus text exposition format (H-5).
 // GET /metrics — compatible with prometheus scrape_config, no dependencies.
+//
+//nolint:errcheck // writes to http.ResponseWriter; errors are intentionally ignored per net/http convention.
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	goroutines := s.engineFor(r).ListGoroutines()
 	stateCounts := make(map[model.GoroutineState]int)

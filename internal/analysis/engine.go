@@ -75,9 +75,9 @@ type Engine struct {
 	activeSegments    map[int64]activeSegment
 	edges             []model.ResourceEdge
 	processorSegments []model.ProcessorSegment
-	dataVersion   uint64 // incremented on any state change, for ETag
-	stacksByGID   map[int64][]model.StackSnapshot // goroutineID → snapshots (P-4: O(1) per-goroutine lookup)
-	stackCount    int                             // total snapshots across all goroutines
+	dataVersion       uint64                          // incremented on any state change, for ETag
+	stacksByGID       map[int64][]model.StackSnapshot // goroutineID → snapshots (P-4: O(1) per-goroutine lookup)
+	stackCount        int                             // total snapshots across all goroutines
 
 	// Delta tracking for SSE streaming (H-6).
 	// goroutineBornAt records the dataVersion when each goroutine first appeared.

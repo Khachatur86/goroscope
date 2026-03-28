@@ -2,10 +2,10 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"

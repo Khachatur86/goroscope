@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pre-commit hook: runs gofmt, go vet, and golangci-lint on staged Go files.
+# Install: git config core.hooksPath .githooks
+set -euo pipefail
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+# 1. gofmt — list files that are not properly formatted
+UNFORMATTED=$(gofmt -l $STAGED)
+if [ -n "$UNFORMATTED" ]; then
+  echo "❌ gofmt: the following files are not formatted (run: gofmt -w <file>):"
+  echo "$UNFORMATTED"
+  exit 1
+fi
+
+# 2. go vet — static analysis on all packages touched by staged files
+PKGS=$(echo "$STAGED" | xargs -I{} dirname {} | sort -u | sed 's|^|./|')
+if ! go vet $PKGS 2>&1; then
+  echo "❌ go vet failed"
+  exit 1
+fi
+
+# 3. golangci-lint — full lint pass (fast: only new/changed lines via --new-from-rev)
+if command -v golangci-lint &>/dev/null; then
+  if ! golangci-lint run --timeout=2m $PKGS 2>&1; then
+    echo "❌ golangci-lint failed"
+    exit 1
+  fi
+fi
+
+echo "✅ pre-commit checks passed"

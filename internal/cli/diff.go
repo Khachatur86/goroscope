@@ -74,8 +74,8 @@ func runDiff(ctx context.Context, in diffInput, stdout, stderr io.Writer) error 
 
 func outputDiffJSON(w io.Writer, diff analysis.CaptureDiff, baseline, compare string) error {
 	out := struct {
-		Baseline string              `json:"baseline"`
-		Compare  string              `json:"compare"`
+		Baseline string               `json:"baseline"`
+		Compare  string               `json:"compare"`
 		Diff     analysis.CaptureDiff `json:"diff"`
 	}{
 		Baseline: baseline,
@@ -185,4 +185,6 @@ func loadCaptureData(ctx context.Context, path string) ([]model.Goroutine, []mod
 type exitError struct{ code int }
 
 func (e *exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
+
+// ExitCode returns the process exit code carried by this error.
 func (e *exitError) ExitCode() int { return e.code }

@@ -35,6 +35,8 @@ import (
 type multiFlag []string
 
 func (f *multiFlag) String() string { return strings.Join(*f, ",") }
+
+// Set implements flag.Value by appending v to the slice.
 func (f *multiFlag) Set(v string) error {
 	*f = append(*f, v)
 	return nil
@@ -306,8 +308,10 @@ type attachFlightRecorderInput struct {
 	Engine      interface {
 		LoadCapture(sess *model.Session, capture model.Capture)
 	}
-	Sessions    *session.Manager
-	Server      interface{ Serve(ctx context.Context) error }
+	Sessions *session.Manager
+	Server   interface {
+		Serve(ctx context.Context) error
+	}
 	UIURL       string
 	OpenBrowser bool
 	Stdout      io.Writer
@@ -487,13 +491,13 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	// Multi-target mode: skip demo data, use live pprof pollers.
 	if len(targets) > 0 {
 		return serveMultiTargetSession(ctx, serveMultiTargetInput{
-			Addr:        *addr,
-			Targets:     targets,
-			OpenBrowser: *openBrowser,
-			UIPath:      uiPathResolved,
+			Addr:         *addr,
+			Targets:      targets,
+			OpenBrowser:  *openBrowser,
+			UIPath:       uiPathResolved,
 			ServerConfig: cfg,
-			Stdout:      stdout,
-			Stderr:      stderr,
+			Stdout:       stdout,
+			Stderr:       stderr,
 		})
 	}
 
@@ -555,10 +559,10 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "replay", Target: target,
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
-		ServerConfig:    api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token, CORSOrigins: splitCSV(*corsOriginsReplay)},
-		MaxGoroutines:   *maxGoroutinesReplay,
+		ServerConfig:     api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token, CORSOrigins: splitCSV(*corsOriginsReplay)},
+		MaxGoroutines:    *maxGoroutinesReplay,
 		BrowserURLSuffix: annotationsToBookmarkParam(capture.Annotations),
-		Stdout:          stdout, Stderr: stderr,
+		Stdout:           stdout, Stderr: stderr,
 	})
 }
 
@@ -1150,7 +1154,7 @@ func serveCaptureSession(ctx context.Context, in serveCaptureInput) error {
 
 // serveMultiTargetInput holds parameters for serveMultiTargetSession (CS-5).
 type serveMultiTargetInput struct {
-	Addr         string
+	Addr string
 	// Targets is a list of target specifiers in the form "http://host:port"
 	// or "label=http://host:port".
 	Targets      []string

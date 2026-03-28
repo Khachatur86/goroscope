@@ -117,7 +117,7 @@ func expandDirs(dirs []string, recursive bool) ([]string, error) {
 	for _, root := range dirs {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return nil // skip unreadable paths
+				return nil //nolint:nilerr // skip unreadable paths intentionally
 			}
 			if d.IsDir() {
 				// Skip hidden and vendor directories.
