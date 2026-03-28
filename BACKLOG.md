@@ -492,7 +492,7 @@ goroscope_session_duration_seconds 3600
 
 ---
 
-### I-4. Engine incremental recompute (P1)
+### ~~I-4. Engine incremental recompute (P1)~~ — ✅ РЕАЛИЗОВАНО
 
 **Gap:** При каждом SSE-тике Engine полностью пересчитывает insights, contention, groups — даже если изменилось 3 goroutine из 10k. O(n) на каждый тик без необходимости.
 
