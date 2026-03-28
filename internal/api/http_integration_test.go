@@ -5,6 +5,7 @@ package api
 // error/edge-case request using httptest.NewRecorder (no real network).
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -27,7 +28,7 @@ func TestHandleTimeline(t *testing.T) {
 		{ID: 2, State: model.StateRunning},
 	}
 	srv := newTestServer(t, goroutines)
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("returns all segments without filters", func(t *testing.T) {
 		t.Parallel()
@@ -95,7 +96,7 @@ func TestHandleProcessorTimeline(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer(t, nil)
-	rec := get(t, srv.routes(), "/api/v1/processor-timeline")
+	rec := get(t, srv.routes(context.Background()), "/api/v1/processor-timeline")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -117,7 +118,7 @@ func TestHandleGoroutineGroups(t *testing.T) {
 		{ID: 3, State: model.StateRunning},
 	}
 	srv := newTestServer(t, goroutines)
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("groups by function (default)", func(t *testing.T) {
 		t.Parallel()
@@ -164,7 +165,7 @@ func TestHandleSmartInsights(t *testing.T) {
 		{ID: 2, State: model.StateRunning},
 	}
 	srv := newTestServer(t, goroutines)
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("returns insights array", func(t *testing.T) {
 		t.Parallel()
@@ -201,7 +202,7 @@ func TestHandleGraph(t *testing.T) {
 		{ID: 2, State: model.StateBlocked, ResourceID: "sync.Mutex:0xabc"},
 	}
 	srv := newTestServer(t, goroutines)
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("returns resource graph edges", func(t *testing.T) {
 		t.Parallel()
@@ -239,7 +240,7 @@ func TestHandleMemoryStats(t *testing.T) {
 		{ID: 2, State: model.StateWaiting},
 	}
 	srv := newTestServer(t, goroutines)
-	rec := get(t, srv.routes(), "/api/v1/memory")
+	rec := get(t, srv.routes(context.Background()), "/api/v1/memory")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -276,7 +277,7 @@ func TestHandleGoroutineStacks(t *testing.T) {
 	})
 	mgr := session.NewManager()
 	srv := NewServer("127.0.0.1:0", eng, mgr, "")
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("returns stacks for known goroutine", func(t *testing.T) {
 		t.Parallel()
@@ -330,7 +331,7 @@ func TestHandlePprofStacks(t *testing.T) {
 	})
 	mgr := session.NewManager()
 	srv := NewServer("127.0.0.1:0", eng, mgr, "")
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	startNS := strconv.FormatInt(base.UnixNano(), 10)
 	endNS := strconv.FormatInt(base.Add(time.Second).UnixNano(), 10)
@@ -377,7 +378,7 @@ func TestHandleSessions(t *testing.T) {
 	eng := analysis.NewEngine()
 	srv := NewServer("127.0.0.1:0", eng, mgr, "")
 
-	rec := get(t, srv.routes(), "/api/v1/sessions")
+	rec := get(t, srv.routes(context.Background()), "/api/v1/sessions")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -398,7 +399,7 @@ func TestHandleSessionCurrent(t *testing.T) {
 		eng := analysis.NewEngine()
 		mgr := session.NewManager()
 		srv := NewServer("127.0.0.1:0", eng, mgr, "")
-		rec := get(t, srv.routes(), "/api/v1/session/current")
+		rec := get(t, srv.routes(context.Background()), "/api/v1/session/current")
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404", rec.Code)
 		}
@@ -411,7 +412,7 @@ func TestHandleSessionCurrent(t *testing.T) {
 		sess := mgr.StartSession("test", "demo://test")
 		eng.Reset(sess)
 		srv := NewServer("127.0.0.1:0", eng, mgr, "")
-		rec := get(t, srv.routes(), "/api/v1/session/current")
+		rec := get(t, srv.routes(context.Background()), "/api/v1/session/current")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 		}
@@ -434,7 +435,7 @@ func TestHandleMetrics(t *testing.T) {
 		{ID: 3, State: model.StateBlocked, ResourceID: "sync.Mutex:0x1"},
 	}
 	srv := newTestServer(t, goroutines)
-	rec := get(t, srv.routes(), "/metrics")
+	rec := get(t, srv.routes(context.Background()), "/metrics")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -486,7 +487,7 @@ func TestHandleRequests(t *testing.T) {
 	eng.SetLabelOverrides(map[int64]model.Labels{1: {"request_id": "req-abc"}})
 	mgr := session.NewManager()
 	srv := NewServer("127.0.0.1:0", eng, mgr, "")
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("GET returns groups object", func(t *testing.T) {
 		t.Parallel()
@@ -541,7 +542,7 @@ func TestHandleRequestGoroutines(t *testing.T) {
 	eng.SetLabelOverrides(map[int64]model.Labels{10: {"request_id": "req-xyz"}})
 	mgr := session.NewManager()
 	srv := NewServer("127.0.0.1:0", eng, mgr, "")
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("returns goroutines for known request", func(t *testing.T) {
 		t.Parallel()
@@ -596,7 +597,7 @@ func TestSecurityHeaders(t *testing.T) {
 
 	srv := newTestServer(t, nil)
 	cfg := Config{}
-	handler := securityHeaders(cfg, srv.routes())
+	handler := securityHeaders(cfg, srv.routes(context.Background()))
 
 	rec := get(t, handler, "/healthz")
 	if rec.Code != http.StatusOK {
@@ -624,7 +625,7 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 	t.Run("HSTS set when token configured", func(t *testing.T) {
 		t.Parallel()
 		srv := newTestServer(t, nil)
-		handler := securityHeaders(Config{Token: "secret"}, srv.routes())
+		handler := securityHeaders(Config{Token: "secret"}, srv.routes(context.Background()))
 		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 		req.Header.Set("Authorization", "Bearer secret")
 		rec := httptest.NewRecorder()
@@ -641,7 +642,7 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 	t.Run("HSTS not set without token or TLS", func(t *testing.T) {
 		t.Parallel()
 		srv := newTestServer(t, nil)
-		handler := securityHeaders(Config{}, srv.routes())
+		handler := securityHeaders(Config{}, srv.routes(context.Background()))
 		rec := get(t, handler, "/healthz")
 		if hsts := rec.Header().Get("Strict-Transport-Security"); hsts != "" {
 			t.Errorf("unexpected HSTS header: %q", hsts)
@@ -656,7 +657,7 @@ func TestCORSHeaders(t *testing.T) {
 		t.Parallel()
 		srv := newTestServer(t, nil)
 		cfg := Config{CORSOrigins: []string{"https://example.com"}}
-		handler := securityHeaders(cfg, srv.routes())
+		handler := securityHeaders(cfg, srv.routes(context.Background()))
 
 		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 		req.Header.Set("Origin", "https://example.com")
@@ -672,7 +673,7 @@ func TestCORSHeaders(t *testing.T) {
 		t.Parallel()
 		srv := newTestServer(t, nil)
 		cfg := Config{CORSOrigins: []string{"https://allowed.com"}}
-		handler := securityHeaders(cfg, srv.routes())
+		handler := securityHeaders(cfg, srv.routes(context.Background()))
 
 		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 		req.Header.Set("Origin", "https://evil.com")
@@ -688,7 +689,7 @@ func TestCORSHeaders(t *testing.T) {
 		t.Parallel()
 		srv := newTestServer(t, nil)
 		cfg := Config{CORSOrigins: []string{"https://example.com"}}
-		handler := securityHeaders(cfg, srv.routes())
+		handler := securityHeaders(cfg, srv.routes(context.Background()))
 
 		req := httptest.NewRequest(http.MethodOptions, "/api/v1/goroutines", nil)
 		req.Header.Set("Origin", "https://example.com")
@@ -704,7 +705,7 @@ func TestCORSHeaders(t *testing.T) {
 		t.Parallel()
 		srv := newTestServer(t, nil)
 		cfg := Config{CORSOrigins: []string{"*"}}
-		handler := securityHeaders(cfg, srv.routes())
+		handler := securityHeaders(cfg, srv.routes(context.Background()))
 
 		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 		req.Header.Set("Origin", "https://anyone.io")
@@ -729,7 +730,7 @@ func TestHandleContentionHeatmap(t *testing.T) {
 		{ID: 3, State: model.StateRunning},
 	}
 	srv := newTestServer(t, goroutines)
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("returns 200 with bins and resources", func(t *testing.T) {
 		t.Parallel()
@@ -808,7 +809,7 @@ func TestHandleFlamegraph(t *testing.T) {
 		}},
 	}
 	srv := newTestServerWithStacks(t, goroutines)
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("returns 200 with root node", func(t *testing.T) {
 		t.Parallel()
@@ -875,7 +876,7 @@ func TestHandleFlamegraphFolded(t *testing.T) {
 		}},
 	}
 	srv := newTestServerWithStacks(t, goroutines)
-	handler := srv.routes()
+	handler := srv.routes(context.Background())
 
 	t.Run("returns text/plain folded stacks", func(t *testing.T) {
 		t.Parallel()

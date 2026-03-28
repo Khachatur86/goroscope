@@ -5,18 +5,11 @@ import (
 	"io"
 )
 
-// completionCommand prints a shell completion script to stdout.
-// Supports zsh, bash, and fish.
-func completionCommand(_ []string, stdout io.Writer) error {
-	fmt.Fprintln(stdout, completionHelp)
-	return nil
-}
-
 // completionSubcommand dispatches to the shell-specific generator.
 func completionSubcommand(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: goroscope completion <shell>")
-		fmt.Fprintln(stderr, "Shells: zsh, bash, fish")
+		_, _ = fmt.Fprintln(stderr, "Usage: goroscope completion <shell>")
+		_, _ = fmt.Fprintln(stderr, "Shells: zsh, bash, fish")
 		return fmt.Errorf("missing shell argument")
 	}
 	switch args[0] {
@@ -31,21 +24,6 @@ func completionSubcommand(args []string, stdout, stderr io.Writer) error {
 	}
 	return nil
 }
-
-const completionHelp = `Usage: goroscope completion <shell>
-
-Generate a shell completion script and source it in your shell profile.
-
-  zsh:
-    echo 'source <(goroscope completion zsh)' >> ~/.zshrc
-
-  bash:
-    echo 'source <(goroscope completion bash)' >> ~/.bashrc
-
-  fish:
-    goroscope completion fish > ~/.config/fish/completions/goroscope.fish
-
-Shells: zsh, bash, fish`
 
 // ── Zsh ───────────────────────────────────────────────────────────────────────
 

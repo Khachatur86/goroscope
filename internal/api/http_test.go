@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -345,7 +346,7 @@ func TestHandleHealthz(t *testing.T) {
 	t.Parallel()
 
 	s := NewServer("127.0.0.1:0", analysis.NewEngine(), session.NewManager(), "")
-	rec := get(t, s.routes(), "/healthz")
+	rec := get(t, s.routes(context.Background()), "/healthz")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -376,7 +377,7 @@ func TestHandleGoroutines(t *testing.T) {
 		{ID: 3, State: model.StateWaiting, Reason: model.ReasonMutexLock, WaitNS: int64(500 * time.Millisecond)},
 	}
 	s := newTestServer(t, fixture)
-	handler := s.routes()
+	handler := s.routes(context.Background())
 
 	t.Run("returns all goroutines without filter", func(t *testing.T) {
 		t.Parallel()
@@ -448,7 +449,7 @@ func TestHandleGoroutineByID(t *testing.T) {
 	s := newTestServer(t, []model.Goroutine{
 		{ID: 42, State: model.StateRunning},
 	})
-	handler := s.routes()
+	handler := s.routes(context.Background())
 
 	t.Run("existing goroutine returns 200", func(t *testing.T) {
 		t.Parallel()
@@ -491,7 +492,7 @@ func TestHandleGoroutineChildren(t *testing.T) {
 		{ID: 3, State: model.StateBlocked, Reason: model.ReasonChanRecv, ParentID: 1},
 		{ID: 4, State: model.StateRunning, ParentID: 2},
 	})
-	handler := s.routes()
+	handler := s.routes(context.Background())
 
 	t.Run("returns direct children only", func(t *testing.T) {
 		t.Parallel()
@@ -545,7 +546,7 @@ func TestHandleDeadlockHints(t *testing.T) {
 	}
 
 	s := newTestServerWithResources(t, goroutines, edges)
-	handler := s.routes()
+	handler := s.routes(context.Background())
 
 	rec := get(t, handler, "/api/v1/deadlock-hints")
 	if rec.Code != http.StatusOK {
@@ -583,7 +584,7 @@ func TestHandleInsights(t *testing.T) {
 	fixture = append(fixture, model.Goroutine{ID: 99, State: model.StateRunning})
 
 	s := newTestServer(t, fixture)
-	handler := s.routes()
+	handler := s.routes(context.Background())
 
 	t.Run("default min_wait_ns=1s caps at 20 and sorts descending", func(t *testing.T) {
 		t.Parallel()
@@ -672,7 +673,7 @@ func TestIsLocalhostAddr(t *testing.T) {
 func TestPprofOnlyWhenLocalhost(t *testing.T) {
 	t.Parallel()
 	s := NewServer("127.0.0.1:0", nil, nil, "")
-	rec := get(t, s.routes(), "/debug/pprof/")
+	rec := get(t, s.routes(context.Background()), "/debug/pprof/")
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET /debug/pprof/ on localhost: got %d, want 200", rec.Code)
 	}
@@ -681,7 +682,7 @@ func TestPprofOnlyWhenLocalhost(t *testing.T) {
 func TestPprofDisabledWhenNotLocalhost(t *testing.T) {
 	t.Parallel()
 	s := NewServer("0.0.0.0:7070", nil, nil, "")
-	rec := get(t, s.routes(), "/debug/pprof/")
+	rec := get(t, s.routes(context.Background()), "/debug/pprof/")
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("GET /debug/pprof/ on 0.0.0.0: got %d, want 404", rec.Code)
 	}
@@ -695,7 +696,7 @@ func TestHandleReplayLoad(t *testing.T) {
 	eng := analysis.NewEngine()
 	mgr := session.NewManager()
 	s := NewServer("127.0.0.1:0", eng, mgr, "")
-	handler := s.routes()
+	handler := s.routes(context.Background())
 
 	content := `{"name":"upload-test","events":[{"seq":1,"timestamp":"2026-01-01T00:00:00Z","kind":"goroutine.create","goroutine_id":1},{"seq":2,"timestamp":"2026-01-01T00:00:01Z","kind":"goroutine.state","goroutine_id":1,"state":"RUNNING"}]}`
 
@@ -731,7 +732,7 @@ func TestHandleCompare(t *testing.T) {
 	eng := analysis.NewEngine()
 	mgr := session.NewManager()
 	s := NewServer("127.0.0.1:0", eng, mgr, "")
-	handler := s.routes()
+	handler := s.routes(context.Background())
 
 	// Baseline: G2 blocked 100ms (T0+1ms → T0+101ms)
 	baseline := `{"name":"baseline","events":[
@@ -805,7 +806,7 @@ func TestHandleGoroutineStackAt(t *testing.T) {
 	capture = tracebridge.BindCaptureSession(capture, sess.ID)
 	eng.LoadCapture(sess, capture)
 	s := NewServer("127.0.0.1:0", eng, mgr, "")
-	handler := s.routes()
+	handler := s.routes(context.Background())
 
 	// Demo has stacks; use a timestamp well after the last event (2026-03-14T12:00:02Z)
 	// 2026-03-14 12:00:03 UTC in Unix nanoseconds
@@ -852,7 +853,7 @@ func TestHandleReplayExport(t *testing.T) {
 		eng := analysis.NewEngine()
 		mgr := session.NewManager()
 		srv := NewServer("127.0.0.1:0", eng, mgr, "")
-		rec := get(t, srv.routes(), "/api/v1/replay/export")
+		rec := get(t, srv.routes(context.Background()), "/api/v1/replay/export")
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404", rec.Code)
 		}
@@ -865,7 +866,7 @@ func TestHandleReplayExport(t *testing.T) {
 		sess := mgr.StartSession("test", "demo://test")
 		eng.Reset(sess)
 		srv := NewServer("127.0.0.1:0", eng, mgr, "")
-		rec := get(t, srv.routes(), "/api/v1/replay/export")
+		rec := get(t, srv.routes(context.Background()), "/api/v1/replay/export")
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", rec.Code)
 		}
@@ -883,7 +884,7 @@ func TestHandleReplayExport(t *testing.T) {
 			{Kind: model.EventKindGoroutineState, GoroutineID: 1, Timestamp: base.Add(time.Millisecond), State: model.StateRunning},
 		})
 		srv := NewServer("127.0.0.1:0", eng, mgr, "")
-		rec := get(t, srv.routes(), "/api/v1/replay/export")
+		rec := get(t, srv.routes(context.Background()), "/api/v1/replay/export")
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
@@ -913,7 +914,7 @@ func TestHandleReplayExport(t *testing.T) {
 		srv := NewServer("127.0.0.1:0", eng, mgr, "")
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/replay/export", nil)
 		rec := httptest.NewRecorder()
-		srv.routes().ServeHTTP(rec, req)
+		srv.routes(context.Background()).ServeHTTP(rec, req)
 		if rec.Code != http.StatusMethodNotAllowed {
 			t.Fatalf("status = %d, want 405", rec.Code)
 		}
@@ -927,7 +928,7 @@ func TestBearerAuth_NoToken(t *testing.T) {
 	// Server without a token: all requests allowed.
 	s := NewServer("127.0.0.1:0", nil, nil, "")
 	rec := httptest.NewRecorder()
-	s.routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	s.routes(context.Background()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("want 200 without token config, got %d", rec.Code)
 	}
@@ -936,7 +937,7 @@ func TestBearerAuth_NoToken(t *testing.T) {
 func TestBearerAuth_CorrectToken(t *testing.T) {
 	t.Parallel()
 	s := NewServer("127.0.0.1:0", nil, nil, "", Config{Token: "secret"})
-	handler := bearerAuth("secret", s.routes())
+	handler := bearerAuth("secret", s.routes(context.Background()))
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	req.Header.Set("Authorization", "Bearer secret")
@@ -954,9 +955,9 @@ func TestBearerAuth_WrongToken(t *testing.T) {
 	}))
 
 	cases := []struct {
-		name  string
-		auth  string
-		want  int
+		name string
+		auth string
+		want int
 	}{
 		{"no header", "", http.StatusUnauthorized},
 		{"wrong token", "Bearer wrong", http.StatusUnauthorized},

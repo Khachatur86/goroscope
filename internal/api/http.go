@@ -56,8 +56,6 @@ type Server struct {
 	// registry holds the multi-target state when more than one process is
 	// being monitored (H-7). When nil, s.engine / s.sessions are used directly.
 	registry *target.Registry
-	// serveCtx is set in Serve and passed to target additions requested via API.
-	serveCtx context.Context
 }
 
 // NewServer returns a Server bound to addr with the given engine and session manager.
@@ -124,9 +122,12 @@ func (s *Server) Serve(ctx context.Context) error {
 	if err := s.validateConfig(); err != nil {
 		return err
 	}
-	s.serveCtx = ctx // stored for use by handleTargetsCreate
+	if !isLocalhostAddr(s.addr) {
+		_, _ = fmt.Fprintf(os.Stderr, "warning: --addr %q binds to a non-loopback interface; "+
+			"goroutine stacks and analysis data will be accessible to remote hosts\n", s.addr)
+	}
 
-	handler := s.routes()
+	handler := s.routes(ctx)
 	if s.config.Token != "" {
 		handler = bearerAuth(s.config.Token, handler)
 	}
@@ -232,7 +233,7 @@ func securityHeaders(cfg Config, next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) routes() http.Handler {
+func (s *Server) routes(ctx context.Context) http.Handler {
 	mux := http.NewServeMux()
 	switch {
 	case s.uiPath != "":
@@ -279,7 +280,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/requests/{id}/goroutines", s.handleRequestGoroutines)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	// H-7: multi-target monitoring endpoints.
-	mux.HandleFunc("/api/v1/targets", s.handleTargets)
+	mux.HandleFunc("/api/v1/targets", func(w http.ResponseWriter, r *http.Request) {
+		s.handleTargets(ctx, w, r)
+	})
 	mux.HandleFunc("/api/v1/targets/{id}", s.handleTargetByID)
 
 	if isLocalhostAddr(s.addr) {
@@ -786,9 +789,10 @@ func (s *Server) handleSmartInsights(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	goroutines := s.engineFor(r).ListGoroutines()
-	segments := s.engineFor(r).Timeline()
-	edges := s.engineFor(r).ResourceGraph()
+	eng := s.engineFor(r)
+	goroutines := eng.ListGoroutines()
+	segments := eng.Timeline()
+	edges := eng.ResourceGraph()
 	if len(edges) == 0 {
 		edges = analysis.DeriveCurrentContentionEdges(goroutines)
 	}
@@ -1386,7 +1390,7 @@ func (s *Server) sendSSEDelta(w http.ResponseWriter, flusher http.Flusher, eng *
 //
 // GET  — returns the list of all registered targets.
 // POST — adds a new target; body: {"addr":"http://localhost:6060","label":"svc"}.
-func (s *Server) handleTargets(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleTargets(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		if s.registry == nil {
@@ -1413,11 +1417,7 @@ func (s *Server) handleTargets(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "addr is required"})
 			return
 		}
-		parentCtx := s.serveCtx
-		if parentCtx == nil {
-			parentCtx = r.Context()
-		}
-		t := s.registry.Add(parentCtx, target.AddInput{Addr: body.Addr, Label: body.Label})
+		t := s.registry.Add(ctx, target.AddInput{Addr: body.Addr, Label: body.Label})
 		writeJSON(w, http.StatusCreated, target.Info{
 			ID:      t.ID,
 			Addr:    t.Addr,
@@ -1462,8 +1462,8 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, _ *http.Request) {
 // handleSwaggerUI serves a minimal Swagger UI page that loads the spec from
 // /api/openapi.yaml. Uses the official Swagger UI CDN so no JS bundle is
 // embedded in the binary (I-1).
-func (s *Server) handleSwaggerUI(w http.ResponseWriter, r *http.Request) {
-	specURL := "http://" + r.Host + "/api/openapi.yaml"
+func (s *Server) handleSwaggerUI(w http.ResponseWriter, _ *http.Request) {
+	specURL := "/api/openapi.yaml"
 	html := `<!DOCTYPE html>
 <html lang="en">
 <head>

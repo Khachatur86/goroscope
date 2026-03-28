@@ -43,6 +43,7 @@ type watchInput struct {
 	Format          string // "json" | "text"
 	Stdout          io.Writer
 	Stderr          io.Writer
+	HTTPClient      *http.Client // used for webhook/slack POSTs; defaults to 10s client
 }
 
 func watchCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -88,6 +89,7 @@ func watchCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 
 func runWatch(ctx context.Context, in watchInput) error {
 	client := &http.Client{Timeout: 10 * time.Second}
+	in.HTTPClient = client
 	ticker := time.NewTicker(in.Interval)
 	defer ticker.Stop()
 
@@ -191,20 +193,25 @@ func emitAlert(in watchInput, a watchAlert) error {
 	_, _ = fmt.Fprintf(in.Stdout, "%s\n", data)
 
 	if in.Webhook != "" {
-		if err := postWebhook(in.Webhook, data); err != nil {
+		if err := postWebhook(in.HTTPClient, in.Webhook, data); err != nil {
 			_, _ = fmt.Fprintf(in.Stderr, "goroscope watch: webhook POST failed: %v\n", err)
 		}
 	}
 	if in.SlackURL != "" {
-		if err := postSlackAlert(in.SlackURL, a); err != nil {
+		if err := postSlackAlert(in.HTTPClient, in.SlackURL, a); err != nil {
 			_, _ = fmt.Fprintf(in.Stderr, "goroscope watch: slack POST failed: %v\n", err)
 		}
 	}
 	return nil
 }
 
-func postWebhook(url string, payload []byte) error {
-	resp, err := http.Post(url, "application/json", bytes.NewReader(payload)) //nolint:gosec // user-supplied URL
+func postWebhook(client *http.Client, url string, payload []byte) error {
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload)) //nolint:gosec // user-supplied URL
+	if err != nil {
+		return fmt.Errorf("build webhook request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -326,7 +333,7 @@ func hasDeadlockCycle(edges []model.ResourceEdge, goroutines []model.Goroutine) 
 // postSlackAlert sends a Slack Block Kit message for the given alert.
 // The message uses a header block with severity emoji and a section block
 // listing the top blocked goroutines.
-func postSlackAlert(webhookURL string, a watchAlert) error {
+func postSlackAlert(client *http.Client, webhookURL string, a watchAlert) error {
 	emoji := ":warning:"
 	if a.Type == "deadlock" {
 		emoji = ":rotating_light:"
@@ -378,5 +385,5 @@ func postSlackAlert(webhookURL string, a watchAlert) error {
 	if err != nil {
 		return fmt.Errorf("marshal slack payload: %w", err)
 	}
-	return postWebhook(webhookURL, data)
+	return postWebhook(client, webhookURL, data)
 }

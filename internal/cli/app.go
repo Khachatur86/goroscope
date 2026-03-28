@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -181,21 +180,6 @@ func scheduleOpenBrowser(ctx context.Context, delay time.Duration, url string) {
 		case <-ctx.Done():
 		}
 	}()
-}
-
-// warnIfNotLoopback prints a warning to w when addr binds to a non-loopback
-// interface, which exposes the goroscope UI and all analysis data to the network
-// (H-2: unintended network exposure via --addr flag).
-func warnIfNotLoopback(addr string, w io.Writer) {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return // invalid addr will fail at bind time with a clearer error
-	}
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
-		_, _ = fmt.Fprintf(w, "warning: --addr %q binds to a non-loopback interface; "+
-			"goroutine stacks and analysis data will be accessible to remote hosts\n", addr)
-	}
 }
 
 // attachCommand implements `goroscope attach <url>`.

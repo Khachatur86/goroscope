@@ -168,15 +168,19 @@ func (r DeadlockReport) WriteSARIF(w io.Writer) error {
 		} `json:"message"`
 	}
 	type result struct {
-		RuleID    string     `json:"ruleId"`
-		Level     string     `json:"level"`
-		Message   struct{ Text string `json:"text"` } `json:"message"`
+		RuleID  string `json:"ruleId"`
+		Level   string `json:"level"`
+		Message struct {
+			Text string `json:"text"`
+		} `json:"message"`
 		Locations []location `json:"locations,omitempty"`
 	}
 	type rule struct {
 		ID               string `json:"id"`
-		ShortDescription struct{ Text string `json:"text"` } `json:"shortDescription"`
-		HelpURI          string `json:"helpUri,omitempty"`
+		ShortDescription struct {
+			Text string `json:"text"`
+		} `json:"shortDescription"`
+		HelpURI string `json:"helpUri,omitempty"`
 	}
 	type sarif struct {
 		Schema  string `json:"$schema"`
@@ -241,7 +245,9 @@ func (r DeadlockReport) WriteSARIF(w io.Writer) error {
 	doc.Runs[0].Tool.Driver.InformationURI = "https://github.com/Khachatur86/goroscope"
 	doc.Runs[0].Tool.Driver.Rules = []rule{{
 		ID: "deadlock",
-		ShortDescription: struct{ Text string `json:"text"` }{
+		ShortDescription: struct {
+			Text string `json:"text"`
+		}{
 			Text: "Potential goroutine deadlock cycle detected",
 		},
 		HelpURI: "https://github.com/Khachatur86/goroscope#check",
