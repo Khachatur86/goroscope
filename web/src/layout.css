@@ -35,7 +35,7 @@
   background: transparent;
   position: relative;
   z-index: 10;
-  transition: background 0.15s;
+  transition: background var(--duration-base);
 }
 
 .panel-divider::after {
@@ -44,7 +44,7 @@
   inset: 0 2px;
   background: rgba(100, 116, 139, 0.3);
   border-radius: 3px;
-  transition: background 0.15s;
+  transition: background var(--duration-base);
 }
 
 .panel-divider:hover::after,
@@ -84,7 +84,7 @@
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background var(--duration-base), color var(--duration-base), border-color var(--duration-base);
 }
 
 .btn--chip:hover,
@@ -191,7 +191,7 @@
   color: inherit;
   position: relative;
   overflow: hidden;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color var(--duration-base) var(--easing-standard), border-color var(--duration-base) var(--easing-standard);
 }
 
 .lane-item:hover,

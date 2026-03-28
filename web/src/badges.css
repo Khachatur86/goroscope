@@ -15,7 +15,7 @@
   padding: 0.2rem 0.4rem;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color var(--duration-slower) var(--easing-standard), color var(--duration-slower) var(--easing-standard);
 }
 
 .badge--state.RUNNING, .state-pill.RUNNING { background: var(--color-accent); color: var(--bg-base); }
@@ -67,7 +67,7 @@
   height: 3px;
   pointer-events: none;
   opacity: 0.82;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-slow) var(--easing-standard);
 }
 
 .lifetime-bar--empty {

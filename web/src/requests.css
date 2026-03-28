@@ -62,7 +62,7 @@
   padding: 8px 10px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background var(--duration-fast);
 }
 
 .req-row:hover {
@@ -143,7 +143,7 @@
 
 .req-state-bar-segment {
   height: 100%;
-  transition: width 0.2s;
+  transition: width var(--duration-slow);
 }
 
 .req-empty {

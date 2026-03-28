@@ -94,7 +94,7 @@
   gap: 0.5rem;
   text-align: left;
   color: var(--text-primary);
-  transition: background 0.1s;
+  transition: background var(--duration-fast);
 }
 
 .groups-row-header:hover {
@@ -177,7 +177,7 @@
   font-size: var(--text-sm);
   cursor: pointer;
   font-family: ui-monospace, monospace;
-  transition: background 0.1s;
+  transition: background var(--duration-fast);
 }
 
 .groups-goroutine-id-badge:hover {

@@ -79,6 +79,15 @@
   --overlay-focus:    rgba(255,255,255,0.12);
   --opacity-disabled: 0.45;
 
+  /* Animation tokens */
+  --duration-fast:    100ms;
+  --duration-base:    150ms;
+  --duration-slow:    200ms;
+  --duration-slower:  300ms;
+  --easing-standard:  cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-enter:     cubic-bezier(0, 0, 0.2, 1);
+  --easing-exit:      cubic-bezier(0.4, 0, 1, 1);
+
   /* Goroutine state colors (mirrors tokens.ts STATE_COLORS for CSS use) */
   --color-running:  #10cfb8;
   --color-runnable: #8394a8;
@@ -103,6 +112,15 @@
 
   --border:           rgba(0, 0, 0, 0.10);
   --border-subtle:    rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast:   0s;
+    --duration-base:   0s;
+    --duration-slow:   0s;
+    --duration-slower: 0s;
+  }
 }
 
 * {

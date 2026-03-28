@@ -98,7 +98,7 @@
   cursor: pointer;
   border-radius: var(--radius-base);
   margin: 0 0.3rem;
-  transition: background 0.08s;
+  transition: background var(--duration-fast);
 }
 
 .palette-item.active {

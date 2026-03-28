@@ -27,7 +27,7 @@
   background: var(--bg-card);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background var(--duration-base), color var(--duration-base), border-color var(--duration-base);
 }
 
 .spawn-tree-action-btn:hover {
@@ -125,7 +125,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: color 0.1s;
+  transition: color var(--duration-fast);
 }
 
 .spawn-node-expand:hover {

@@ -103,7 +103,7 @@
   gap: 0.5rem;
   text-align: left;
   color: var(--text-primary);
-  transition: background 0.1s;
+  transition: background var(--duration-fast);
 }
 
 .insight-card-header:hover {
