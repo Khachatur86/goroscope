@@ -44,6 +44,8 @@ export type ResourceEdge = {
   resource_id?: string;
 };
 
+import { fetchJsonViaWorker } from "../workers/fetchViaWorker";
+
 const base = "";
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -52,6 +54,11 @@ async function fetchJson<T>(path: string): Promise<T> {
     throw new Error(`fetch ${path}: ${res.status}`);
   }
   return res.json();
+}
+
+/** Like fetchJson but parses JSON in a Web Worker to avoid main-thread jank. */
+async function fetchJsonOffThread<T>(path: string): Promise<T> {
+  return fetchJsonViaWorker<T>(`${base}${path}`);
 }
 
 export async function fetchCurrentSession(): Promise<Session | null> {
@@ -103,7 +110,7 @@ export async function fetchGoroutines(params?: {
   if (params?.offset) q.set("offset", String(params.offset));
   const query = q.toString();
   const path = `/api/v1/goroutines${query ? `?${query}` : ""}`;
-  const data = await fetchJson<Goroutine[] | GoroutineListEnvelope>(path);
+  const data = await fetchJsonOffThread<Goroutine[] | GoroutineListEnvelope>(path);
 
   if (Array.isArray(data)) {
     return { goroutines: data, sampleInfo: null };
