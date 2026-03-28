@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import type { Insight, InsightSeverity } from "../api/client";
 import { fetchSmartInsights } from "../api/client";
 
+const SMART_INSIGHTS_INTERVAL_MS = 30_000;
+
 type Props = {
-  /** Trigger a re-fetch whenever this value changes (e.g. engine data version). */
-  refreshKey?: number | string;
   onSelectGoroutine?: (id: number) => void;
 };
 
@@ -93,7 +93,7 @@ function InsightCard({
   );
 }
 
-export function SmartInsights({ refreshKey, onSelectGoroutine }: Props) {
+export function SmartInsights({ onSelectGoroutine }: Props) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -116,9 +116,16 @@ export function SmartInsights({ refreshKey, onSelectGoroutine }: Props) {
     }
   }, []);
 
+  // Load once on mount, then refresh every 30 s autonomously.
+  // Previously this used a refreshKey prop tied to dataRevision (incremented on
+  // every SSE event, ~every 3 s), which caused the button to flicker
+  // disabled/enabled several times per minute. A fixed interval is sufficient
+  // since smart insights are derived from the static trace, not live state.
   useEffect(() => {
     load();
-  }, [load, refreshKey]);
+    const timer = setInterval(load, SMART_INSIGHTS_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [load]);
 
   if ((!hasLoadedOnce && loading) || (!loading && total === 0) || dismissed) return null;
 

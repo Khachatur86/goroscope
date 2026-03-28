@@ -43,7 +43,6 @@ interface AnalysisPanelProps {
   open: boolean;
   onTabChange: (id: AnalysisTabId) => void;
   onToggleOpen: () => void;
-  dataRevision: number;
   goroutines: Goroutine[];
   selectedId: number | null;
   resources: { from_goroutine_id: number; to_goroutine_id: number; resource_id?: string }[];
@@ -65,7 +64,6 @@ export function AnalysisPanel({
   open,
   onTabChange,
   onToggleOpen,
-  dataRevision,
   goroutines,
   selectedId,
   resources,
@@ -117,7 +115,7 @@ export function AnalysisPanel({
       {open && (
         <div className="analysis-panel-body">
           {tab === "insights" && (
-            <SmartInsights refreshKey={dataRevision} onSelectGoroutine={onSelectGoroutine} />
+            <SmartInsights onSelectGoroutine={onSelectGoroutine} />
           )}
           {tab === "hotspots" && (
             <Hotspots

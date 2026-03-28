@@ -161,17 +161,26 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
       .catch(() => { if (processorFetchId.current === id) setProcessorSegments([]); });
   }, [goroutines]);
 
+  // Keep a ref so handleVisibleRangeChange can read the latest goroutine list
+  // without listing it as a useCallback dep. If goroutines were a dep, every
+  // goroutine-list refresh would produce a new callback reference, which would
+  // make TimelineCanvas re-fire the debounced visible-range effect and trigger
+  // an extra loadSegmentsBatch call — causing a redundant render wave.
+  const goroutinesRef = useRef(goroutines);
+  goroutinesRef.current = goroutines;
+
   // Handle visible range change from TimelineCanvas — load missing segments.
   const handleVisibleRangeChange = useCallback(
     (firstIndex: number, lastIndex: number) => {
       if (useOverride) return;
+      const gs = goroutinesRef.current;
       // Add buffer: load SEGMENT_BATCH_SIZE rows above and below the visible range.
       const bufStart = Math.max(0, firstIndex - SEGMENT_BATCH_SIZE);
-      const bufEnd = Math.min(goroutines.length - 1, lastIndex + SEGMENT_BATCH_SIZE);
-      const ids = goroutines.slice(bufStart, bufEnd + 1).map((g) => g.goroutine_id);
+      const bufEnd = Math.min(gs.length - 1, lastIndex + SEGMENT_BATCH_SIZE);
+      const ids = gs.slice(bufStart, bufEnd + 1).map((g) => g.goroutine_id);
       loadSegmentsBatch(ids);
     },
-    [goroutines, useOverride, loadSegmentsBatch]
+    [useOverride, loadSegmentsBatch]
   );
 
   // Build a flat segments array from the map (for scrub snapshot + minimap).

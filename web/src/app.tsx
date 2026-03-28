@@ -297,7 +297,6 @@ export function App() {
       setContention(Array.isArray(contentionData) ? contentionData : []);
       setInsights(ins ?? { long_blocked_count: 0, leak_candidates_count: 0 });
       setDeadlockHints(deadlock?.hints ?? []);
-      setDataRevision((v) => v + 1);
     });
   }, [goroutineParams, filters.minWaitNs, stableSetGoroutines]);
 
@@ -313,7 +312,6 @@ export function App() {
       if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
         setSelectedId(urlId);
       }
-      setDataRevision((v) => v + 1);
     });
   }, [goroutineParams, stableSetGoroutines]);
 
@@ -478,7 +476,6 @@ export function App() {
   const captureInputRef = useRef<HTMLInputElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [streamStatus, setStreamStatus] = useState<"connecting" | "live" | "disconnected">("connecting");
-  const [dataRevision, setDataRevision] = useState(0);
   const [replayUploading, setReplayUploading] = useState(false);
   const [replayError, setReplayError] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -946,7 +943,6 @@ export function App() {
         open={analysisOpen}
         onTabChange={setAnalysisTab}
         onToggleOpen={() => setAnalysisOpen((v) => !v)}
-        dataRevision={dataRevision}
         goroutines={goroutines}
         selectedId={selectedId}
         resources={resources}

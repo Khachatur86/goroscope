@@ -4,6 +4,39 @@ import type { Goroutine, TimelineSegment } from "../api/client";
 import type { PinnedMap } from "./pinned";
 import { LifetimeBar } from "./LifetimeBar";
 
+/** Per-row equality check: only re-render when data relevant to *this* row changes.
+ *
+ * Without this, every call to loadSegmentsBatch causes segmentsByGoroutine to be
+ * rebuilt as a new Map, which makes goroutineListItemData a new object reference,
+ * which makes React.memo's default shallow-equal fail for ALL rows simultaneously —
+ * even rows whose segments didn't change. The result is a full-list re-render on
+ * every segment-batch response, which appears as visible flicker in the left panel.
+ */
+function areRowPropsEqual(
+  prev: ListChildComponentProps<GoroutineRowData>,
+  next: ListChildComponentProps<GoroutineRowData>,
+): boolean {
+  if (prev.index !== next.index) return false;
+  const pd = prev.data, nd = next.data;
+  const pg = pd.goroutines[prev.index];
+  const ng = nd.goroutines[next.index];
+  if (pg !== ng) return false; // goroutine identity or state changed
+  if (!pg) return true;        // both undefined — row is out of range
+  const id = pg.goroutine_id;
+  return (
+    // Selection: only matters for this row
+    (pd.selectedId === id) === (nd.selectedId === id) &&
+    // Lifetime-bar segments for this goroutine only
+    pd.segmentsByGoroutine.get(id) === nd.segmentsByGoroutine.get(id) &&
+    // Pin state for this goroutine
+    pd.pinned.has(id) === nd.pinned.has(id) &&
+    pd.pinned.get(id) === nd.pinned.get(id) &&
+    // Stable callbacks (memoised in app.tsx via useCallback)
+    pd.onSelect === nd.onSelect &&
+    pd.onTogglePin === nd.onTogglePin
+  );
+}
+
 export type GoroutineRowData = {
   goroutines: Goroutine[];
   selectedId: number | null;
@@ -13,9 +46,9 @@ export type GoroutineRowData = {
   onTogglePin: (id: number) => void;
 };
 
-// memo prevents re-renders when itemData reference is stable and this row's
-// slice of the data hasn't changed (react-window still passes new props when
-// the parent re-renders, so memo is required to short-circuit that).
+// memo + areRowPropsEqual prevents re-renders when only unrelated goroutines'
+// segments were updated (react-window still passes new props on every parent
+// render, so the custom comparator is essential to short-circuit that).
 export const GoroutineRow = memo(function GoroutineRow({ index, style, data }: ListChildComponentProps<GoroutineRowData>) {
   const g = data.goroutines[index];
   const isPinned = data.pinned.has(g.goroutine_id);
@@ -54,4 +87,4 @@ export const GoroutineRow = memo(function GoroutineRow({ index, style, data }: L
       </div>
     </div>
   );
-});
+}, areRowPropsEqual);
