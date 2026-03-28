@@ -296,7 +296,7 @@
 
 ## Категория U — UI / UX качество
 
-### U-1. Drag-to-resize panels (P2)
+### ~~U-1. Drag-to-resize panels~~ — ✅ РЕАЛИЗОВАНО (U-1)
 
 **Gap:** Три панели (goroutine list / timeline / inspector) имеют фиксированные CSS-пропорции. Пользователь не может адаптировать layout под свой экран или задачу.
 
@@ -306,7 +306,7 @@
 
 ---
 
-### U-2. Playback mode — анимация scrubber'а (P2)
+### ~~U-2. Playback mode — анимация scrubber'а~~ — ✅ РЕАЛИЗОВАНО (U-2)
 
 **Gap:** Scrubber времени есть, но его нужно двигать вручную. Нет возможности «воспроизвести» события как видео.
 
@@ -316,7 +316,7 @@
 
 ---
 
-### U-3. Goroutine watchlist / pinning (P2)
+### ~~U-3. Goroutine watchlist / pinning~~ — ✅ РЕАЛИЗОВАНО (U-3)
 
 **Gap:** При работе с сотнями goroutines отслеживаемые goroutines теряются при смене фильтров.
 
@@ -332,7 +332,7 @@
 
 ---
 
-### U-5. Dark / light theme + accent color (P3)
+### ~~U-5. Dark / light theme + accent color~~ — ✅ РЕАЛИЗОВАНО (U-5)
 
 **Gap:** UI только тёмный, нет системы тем.
 
@@ -344,7 +344,7 @@
 
 ## Категория G — Новый функционал
 
-### G-1. Full call-stack search (P1)
+### ~~G-1. Full call-stack search~~ — ✅ РЕАЛИЗОВАНО (G-1)
 
 **Gap:** Текущий поиск матчит только верхний фрейм (`labels.function`) или поле `reason`. Нет поиска по произвольному фрейму в call stack.
 
@@ -362,7 +362,7 @@
 
 ---
 
-### G-3. Goroutine birth/death markers на timeline (P2)
+### ~~G-3. Goroutine birth/death markers на timeline~~ — ✅ РЕАЛИЗОВАНО (G-3)
 
 **Gap:** Timeline показывает состояния goroutines, но не показывает моменты их создания и завершения явно.
 
@@ -392,7 +392,7 @@
 
 ## Категория H — Backend improvements
 
-### H-1. Stack frame search в API (P1)
+### ~~H-1. Stack frame search в API~~ — ✅ РЕАЛИЗОВАНО (H-1)
 
 **Gap:** `GET /api/v1/goroutines` матчит только верхний фрейм / поле reason. Нет поиска по произвольному фрейму в call stack.
 
@@ -402,7 +402,7 @@
 
 ---
 
-### H-2. Goroutine lifecycle timestamps в API (P2)
+### ~~H-2. Goroutine lifecycle timestamps в API~~ — ✅ РЕАЛИЗОВАНО (H-2)
 
 **Gap:** Engine знает первый/последний сегмент каждой goroutine, но `GET /api/v1/goroutines` не возвращает `born_ns` / `died_ns`. Без этого нельзя отрисовать birth/death markers и посчитать latency HTTP-запросов.
 
@@ -434,7 +434,7 @@
 
 ---
 
-### H-5. Prometheus `/metrics` endpoint (P2)
+### ~~H-5. Prometheus `/metrics` endpoint~~ — ✅ РЕАЛИЗОВАНО (H-5)
 
 **Gap:** Нет стандартного способа интегрировать goroscope в существующий Grafana/Prometheus стек. Нужно заходить в UI и читать глазами.
 
@@ -452,7 +452,7 @@ goroscope_session_duration_seconds 3600
 
 ---
 
-### H-6. SSE delta streaming (P1)
+### ~~H-6. SSE delta streaming~~ — ✅ РЕАЛИЗОВАНО (H-6)
 
 **Gap:** `GET /api/v1/stream` отправляет полный snapshot goroutines на каждый тик. При 10k goroutines — ~10MB/s трафика. Браузер парсит весь JSON заново.
 
