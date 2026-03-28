@@ -656,7 +656,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 > Источник: RFC-001 «Design System Foundation» — итерация 2 из 3.
 > DS-1 установил токены и CSS-системы. DS-2 извлекает типизированные React-компоненты, добавляет accessibility и анимацию.
 
-### DS2-1. Animation token system (P2)
+### ~~DS2-1. Animation token system (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** Добавить CSS-токены анимации (`--duration-fast/base/slow/slower`, `--easing-standard/enter/exit`) в `:root`. Заменить 23 хардкоженных `transition:` значения на `var()`. Добавить `[data-prefers-reduced-motion]` блок.
 
@@ -664,7 +664,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS2-2. Focus-visible + keyboard navigation (P2)
+### ~~DS2-2. Focus-visible + keyboard navigation (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** Создать `a11y.css` с `:focus-visible` ring, `.sr-only`, `@media (prefers-reduced-motion)`. Создать `useFocusTrap` hook. Заменить `<span role="button">` на `<button>` в `Topbar.tsx`. Добавить focus trap в `CommandPalette` и `ThemeSwitcher`.
 
@@ -672,7 +672,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS2-3. React component library: Button, Badge, Spinner (P2)
+### ~~DS2-3. React component library: Button, Badge, Spinner (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Зависимость:** DS2-1
 **Задача:** Создать `web/src/components/Button.tsx`, `Badge.tsx`, `Spinner.tsx`, `index.ts`. Полностью мигрировать `Topbar.tsx` на новые компоненты.
@@ -681,7 +681,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS2-4. Tooltip component (P2)
+### ~~DS2-4. Tooltip component (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Зависимость:** DS2-1
 **Задача:** Создать `Tooltip.tsx` с `role="tooltip"`, `aria-describedby`, `position: fixed` (escape overflow). Заменить 75 `title=` атрибутов (фаза 1 — Topbar). Canvas-тултипы не трогать.
@@ -690,7 +690,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS2-5. Card component (P2)
+### ~~DS2-5. Card component (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** Создать `Card.tsx` обёртку над `.panel` с `header?`, `padding?`, `as?` props. Мигрировать 3 основные панели в `app.tsx`.
 
@@ -698,7 +698,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS2-6. Typography system (P2)
+### ~~DS2-6. Typography system (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** Создать `typography.css` с `.heading-lg/md/sm`, утилитами `.text-*`, `.font-*`. CSS-reset для `h1-h6`. Создать `<Heading level={2} size="md">` компонент. Мигрировать 6 raw `<h2>`/`<h3>` в `app.tsx` и `CompareView.tsx`.
 
@@ -706,7 +706,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS2-7. Color contrast audit (P2, WCAG AA)
+### ~~DS2-7. Color contrast audit (P2, WCAG AA)~~ — ✅ РЕАЛИЗОВАНО
 
 **Зависимость:** DS2-1..6
 **Задача:** Проверить все text/bg пары на WCAG AA (4.5:1). Исправить: `.palette-input::placeholder`, `.palette-group-header`, `.palette-empty`, `.badge--legend` на DONE-фоне, light theme badge text.
@@ -720,7 +720,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 > Источник: RFC-002 «Performance Sprint» — frontend + backend оптимизации.
 > Горутин-лист (react-window), canvas виртуализация, SSE delta — уже реализованы.
 
-### P-1. Web Worker для JSON парсинга (P2)
+### ~~P-1. Web Worker для JSON парсинга (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** Создать `web/src/workers/parse.worker.ts`. Перенести `JSON.parse` и `filterAndSortGoroutines` из main thread в Worker. Обновить `client.ts`.
 
@@ -728,7 +728,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### P-2. Bundle optimization — code-split тяжёлых компонентов (P2)
+### ~~P-2. Bundle optimization — code-split тяжёлых компонентов (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** `React.lazy()` для `CompareView`, `DependencyGraph`, `AnalysisPanel`. Dynamic `import()` для `gif/encoder.ts` внутри `exportGif` callback. `manualChunks` для `d3` в `vite.config.ts`. Добавить `vite-bundle-visualizer` как devDependency.
 
@@ -736,7 +736,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### P-3. Service Worker — stale-while-revalidate кеширование (P3)
+### ~~P-3. Service Worker — stale-while-revalidate кеширование (P3)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** `web/public/sw.js` с stale-while-revalidate для GET `/api/v1/goroutines`, `/api/v1/timeline`. cache-first для `/assets/*`. network-only для SSE и POST.
 
@@ -744,7 +744,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### P-4. Go backend — индексирование стеков по goroutineID (P2)
+### ~~P-4. Go backend — индексирование стеков по goroutineID (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** Добавить `stackIndex map[int64][]int` в `Engine`. Обновить `GetStackAt`, `GetStacksFor` (O(n) → O(1)). Добавить `TimelineForGoroutines(ids)` метод. Обновить `handleTimeline`.
 
@@ -752,7 +752,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### P-5. Canvas rendering — pre-group processorSegments, remove redundant sort (P2)
+### ~~P-5. Canvas rendering — pre-group processorSegments, remove redundant sort (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** `processorSegmentsByPid useMemo` в `TimelineCanvas.tsx` (заменить O(n×P) `.filter()` на Map lookup). Убрать `.slice().sort()` в `Timeline.tsx` `scrubSnapshot` (сегменты уже отсортированы бэкендом).
 
@@ -760,7 +760,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### P-6. SSE батчинг с React.startTransition (P2)
+### ~~P-6. SSE батчинг с React.startTransition (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Задача:** Обернуть SSE `onmessage` обновления в `React.startTransition()`. Использовать `useDeferredValue` для `displayGoroutines` в `FixedSizeList`.
 
