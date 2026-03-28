@@ -765,3 +765,47 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 **Задача:** Обернуть SSE `onmessage` обновления в `React.startTransition()`. Использовать `useDeferredValue` для `displayGoroutines` в `FixedSizeList`.
 
 **Метрика:** INP < 200ms при live streaming с 10k+ goroutines.
+
+---
+
+## Категория SA — Static Concurrency Analyzer (RFC-003)
+
+> Источник: RFC-003 «Static Concurrency Analyzer» — AST-based анализ Go source с cross-referencing runtime evidence.
+> Реализовано: 2026-03-28
+
+### ~~SA-0. Core infrastructure — пакет staticanalysis~~ — ✅ РЕАЛИЗОВАНО
+
+**Реализовано:** `internal/staticanalysis/finding.go` — типы `Finding`, `Report`, `RuleID` (SA-1..SA-9), `RuntimeEvidence`; `internal/staticanalysis/analyzer.go` — `Analyze(AnalyzeInput)` + `detector` interface + `expandDirs`.
+
+---
+
+### ~~SA-1..SA-8. Детекторы concurrency anti-patterns~~ — ✅ РЕАЛИЗОВАНО
+
+**Реализовано:** `internal/staticanalysis/detectors.go` — 7 детекторов:
+- **SA-1** (`lockWithoutDeferDetector`): `mutex.Lock()` без `defer Unlock()`
+- **SA-2** (`loopClosureDetector`): захват loop variable горутиной через closure
+- **SA-3** (`waitGroupAfterGoDetector`): `wg.Add()` после запуска горутины
+- **SA-4** (`mutexByValueDetector`): копирование `sync.Mutex`/`sync.RWMutex` по значению
+- **SA-5** (`unbufferedChanSendDetector`): send на unbuffered channel вне `select`
+- **SA-7** (`doubleLockDetector`): двойная блокировка одного мьютекса в одной функции
+- **SA-8** (`sleepNoContextDetector`): `time.Sleep` в горутине без `ctx.Done()`
+
+Тесты: `internal/staticanalysis/detectors_test.go` (table-driven, `-race`).
+
+---
+
+### ~~SA-3. CLI команда `goroscope analyze`~~ — ✅ РЕАЛИЗОВАНО
+
+**Реализовано:** `internal/cli/analyze.go` — `goroscope analyze [--recursive] [--rules SA-1,SA-7] [--format json|text] [--min-severity CRITICAL|HIGH|MEDIUM|INFO] [--exit-code] [dirs...]`
+
+---
+
+### ~~SA-4. HTTP endpoint POST /api/v1/analyze~~ — ✅ РЕАЛИЗОВАНО
+
+**Реализовано:** `internal/api/analyze.go` — `POST /api/v1/analyze` принимает `{ dirs, recursive, rules, enrich_runtime }`. При `enrich_runtime=true` cross-references findings с live Engine goroutine stacks (file:line matching, заполняет `RuntimeEvidence`).
+
+---
+
+### ~~SA-5. Frontend "Code" tab в AnalysisPanel~~ — ✅ РЕАЛИЗОВАНО
+
+**Реализовано:** `web/src/analysis/CodeAnalysis.tsx` — UI с picker директорий, min severity selector, recursive + runtime enrichment toggles, collapsible finding rows с severity badges. Добавлена вкладка "Code" в `AnalysisPanel.tsx`.
