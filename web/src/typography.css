@@ -1,0 +1,39 @@
+/* ── Typography system ──────────────────────────────────────────────────────── */
+
+.heading {
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.heading--1 { font-size: var(--text-3xl); }
+.heading--2 { font-size: var(--text-2xl); }
+.heading--3 { font-size: var(--text-xl); }
+.heading--4 { font-size: var(--text-lg); font-weight: var(--font-medium); }
+
+/* ── Prose text utilities ────────────────────────────────────────────────────── */
+
+.text-primary   { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted     { color: var(--text-muted); }
+.text-accent    { color: var(--color-accent); }
+
+.text-xs   { font-size: var(--text-xs); }
+.text-sm   { font-size: var(--text-sm); }
+.text-base { font-size: var(--text-base); }
+.text-md   { font-size: var(--text-md); }
+.text-lg   { font-size: var(--text-lg); }
+.text-xl   { font-size: var(--text-xl); }
+
+.font-medium   { font-weight: var(--font-medium); }
+.font-semibold { font-weight: var(--font-semibold); }
+.font-bold     { font-weight: var(--font-bold); }
+
+.font-mono { font-family: ui-monospace, "IBM Plex Mono", monospace; }
+
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

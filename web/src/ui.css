@@ -11,6 +11,91 @@
   flex-shrink: 0;
 }
 
+/* ── Tooltip ────────────────────────────────────────────────────────────────── */
+
+.tooltip-host {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-host::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 1200;
+  white-space: nowrap;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  padding: 0.25rem 0.5rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--easing-standard);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.tooltip-host:hover::after,
+.tooltip-host:focus-within::after {
+  opacity: 1;
+}
+
+/* Placement variants */
+.tooltip-host--top::after {
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tooltip-host--bottom::after {
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tooltip-host--left::after {
+  right: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.tooltip-host--right::after {
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ── Card ───────────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.card-title {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.card-header-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* ── GIF export button ─────────────────────────────────────────────────────── */
 
 .gif-export-btn {
