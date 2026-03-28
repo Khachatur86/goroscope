@@ -1,3 +1,16 @@
+/* ── Spinner ────────────────────────────────────────────────────────────────── */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  animation: spin var(--duration-slower) linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 /* ── GIF export button ─────────────────────────────────────────────────────── */
 
 .gif-export-btn {
