@@ -1,4 +1,4 @@
-import {
+import React, {
   useEffect,
   useRef,
   useState,
@@ -201,14 +201,13 @@ export function CommandPalette({ open, onClose, commands, goroutines, onSelectGo
               const isActive = i === cursor;
 
               return (
-                <>
+                <React.Fragment key={e.kind === "goroutine" ? `g-${e.id}` : `c-${e.id}`}>
                   {showGroup && (
-                    <li key={`hdr-${group}`} className="palette-group-header">
+                    <li className="palette-group-header">
                       {group}
                     </li>
                   )}
                   <li
-                    key={e.kind === "goroutine" ? `g-${e.id}` : `c-${e.id}`}
                     role="option"
                     aria-selected={isActive}
                     className={`palette-item ${isActive ? "active" : ""}`}
@@ -231,7 +230,7 @@ export function CommandPalette({ open, onClose, commands, goroutines, onSelectGo
                       <kbd className="palette-item-kbd">{e.hint}</kbd>
                     )}
                   </li>
-                </>
+                </React.Fragment>
               );
             })}
           </ul>

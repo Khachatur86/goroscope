@@ -57,7 +57,7 @@ describe("frontend smoke tests", () => {
 
   test("App renders goroutine count and timeline canvas", async () => {
     vi.spyOn(api, "fetchCurrentSession").mockResolvedValue(session as any);
-    vi.spyOn(api, "fetchGoroutines").mockResolvedValue(goroutines as any);
+    vi.spyOn(api, "fetchGoroutines").mockResolvedValue({ goroutines, sampleInfo: null } as any);
     vi.spyOn(api, "fetchResourceGraph").mockResolvedValue([] as any);
     vi.spyOn(api, "fetchResourceContention").mockResolvedValue([] as any);
     vi

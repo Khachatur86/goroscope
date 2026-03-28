@@ -90,3 +90,19 @@ class EventSourceMock {
 // @ts-expect-error: EventSource exists in browsers, not in jsdom.
 globalThis.EventSource = EventSourceMock;
 
+// --- Worker mock ---
+// fetchViaWorker.ts tries to spin up a Worker to parse JSON off-thread.
+// In tests there is no server to load the worker module from, so stub Worker
+// to return a non-functional instance — getWorker() will catch the missing
+// message handler and fall back to a plain fetch(), which vi.spyOn intercepts.
+class WorkerMock {
+  constructor(_url: string | URL) {}
+  postMessage() {}
+  addEventListener() {}
+  terminate() {}
+  set onmessage(_h: unknown) {}
+  set onerror(_h: unknown) {}
+}
+
+// @ts-expect-error: Worker is not available in happy-dom.
+globalThis.Worker = WorkerMock;
