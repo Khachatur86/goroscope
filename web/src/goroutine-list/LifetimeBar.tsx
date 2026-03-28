@@ -1,13 +1,5 @@
 import type { TimelineSegment } from "../api/client";
-
-export const LIFETIME_COLORS: Record<string, string> = {
-  RUNNING: "#10cfb8",
-  RUNNABLE: "#8394a8",
-  WAITING: "#f59e0b",
-  BLOCKED: "#f43f5e",
-  SYSCALL: "#4da6ff",
-  DONE: "#4b5563",
-};
+import { STATE_COLORS, COLOR_UNKNOWN } from "../theme/tokens";
 
 /** Thin colour strip at the bottom of a goroutine list row showing its full lifecycle. */
 export function LifetimeBar({ segments }: { segments: TimelineSegment[] | undefined }) {
@@ -33,7 +25,7 @@ export function LifetimeBar({ segments }: { segments: TimelineSegment[] | undefi
     if (x1 > cursor + 0.01) {
       stops.push(`#1e293b ${cursor.toFixed(2)}%`, `#1e293b ${x1.toFixed(2)}%`);
     }
-    const color = LIFETIME_COLORS[seg.state] ?? "#94a3b8";
+    const color = STATE_COLORS[seg.state] ?? COLOR_UNKNOWN;
     stops.push(`${color} ${x1.toFixed(2)}%`, `${color} ${x2.toFixed(2)}%`);
     cursor = x2;
   }

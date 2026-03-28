@@ -611,13 +611,9 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 > Источник: RFC-001 «Design System Foundation» — итерация 1 из 3 плана UI Upgrade.
 > Порядок: строго последовательный (каждый юнит зависит от предыдущего).
 
-### DS-1. Centralized color tokens (P2)
+### ~~DS-1. Centralized color tokens~~ — ✅ РЕАЛИЗОВАНО (DS-1)
 
-**Gap:** Цвета состояний goroutine (`RUNNING`, `BLOCKED` и т.д.) продублированы в 5 файлах (`DependencyGraph.tsx`, `RequestsView.tsx`, `LifetimeBar.tsx`, `TimelineCanvas.tsx`, `Timeline.tsx`). 225+ hardcoded hex-значений в CSS. Нет единого источника правды.
-
-**Задача:** Создать `web/src/theme/tokens.ts` — централизованный экспорт всех цветов: состояния goroutine, акцентные, семантические (error/warning/info/success). Типизированный, импортируемый во все компоненты.
-
-**Критерий готовности:** `tokens.ts` содержит все цвета. Все 5 файлов с `STATE_COLORS`/`LIFETIME_COLORS`/`COLORS` импортируют из `tokens.ts`. Тесты проходят.
+> **Реализовано:** `web/src/theme/tokens.ts` — единый источник цветов: `STATE_COLORS` (6 состояний), `COLOR_UNKNOWN`, `DIFF_COLORS`, семантические `COLOR_ERROR/WARNING/SUCCESS/INFO`. Все 5 файлов (`DependencyGraph.tsx`, `LifetimeBar.tsx`, `RequestsView.tsx`, `TimelineCanvas.tsx`, `Timeline.tsx`) заменили локальные дубли на импорт из `tokens.ts`. `tsc --noEmit` и `vite build` проходят.
 
 ---
 

@@ -8,6 +8,7 @@ import { MinimapCanvas } from "./MinimapCanvas";
 import { MetricsChart } from "./MetricsChart";
 import type { Bookmark } from "./bookmarks";
 import { loadBookmarks, saveBookmarks } from "./bookmarks";
+import { STATE_COLORS as COLORS } from "../theme/tokens";
 
 /** Lazy-load batch size: fetch this many goroutines' segments per request. */
 const SEGMENT_BATCH_SIZE = 150;
@@ -51,15 +52,6 @@ type Props = {
    * Used by the goroutine list to render per-row lifetime bars without a separate fetch.
    */
   onSegmentsChange?: (segments: TimelineSegment[]) => void;
-};
-
-const COLORS: Record<string, string> = {
-  RUNNING: "#10cfb8",
-  RUNNABLE: "#8394a8",
-  WAITING: "#f59e0b",
-  BLOCKED: "#f43f5e",
-  SYSCALL: "#4da6ff",
-  DONE: "#4b5563",
 };
 
 /** Imperative handle exposed by Timeline via ref. */

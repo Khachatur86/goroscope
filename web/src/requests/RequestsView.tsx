@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { RequestGroup } from "../api/client";
 import { fetchRequestGroups } from "../api/client";
+import { STATE_COLORS } from "../theme/tokens";
 
 type Props = {
   /** Called when the user clicks a request — filters goroutine list to its IDs. */
@@ -14,15 +15,6 @@ function formatDuration(ns: number): string {
   if (ns >= 1e3) return `${(ns / 1e3).toFixed(0)}µs`;
   return `${ns}ns`;
 }
-
-const STATE_COLORS: Record<string, string> = {
-  RUNNING:  "#10cfb8",
-  RUNNABLE: "#8394a8",
-  WAITING:  "#f59e0b",
-  BLOCKED:  "#f43f5e",
-  SYSCALL:  "#4da6ff",
-  DONE:     "#4b5563",
-};
 
 function StateBar({ breakdown, total }: { breakdown: Record<string, number>; total: number }) {
   if (total === 0) return null;

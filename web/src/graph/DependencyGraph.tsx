@@ -2,21 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import * as d3 from "d3";
 import type { Goroutine } from "../api/client";
-
-const STATE_COLORS: Record<string, string> = {
-  RUNNING: "#10cfb8",
-  RUNNABLE: "#8394a8",
-  WAITING: "#f59e0b",
-  BLOCKED: "#f43f5e",
-  SYSCALL: "#4da6ff",
-  DONE:    "#4b5563",
-};
-
-const DIFF_COLORS = {
-  appeared:    "#22c55e",   // green
-  disappeared: "#f43f5e",   // red / crimson
-  unchanged:   null,        // use STATE_COLORS
-} as const;
+import { STATE_COLORS, DIFF_COLORS } from "../theme/tokens";
 
 const NODE_RADIUS = 14;
 

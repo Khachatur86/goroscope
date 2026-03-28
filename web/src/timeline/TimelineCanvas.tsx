@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo, forwardRef, useImper
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 import { encodeAnimatedGIF, type GifFrame } from "../gif/encoder";
 import type { Bookmark } from "./bookmarks";
+import { STATE_COLORS as COLORS } from "../theme/tokens";
 
 // ── Annotation storage ────────────────────────────────────────────────────────
 
@@ -34,15 +35,6 @@ function loadAnnotations(): Annotation[] {
 function persistAnnotations(anns: Annotation[]): void {
   localStorage.setItem(ANNOTATION_KEY, JSON.stringify(anns));
 }
-
-const COLORS: Record<string, string> = {
-  RUNNING: "#10cfb8",
-  RUNNABLE: "#8394a8",
-  WAITING: "#f59e0b",
-  BLOCKED: "#f43f5e",
-  SYSCALL: "#4da6ff",
-  DONE: "#4b5563",
-};
 
 function formatDuration(ns: number): string {
   if (ns >= 1e9) return `${(ns / 1e9).toFixed(2)}s`;
