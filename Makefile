@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run run-react run-react-complex dev-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client wasm
+.PHONY: build run run-react run-react-complex dev-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client wasm e2e
 
 build:
 	mkdir -p bin
@@ -25,6 +25,13 @@ dev-react: build
 	@./bin/goroscope ui & \
 	BGPID=$$!; \
 	trap "kill $$BGPID 2>/dev/null; exit" INT TERM EXIT; \
+	echo "Waiting for Go server on :7070..."; \
+	for i in $$(seq 1 20); do \
+		if curl -sf http://127.0.0.1:7070/healthz >/dev/null 2>&1; then \
+			echo "Go server ready."; break; \
+		fi; \
+		sleep 0.5; \
+	done; \
 	cd web && npm install --silent && npm run dev; \
 	kill $$BGPID 2>/dev/null || true
 
@@ -59,6 +66,12 @@ bench:
 
 web:
 	cd web && npm install && npm run build
+
+# e2e: build React UI and run Playwright E2E tests (headless Chromium).
+# Usage:
+#   make e2e
+e2e: web
+	cd web && npm run test:e2e
 
 # embed-web: build the React UI and copy it into the Go embed directory so that
 # the next `make build` (or `make build-dist`) produces a self-contained binary.

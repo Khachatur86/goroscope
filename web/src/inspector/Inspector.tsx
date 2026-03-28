@@ -184,6 +184,13 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
       setPprofSamples(null);
       return;
     }
+    // A zero-duration segment (start_ns === end_ns) occurs when the user clicks
+    // on a point rather than a range. The server rejects start_ns >= end_ns with
+    // 400, so skip the request rather than generating noise in the Vite proxy log.
+    if (segmentOverride.start_ns >= segmentOverride.end_ns) {
+      setPprofSamples(null);
+      return;
+    }
     let cancelled = false;
     fetchPprofStacks(segmentOverride.start_ns, segmentOverride.end_ns).then((stacks) => {
       if (!cancelled) setPprofSamples(stacks);
