@@ -1,10 +1,30 @@
 import React from "react";
 import { describe, expect, test, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { App } from "../src/app";
 import { CompareView } from "../src/compare/CompareView";
 import * as api from "../src/api/client";
+
+// Module-level defaults — every api function returns safe empty data so that
+// effects firing after a test (intervals, in-flight promises) never hit the
+// real network even after vi.restoreAllMocks() has been called.
+vi.mock("../src/api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof api>();
+  return {
+    ...actual,
+    fetchCurrentSession:    vi.fn().mockResolvedValue(null),
+    fetchGoroutines:        vi.fn().mockResolvedValue({ goroutines: [], sampleInfo: null }),
+    fetchResourceGraph:     vi.fn().mockResolvedValue([]),
+    fetchResourceContention:vi.fn().mockResolvedValue([]),
+    fetchInsights:          vi.fn().mockResolvedValue({ long_blocked_count: 0, leak_candidates_count: 0 }),
+    fetchDeadlockHints:     vi.fn().mockResolvedValue({ hints: [] }),
+    fetchTimeline:          vi.fn().mockResolvedValue([]),
+    fetchProcessorTimeline: vi.fn().mockResolvedValue([]),
+    fetchSmartInsights:     vi.fn().mockResolvedValue([]),
+    fetchCompare:           vi.fn().mockResolvedValue({}),
+  };
+});
 
 // Prevent html2canvas (dynamic import) from loading ESM-only dependencies during tests.
 vi.mock("html2canvas", () => ({
@@ -52,20 +72,28 @@ const timelineSegments = [
 
 describe("frontend smoke tests", () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    // Unmount components before resetting mocks so in-flight effects don't
+    // call unmocked api functions and cause unhandled rejection noise.
+    cleanup();
+    vi.resetAllMocks();
+    // Restore module-level defaults after each test.
+    vi.mocked(api.fetchCurrentSession).mockResolvedValue(null as any);
+    vi.mocked(api.fetchGoroutines).mockResolvedValue({ goroutines: [], sampleInfo: null } as any);
+    vi.mocked(api.fetchResourceGraph).mockResolvedValue([] as any);
+    vi.mocked(api.fetchResourceContention).mockResolvedValue([] as any);
+    vi.mocked(api.fetchInsights).mockResolvedValue({ long_blocked_count: 0, leak_candidates_count: 0 } as any);
+    vi.mocked(api.fetchDeadlockHints).mockResolvedValue({ hints: [] } as any);
+    vi.mocked(api.fetchTimeline).mockResolvedValue([] as any);
+    vi.mocked(api.fetchProcessorTimeline).mockResolvedValue([] as any);
+    vi.mocked(api.fetchSmartInsights).mockResolvedValue([] as any);
+    vi.mocked(api.fetchCompare).mockResolvedValue({} as any);
   });
 
   test("App renders goroutine count and timeline canvas", async () => {
-    vi.spyOn(api, "fetchCurrentSession").mockResolvedValue(session as any);
-    vi.spyOn(api, "fetchGoroutines").mockResolvedValue({ goroutines, sampleInfo: null } as any);
-    vi.spyOn(api, "fetchResourceGraph").mockResolvedValue([] as any);
-    vi.spyOn(api, "fetchResourceContention").mockResolvedValue([] as any);
-    vi
-      .spyOn(api, "fetchInsights")
-      .mockResolvedValue({ long_blocked_count: 1, leak_candidates_count: 0 } as any);
-    vi.spyOn(api, "fetchDeadlockHints").mockResolvedValue({ hints: [] } as any);
-    vi.spyOn(api, "fetchTimeline").mockResolvedValue(timelineSegments as any);
-    vi.spyOn(api, "fetchProcessorTimeline").mockResolvedValue([] as any);
+    vi.mocked(api.fetchCurrentSession).mockResolvedValue(session as any);
+    vi.mocked(api.fetchGoroutines).mockResolvedValue({ goroutines, sampleInfo: null } as any);
+    vi.mocked(api.fetchInsights).mockResolvedValue({ long_blocked_count: 1, leak_candidates_count: 0 } as any);
+    vi.mocked(api.fetchTimeline).mockResolvedValue(timelineSegments as any);
 
     const { container } = render(<App />);
 
@@ -110,8 +138,7 @@ describe("frontend smoke tests", () => {
       },
     };
 
-    vi.spyOn(api, "fetchCompare").mockResolvedValue(compareResp);
-    vi.spyOn(api, "fetchProcessorTimeline").mockResolvedValue([] as any);
+    vi.mocked(api.fetchCompare).mockResolvedValue(compareResp);
     const onClose = vi.fn();
 
     render(<CompareView onClose={onClose} />);

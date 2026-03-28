@@ -106,3 +106,26 @@ class WorkerMock {
 
 // @ts-expect-error: Worker is not available in happy-dom.
 globalThis.Worker = WorkerMock;
+
+// --- Global fetch fallback ---
+// App mounts timers and SSE listeners that outlive individual tests and fire
+// fetch() calls against unmocked endpoints (e.g. /api/v1/resources/graph).
+// Intercept every fetch at the global level and return an empty-200 response
+// for any URL that a test hasn't already stubbed via vi.spyOn(api, ...).
+// Tests that use vi.spyOn on specific api functions still take priority because
+// those spies operate at the module level, before fetch is ever called.
+const _originalFetch = globalThis.fetch;
+globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  // Let same-origin relative paths (no host) fall through to the original fetch
+  // only if the original exists; otherwise return the silent fallback.
+  if (_originalFetch && !url.startsWith("http")) {
+    return _originalFetch(input, init);
+  }
+  // For absolute URLs (localhost:3000/api/...) return a silent empty response
+  // so leaked async effects don't cause unhandled rejection noise.
+  return new Response(JSON.stringify(null), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
