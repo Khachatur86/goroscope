@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { TimelineSegment } from "../api/client";
-import { STATE_COLORS, COLOR_RANGE } from "../theme/tokens";
+import { STATE_COLORS } from "../theme/tokens";
 
 const BLOCKED_STATES = new Set(["BLOCKED", "WAITING", "SYSCALL"]);
 
@@ -120,10 +120,10 @@ export function MetricsChart({ segments, width = 280, height = 60, highlightRang
         )}
       </svg>
       <div className="metrics-chart-legend">
-        <span style={{ color: STATE_COLORS.RUNNING }}>●</span> active
-        <span style={{ color: STATE_COLORS.BLOCKED, marginLeft: "0.75rem" }}>●</span> blocked
+        <span className="metrics-legend-dot--running">●</span> active
+        <span className="metrics-legend-dot--blocked">●</span> blocked
         {highlightRange && (
-          <span style={{ color: COLOR_RANGE, marginLeft: "0.75rem" }}>⌖ range active</span>
+          <span className="metrics-legend-dot--range">⌖ range active</span>
         )}
       </div>
     </div>

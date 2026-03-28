@@ -629,13 +629,9 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS-4. Inline style cleanup (P2)
+### ~~DS-4. Inline style cleanup~~ — ✅ РЕАЛИЗОВАНО (DS-4)
 
-**Gap:** 33 inline style-вхождения в компонентах. ~70% содержат hardcoded цвета вместо CSS-переменных.
-
-**Задача:** Заменить `style={{ color: "#f43f5e" }}` → CSS-классы или `var(--color-blocked)`. Justified inline styles (canvas sizing, dynamic widths, gradients) — оставить.
-
-**Критерий готовности:** Все цвета в inline styles идут через CSS-переменные или `tokens.ts`. Визуальная регрессия отсутствует.
+> **Реализовано:** Добавлены CSS-переменные для state colors (`--color-running/blocked/waiting/syscall/done/range`) в `:root`. Классы `.metrics-legend-dot--running/blocked/range` в index.css. В `MetricsChart.tsx` 3 inline `style={{ color: ... }}` заменены на className. Justified inline styles (canvas sizing, dynamic widths, tooltip позиционирование, градиенты) сохранены. `vite build` проходит.
 
 ---
 

@@ -60,6 +60,15 @@
   --overlay-active:   rgba(255,255,255,0.08);
   --overlay-focus:    rgba(255,255,255,0.12);
   --opacity-disabled: 0.45;
+
+  /* Goroutine state colors (mirrors tokens.ts STATE_COLORS for CSS use) */
+  --color-running:  #10cfb8;
+  --color-runnable: #8394a8;
+  --color-waiting:  #f59e0b;
+  --color-blocked:  #f43f5e;
+  --color-syscall:  #4da6ff;
+  --color-done:     #4b5563;
+  --color-range:    #38bdf8;
 }
 
 [data-theme="light"] {
@@ -1420,6 +1429,9 @@ body {
   color: var(--text-secondary);
   margin-top: 0.25rem;
 }
+.metrics-legend-dot--running { color: var(--color-running); }
+.metrics-legend-dot--blocked { color: var(--color-blocked); margin-left: 0.75rem; }
+.metrics-legend-dot--range   { color: var(--color-range);   margin-left: 0.75rem; }
 
 .timeline-placeholder {
   color: var(--text-secondary);
