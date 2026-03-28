@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { FixedSizeList } from "react-window";
 import type { Goroutine, Session, DeadlockHint, TimelineSegment, SampleInfo } from "./api/client";
 import type { ScrubSnapshot, TimelineHandle } from "./timeline/Timeline";
@@ -19,7 +19,7 @@ import { buildShareableURL, parseFiltersFromURL, parseGoroutineFromURL } from ".
 import { Inspector } from "./inspector/Inspector";
 import { computeSpawnHotspots } from "./inspector/Hotspots";
 import { Timeline } from "./timeline/Timeline";
-import { CompareView } from "./compare/CompareView";
+const CompareView = lazy(() => import("./compare/CompareView").then((m) => ({ default: m.CompareView })));
 import { CommandPalette, type Command } from "./palette/CommandPalette";
 import { distinctLabelPairs, filterAndSortGoroutines } from "./utils/goroutines";
 import { usePanelResize, PanelDivider } from "./panels/PanelDivider";
@@ -694,7 +694,9 @@ export function App() {
 
       {compareOpen && (
         <div className="compare-overlay">
-          <CompareView onClose={() => setCompareOpen(false)} />
+          <Suspense fallback={null}>
+            <CompareView onClose={() => setCompareOpen(false)} />
+          </Suspense>
         </div>
       )}
       {replayError && (

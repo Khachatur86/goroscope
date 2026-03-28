@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import type { Goroutine, TimelineSegment } from "../api/client";
 import type { FiltersState } from "../filters/url";
 import { SmartInsights } from "../insights/SmartInsights";
@@ -5,10 +6,13 @@ import { Hotspots } from "../inspector/Hotspots";
 import { ResourceGraph } from "../resource-graph/ResourceGraph";
 import { DeadlockHints } from "../inspector/DeadlockHints";
 import { GoroutineGroups } from "../groups/GoroutineGroups";
-import { DependencyGraph } from "../graph/DependencyGraph";
 import { ContentionHeatmap } from "./ContentionHeatmap";
 import { RequestsView } from "../requests/RequestsView";
 import type { DeadlockHint } from "../api/client";
+
+const DependencyGraph = lazy(() =>
+  import("../graph/DependencyGraph").then((m) => ({ default: m.DependencyGraph }))
+);
 
 export type AnalysisTabId =
   | "insights"
@@ -135,11 +139,13 @@ export function AnalysisPanel({
             <GoroutineGroups onSelectGoroutine={onSelectGoroutine} />
           )}
           {tab === "graph" && (
-            <DependencyGraph
-              goroutines={goroutines}
-              selectedId={selectedId}
-              onSelectGoroutine={onSelectGoroutine}
-            />
+            <Suspense fallback={null}>
+              <DependencyGraph
+                goroutines={goroutines}
+                selectedId={selectedId}
+                onSelectGoroutine={onSelectGoroutine}
+              />
+            </Suspense>
           )}
           {tab === "heatmap" && (
             <ContentionHeatmap
