@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense, startTransition } from "react";
 import { FixedSizeList } from "react-window";
 import type { Goroutine, Session, DeadlockHint, TimelineSegment, SampleInfo } from "./api/client";
 import type { ScrubSnapshot, TimelineHandle } from "./timeline/Timeline";
@@ -283,13 +283,16 @@ export function App() {
     const gs = await fetchGoroutines(goroutineParams).catch(() => null);
     if (!gs) return;
     const gsSafe = gs.goroutines;
-    setGoroutines(gsSafe);
-    setSampleInfo(gs.sampleInfo);
-    const urlId = parseGoroutineFromURL();
-    if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
-      setSelectedId(urlId);
-    }
-    setDataRevision((v) => v + 1);
+    // Mark SSE-triggered updates as non-urgent so React can yield to user interactions.
+    startTransition(() => {
+      setGoroutines(gsSafe);
+      setSampleInfo(gs.sampleInfo);
+      const urlId = parseGoroutineFromURL();
+      if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
+        setSelectedId(urlId);
+      }
+      setDataRevision((v) => v + 1);
+    });
   }, [goroutineParams]);
 
   useEffect(() => {
