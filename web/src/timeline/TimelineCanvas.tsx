@@ -449,7 +449,20 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
   const getInnerWidth = (width: number) =>
     Math.max(1, width - METRICS.labelGutterWidth - METRICS.leftPadding - METRICS.rightPadding);
 
-  const processorIds = [...new Set(processorSegments.map((s) => s.processor_id))].sort((a, b) => a - b);
+  // Pre-group processorSegments by pid so the render loop avoids O(n) scans per row.
+  const segsByProcessor = useMemo(() => {
+    const map = new Map<number, ProcessorSegment[]>();
+    for (const s of processorSegments) {
+      let arr = map.get(s.processor_id);
+      if (!arr) { arr = []; map.set(s.processor_id, arr); }
+      arr.push(s);
+    }
+    return map;
+  }, [processorSegments]);
+  const processorIds = useMemo(
+    () => [...segsByProcessor.keys()].sort((a, b) => a - b),
+    [segsByProcessor]
+  );
   const numPs = processorIds.length;
   const gmpH =
     numPs > 0
@@ -533,8 +546,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
         ctx.font = '10px "IBM Plex Mono", monospace';
         ctx.fillText(`P${pid}`, plotLeft - 54, py + 11);
 
-        processorSegments
-          .filter((s) => s.processor_id === pid)
+        (segsByProcessor.get(pid) ?? [])
           .filter((s) => s.start_ns < visibleStart + visibleSpan && s.end_ns > visibleStart)
           .forEach((seg) => {
             const rawX = plotLeft + ((seg.start_ns - visibleStart) / visibleSpan) * innerWidth;
@@ -651,7 +663,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     visibleStart,
     visibleSpan,
     fullMinStart,
-    processorSegments,
+    segsByProcessor,
     processorIds,
     numPs,
     gTop,
