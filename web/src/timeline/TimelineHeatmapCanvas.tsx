@@ -1,14 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
-
-const COLORS: Record<string, string> = {
-  RUNNING: "#10cfb8",
-  RUNNABLE: "#8394a8",
-  WAITING: "#f59e0b",
-  BLOCKED: "#f43f5e",
-  SYSCALL: "#4da6ff",
-  DONE: "#4b5563",
-};
+import { STATE_COLORS as COLORS, COLOR_UNKNOWN, COLOR_SELECTED, BG_SECONDARY } from "../theme/tokens";
 
 function formatDuration(ns: number): string {
   if (ns >= 1e9) return `${(ns / 1e9).toFixed(2)}s`;
@@ -127,7 +119,7 @@ export function TimelineHeatmapCanvas({
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#0d1117";
+    ctx.fillStyle = BG_SECONDARY;
     ctx.fillRect(0, 0, width, height);
 
     ctx.strokeStyle = "rgba(219,228,238,0.14)";
@@ -240,7 +232,7 @@ export function TimelineHeatmapCanvas({
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#0d1117";
+    ctx.fillStyle = BG_SECONDARY;
     ctx.fillRect(0, 0, width, height);
 
     ctx.fillStyle = "rgba(2,6,23,0.45)";
@@ -261,7 +253,7 @@ export function TimelineHeatmapCanvas({
         ctx.fillStyle = "rgba(255,255,255,0.022)";
         ctx.fillRect(0, drawY, width, METRICS.gRowH);
       }
-      ctx.fillStyle = isSelected ? "#f8fafc" : "rgba(219,228,238,0.60)";
+      ctx.fillStyle = isSelected ? COLOR_SELECTED : "rgba(219,228,238,0.60)";
       ctx.font = '10px "IBM Plex Mono", monospace';
       ctx.fillText(`G${g.goroutine_id}`, 4, drawY + 10);
       if (isSelected) {
@@ -278,7 +270,7 @@ export function TimelineHeatmapCanvas({
         const cx2 = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
         const cw = Math.max(cx2 - cx, rawX2 > rawX ? 1 : 0);
         if (cw === 0) return;
-        ctx.fillStyle = COLORS[seg.state] ?? "#94a3b8";
+        ctx.fillStyle = COLORS[seg.state] ?? COLOR_UNKNOWN;
         ctx.fillRect(cx, drawY + 1, cw, METRICS.gRowH - 2);
       });
 

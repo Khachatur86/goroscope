@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useCallback, useMemo, forwardRef, useImper
 import type { Goroutine, TimelineSegment, ProcessorSegment } from "../api/client";
 import { encodeAnimatedGIF, type GifFrame } from "../gif/encoder";
 import type { Bookmark } from "./bookmarks";
-import { STATE_COLORS as COLORS } from "../theme/tokens";
+import { STATE_COLORS as COLORS, COLOR_UNKNOWN, COLOR_SELECTED, COLOR_SCRUBBER,
+  BG_BASE, BG_SECONDARY, COLOR_AXIS_TEXT, TEXT_PRIMARY, TEXT_SECONDARY } from "../theme/tokens";
 
 // ── Annotation storage ────────────────────────────────────────────────────────
 
@@ -241,16 +242,16 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     if (!ctx) return;
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = "#0f172a";
+    ctx.fillStyle = BG_BASE;
     ctx.fillRect(0, 0, W, totalH);
 
     ctx.drawImage(axisCanvas, 0, 0, W, axisH);
     ctx.drawImage(rowsCanvas, 0, axisH, W, rowsH);
 
     // Footer strip
-    ctx.fillStyle = "#0f172a";
+    ctx.fillStyle = BG_BASE;
     ctx.fillRect(0, axisH + rowsH, W, footerH);
-    ctx.fillStyle = "#475569";
+    ctx.fillStyle = COLOR_AXIS_TEXT;
     ctx.font = "10px monospace";
     ctx.textBaseline = "middle";
     ctx.fillText(
@@ -298,15 +299,15 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     const bctx = base.getContext("2d");
     if (!bctx) { onDone?.(); return; }
 
-    bctx.fillStyle = "#0f172a";
+    bctx.fillStyle = BG_BASE;
     bctx.fillRect(0, 0, W, totalH);
     bctx.drawImage(axisCanvas, 0, 0, W, axisH);
     bctx.drawImage(rowsCanvas, 0, axisH, W, rowsH);
 
     // Footer
-    bctx.fillStyle = "#0f172a";
+    bctx.fillStyle = BG_BASE;
     bctx.fillRect(0, axisH + rowsH, W, footerH);
-    bctx.fillStyle = "#475569";
+    bctx.fillStyle = COLOR_AXIS_TEXT;
     bctx.font = "9px monospace";
     bctx.textBaseline = "middle";
     bctx.fillText(
@@ -349,7 +350,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
 
       // Draw cursor: 2px-wide bright cyan vertical line in the rows area.
       const xCursor = Math.round((fi / Math.max(nFrames - 1, 1)) * (W - 2));
-      const CURSOR_R = 16, CURSOR_G = 207, CURSOR_B = 184; // #10cfb8
+      const CURSOR_R = 16, CURSOR_G = 207, CURSOR_B = 184; // STATE_COLORS.RUNNING
 
       for (let y = axisH; y < axisH + rowsH; y++) {
         for (let dx = 0; dx < 2; dx++) {
@@ -487,7 +488,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#0d1117";
+    ctx.fillStyle = BG_SECONDARY;
     ctx.fillRect(0, 0, width, height);
 
     // Axis baseline
@@ -512,7 +513,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       const label = formatAxisLabel(tick - fullMinStart);
       const labelWidth = ctx.measureText(label).width;
       const labelX = Math.min(x + 4, width - METRICS.rightPadding - labelWidth - 2);
-      ctx.fillStyle = "#dbe4ee";
+      ctx.fillStyle = TEXT_PRIMARY;
       ctx.fillText(label, labelX, 20);
     });
 
@@ -680,7 +681,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#0d1117";
+    ctx.fillStyle = BG_SECONDARY;
     ctx.fillRect(0, 0, width, height);
 
     ctx.fillStyle = "rgba(2, 6, 23, 0.48)";
@@ -719,7 +720,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       ctx.stroke();
 
       ctx.globalAlpha = isDimmed ? 0.28 : 1;
-      ctx.fillStyle = isSelected ? "#f8fafc" : "#9fb3c8";
+      ctx.fillStyle = isSelected ? COLOR_SELECTED : TEXT_SECONDARY;
       ctx.font = '12px "IBM Plex Mono", monospace';
       ctx.fillText(`G${g.goroutine_id}`, 14, drawY + 12);
       ctx.fillStyle = isSelected ? "rgba(219, 228, 238, 0.74)" : "rgba(159, 179, 200, 0.46)";
@@ -755,7 +756,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
             hoveredSegment?.start_ns === seg.start_ns &&
             hoveredSegment?.end_ns === seg.end_ns;
 
-          ctx.fillStyle = COLORS[seg.state] ?? "#94a3b8";
+          ctx.fillStyle = COLORS[seg.state] ?? COLOR_UNKNOWN;
           ctx.fillRect(cx, barY, cw, barHeight);
           if (cw > 2) {
             ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
@@ -882,7 +883,7 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
       const drawY = gIdx * METRICS.rowHeight - rowScrollTop;
       const cx2 = px + 4; // slight right offset so pin sits on bar start
       ctx.save();
-      ctx.fillStyle = "#fbbf24";
+      ctx.fillStyle = COLOR_SCRUBBER;
       ctx.strokeStyle = "rgba(0,0,0,0.35)";
       ctx.lineWidth = 0.5;
       ctx.beginPath();

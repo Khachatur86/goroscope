@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { StackSnapshot } from "../api/client";
 import { fetchStacks } from "../api/client";
+import { BG_BASE } from "../theme/tokens";
 
 export type { StackSnapshot };
 
@@ -189,7 +190,7 @@ export function FlameGraph({ goroutineId, externalSamples, emptyHint }: Props) {
       ctx.fillRect(r.x, r.y, r.w - 0.5, r.h);
 
       if (r.w > 20) {
-        ctx.fillStyle = "#0f172a";
+        ctx.fillStyle = BG_BASE;
         ctx.font = `10px monospace`;
         ctx.textBaseline = "middle";
         const label = r.name.slice(r.name.lastIndexOf(".") + 1);

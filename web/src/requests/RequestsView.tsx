@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { RequestGroup } from "../api/client";
 import { fetchRequestGroups } from "../api/client";
-import { STATE_COLORS } from "../theme/tokens";
+import { STATE_COLORS, TEXT_MUTED } from "../theme/tokens";
 
 type Props = {
   /** Called when the user clicks a request — filters goroutine list to its IDs. */
@@ -25,7 +25,7 @@ function StateBar({ breakdown, total }: { breakdown: Record<string, number>; tot
         <div
           key={state}
           className="req-state-bar-segment"
-          style={{ width: `${(count / total) * 100}%`, background: STATE_COLORS[state] ?? "#64748b" }}
+          style={{ width: `${(count / total) * 100}%`, background: STATE_COLORS[state] ?? TEXT_MUTED }}
         />
       ))}
     </div>

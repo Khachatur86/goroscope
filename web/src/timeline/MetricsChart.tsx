@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { TimelineSegment } from "../api/client";
+import { STATE_COLORS, COLOR_RANGE } from "../theme/tokens";
 
 const BLOCKED_STATES = new Set(["BLOCKED", "WAITING", "SYSCALL"]);
 
@@ -84,24 +85,24 @@ export function MetricsChart({ segments, width = 280, height = 60, highlightRang
       <svg width={width} height={height} aria-hidden>
         <defs>
           <linearGradient id="metrics-total" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0" stopColor="#10cfb8" stopOpacity="0.3" />
-            <stop offset="1" stopColor="#10cfb8" stopOpacity="0" />
+            <stop offset="0" stopColor={STATE_COLORS.RUNNING} stopOpacity="0.3" />
+            <stop offset="1" stopColor={STATE_COLORS.RUNNING} stopOpacity="0" />
           </linearGradient>
           <linearGradient id="metrics-blocked" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0" stopColor="#f43f5e" stopOpacity="0.4" />
-            <stop offset="1" stopColor="#f43f5e" stopOpacity="0" />
+            <stop offset="0" stopColor={STATE_COLORS.BLOCKED} stopOpacity="0.4" />
+            <stop offset="1" stopColor={STATE_COLORS.BLOCKED} stopOpacity="0" />
           </linearGradient>
         </defs>
         <path
           d={`${totalPath} L ${toX(buckets.length - 1)} ${padding.top + chartH} L ${padding.left} ${padding.top + chartH} Z`}
           fill="url(#metrics-total)"
         />
-        <path d={totalPath} fill="none" stroke="#10cfb8" strokeWidth="1.5" />
+        <path d={totalPath} fill="none" stroke={STATE_COLORS.RUNNING} strokeWidth="1.5" />
         <path
           d={`${blockedPath} L ${toX(buckets.length - 1)} ${padding.top + chartH} L ${padding.left} ${padding.top + chartH} Z`}
           fill="url(#metrics-blocked)"
         />
-        <path d={blockedPath} fill="none" stroke="#f43f5e" strokeWidth="1.5" />
+        <path d={blockedPath} fill="none" stroke={STATE_COLORS.BLOCKED} strokeWidth="1.5" />
         {hlX !== null && hlW !== null && hlW > 0 && (
           <>
             <rect
@@ -119,10 +120,10 @@ export function MetricsChart({ segments, width = 280, height = 60, highlightRang
         )}
       </svg>
       <div className="metrics-chart-legend">
-        <span style={{ color: "#10cfb8" }}>●</span> active
-        <span style={{ color: "#f43f5e", marginLeft: "0.75rem" }}>●</span> blocked
+        <span style={{ color: STATE_COLORS.RUNNING }}>●</span> active
+        <span style={{ color: STATE_COLORS.BLOCKED, marginLeft: "0.75rem" }}>●</span> blocked
         {highlightRange && (
-          <span style={{ color: "#38bdf8", marginLeft: "0.75rem" }}>⌖ range active</span>
+          <span style={{ color: COLOR_RANGE, marginLeft: "0.75rem" }}>⌖ range active</span>
         )}
       </div>
     </div>

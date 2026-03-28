@@ -623,13 +623,9 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS-3. State colors deduplication (P2)
+### ~~DS-3. State colors deduplication~~ — ✅ РЕАЛИЗОВАНО (DS-3)
 
-**Gap:** Полная зависимость от DS-1. После создания `tokens.ts` нужно заменить все inline-style `STATE_COLORS[state]` и прямые hex-значения в компонентах на импорты из токенов.
-
-**Задача:** Убрать hardcoded цвета из inline styles в `MetricsChart.tsx`, `ThemeSwitcher.tsx`, `Timeline.tsx`. Заменить на CSS-переменные или импорт из `tokens.ts`.
-
-**Критерий готовности:** `grep -r "#[0-9a-fA-F]\{6\}" web/src --include="*.tsx"` возвращает 0 результатов (кроме `tokens.ts`).
+> **Реализовано:** `tokens.ts` расширен BG/TEXT-палитрой для canvas-компонентов (`BG_BASE/SECONDARY/PANEL/CARD`, `TEXT_PRIMARY/SECONDARY/MUTED`) и UI-утилитами (`COLOR_AXIS_TEXT`, `COLOR_EDGE`, `COLOR_EDGE_GONE`, `COLOR_SELECTED`, `COLOR_SCRUBBER`, `COLOR_RANGE`, diff-pastel цвета). Все hardcoded hex убраны из `ContentionHeatmap.tsx`, `FlameGraph.tsx`, `DependencyGraph.tsx`, `LifetimeBar.tsx`, `RequestsView.tsx`, `MetricsChart.tsx`, `TimelineCanvas.tsx`, `TimelineHeatmapCanvas.tsx`. `grep -r "#[0-9a-fA-F]{6}" web/src --include="*.tsx"` возвращает 0 результатов.
 
 ---
 

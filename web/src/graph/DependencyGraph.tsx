@@ -2,7 +2,9 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import * as d3 from "d3";
 import type { Goroutine } from "../api/client";
-import { STATE_COLORS, DIFF_COLORS } from "../theme/tokens";
+import { STATE_COLORS, DIFF_COLORS, COLOR_UNKNOWN, COLOR_AXIS_TEXT, COLOR_EDGE,
+  COLOR_EDGE_GONE, COLOR_SELECTED, BG_BASE,
+  COLOR_DIFF_APPEARED_TEXT, COLOR_DIFF_DISAPPEARED_TEXT } from "../theme/tokens";
 
 const NODE_RADIUS = 14;
 
@@ -30,7 +32,7 @@ interface LinkDatum extends d3.SimulationLinkDatum<NodeDatum> {
 function nodeColor(d: NodeDatum): string {
   if (d.diff === "appeared")    return DIFF_COLORS.appeared;
   if (d.diff === "disappeared") return DIFF_COLORS.disappeared;
-  return STATE_COLORS[d.state] ?? "#94a3b8";
+  return STATE_COLORS[d.state] ?? COLOR_UNKNOWN;
 }
 
 /** Goroutine spawn-tree as a D3 force-directed DAG, with optional diff overlay. */
@@ -181,7 +183,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
       .attr("orient", "auto")
       .append("path")
       .attr("d", "M0,-4L10,0L0,4")
-      .attr("fill", "#475569");
+      .attr("fill", COLOR_AXIS_TEXT);
 
     defs.append("marker")
       .attr("id", "dep-arrow-gone")
@@ -193,7 +195,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
       .attr("orient", "auto")
       .append("path")
       .attr("d", "M0,-4L10,0L0,4")
-      .attr("fill", "#7f1d1d");
+      .attr("fill", COLOR_EDGE_GONE);
 
     // ── Zoom group ──────────────────────────────────────────────────────────
     const g = svg.append("g").attr("class", "dep-zoom-group");
@@ -213,7 +215,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
       .selectAll<SVGLineElement, LinkDatum>("line")
       .data(links)
       .join("line")
-      .attr("stroke", (d) => d.disappeared ? "#7f1d1d" : "#334155")
+      .attr("stroke", (d) => d.disappeared ? COLOR_EDGE_GONE : COLOR_EDGE)
       .attr("stroke-width", 1.5)
       .attr("stroke-dasharray", (d) => d.disappeared ? "4,3" : null)
       .attr("opacity",  (d) => d.disappeared ? 0.5 : 1)
@@ -254,7 +256,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
       .attr("class", "dep-node-glow")
       .attr("r", NODE_RADIUS + 5)
       .attr("fill", "none")
-      .attr("stroke", (d) => (d.id === selectedIdRef.current ? "#f8fafc" : "none"))
+      .attr("stroke", (d) => (d.id === selectedIdRef.current ? COLOR_SELECTED : "none"))
       .attr("stroke-width", 2)
       .attr("opacity", 0.5);
 
@@ -276,7 +278,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
       .attr("r", NODE_RADIUS)
       .attr("fill", nodeColor)
       .attr("stroke", (d) =>
-        d.id === selectedIdRef.current ? "#f8fafc" : "rgba(0,0,0,0.4)"
+        d.id === selectedIdRef.current ? COLOR_SELECTED : "rgba(0,0,0,0.4)"
       )
       .attr("stroke-width", (d) => (d.id === selectedIdRef.current ? 2.5 : 1));
 
@@ -288,7 +290,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
       .attr("font-size", "9px")
       .attr("font-family", "monospace")
       .attr("font-weight", "700")
-      .attr("fill", "#0f172a")
+      .attr("fill", BG_BASE)
       .attr("pointer-events", "none")
       .text((d) => `G${d.id}`);
 
@@ -300,8 +302,8 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
       .attr("font-size", "8px")
       .attr("font-family", "sans-serif")
       .attr("fill", (d) =>
-        d.diff === "appeared" ? "#86efac" :
-        d.diff === "disappeared" ? "#fca5a5" : "#94a3b8"
+        d.diff === "appeared" ? COLOR_DIFF_APPEARED_TEXT :
+        d.diff === "disappeared" ? COLOR_DIFF_DISAPPEARED_TEXT : COLOR_UNKNOWN
       )
       .attr("pointer-events", "none")
       .text((d) => {
@@ -357,11 +359,11 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
     const svg = d3.select(svgEl);
 
     svg.selectAll<SVGCircleElement, NodeDatum>(".dep-node-circle")
-      .attr("stroke", (d) => d.id === selectedId ? "#f8fafc" : "rgba(0,0,0,0.4)")
+      .attr("stroke", (d) => d.id === selectedId ? COLOR_SELECTED : "rgba(0,0,0,0.4)")
       .attr("stroke-width", (d) => (d.id === selectedId ? 2.5 : 1));
 
     svg.selectAll<SVGCircleElement, NodeDatum>(".dep-node-glow")
-      .attr("stroke", (d) => (d.id === selectedId ? "#f8fafc" : "none"));
+      .attr("stroke", (d) => (d.id === selectedId ? COLOR_SELECTED : "none"));
   }, [selectedId]);
 
   const fitToView = useCallback(() => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { TimelineSegment } from "../api/client";
+import { BG_BASE, BG_PANEL, BG_CARD, TEXT_MUTED, TEXT_SECONDARY, COLOR_EDGE } from "../theme/tokens";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -13,7 +14,7 @@ const MIN_CELL_W = 4;     // minimum rendered cell width px
 
 function heatColor(ratio: number): string {
   // 0 → dark slate, 1 → hot crimson — perceptually even via two-stop blend
-  if (ratio <= 0) return "#0f172a";
+  if (ratio <= 0) return BG_BASE;
   const r = Math.round(15  + (244 - 15)  * ratio);
   const g = Math.round(23  + (63  - 23)  * ratio);
   const b = Math.round(42  + (94  - 42)  * ratio);
@@ -140,29 +141,29 @@ export function ContentionHeatmap({ segments, onSelectResource }: Props) {
     ctx.clearRect(0, 0, W, totalH);
 
     // Background
-    ctx.fillStyle = "#0f172a";
+    ctx.fillStyle = BG_BASE;
     ctx.fillRect(0, 0, W, totalH);
 
     // Label gutter background
-    ctx.fillStyle = "#0c1322";
+    ctx.fillStyle = BG_PANEL;
     ctx.fillRect(0, 0, LEFT_W, totalH);
 
     // ── Time axis ──────────────────────────────────────────────────────────
-    ctx.fillStyle = "#1e293b";
+    ctx.fillStyle = BG_CARD;
     ctx.fillRect(LEFT_W, 0, innerW, HEADER_H);
 
     const tickCount = Math.min(10, BUCKETS);
-    ctx.fillStyle = "#64748b";
+    ctx.fillStyle = TEXT_MUTED;
     ctx.font = "9px monospace";
     ctx.textBaseline = "middle";
     for (let i = 0; i <= tickCount; i++) {
       const ratio = i / tickCount;
       const x = LEFT_W + ratio * innerW;
       const ns = data.minNS + ratio * (data.maxNS - data.minNS);
-      ctx.fillStyle = "#334155";
+      ctx.fillStyle = COLOR_EDGE;
       ctx.fillRect(x, HEADER_H - 8, 1, 8);
       if (i < tickCount) {
-        ctx.fillStyle = "#64748b";
+        ctx.fillStyle = TEXT_MUTED;
         ctx.fillText(formatNS(ns - data.minNS), x + 3, HEADER_H / 2);
       }
     }
@@ -172,9 +173,9 @@ export function ContentionHeatmap({ segments, onSelectResource }: Props) {
       const y = HEADER_H + ri * CELL_H;
 
       // Row label
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = BG_CARD;
       ctx.fillRect(0, y, LEFT_W, CELL_H - 1);
-      ctx.fillStyle = "#94a3b8";
+      ctx.fillStyle = TEXT_SECONDARY;
       ctx.font = "9px monospace";
       ctx.textBaseline = "middle";
       ctx.fillText(shortResource(data.resources[ri]), 6, y + CELL_H / 2);
@@ -194,7 +195,7 @@ export function ContentionHeatmap({ segments, onSelectResource }: Props) {
       }
 
       // Row separator
-      ctx.fillStyle = "#0f172a";
+      ctx.fillStyle = BG_BASE;
       ctx.fillRect(LEFT_W, y + CELL_H - 1, innerW, 1);
     }
   }, [data]);

@@ -1,5 +1,5 @@
 import type { TimelineSegment } from "../api/client";
-import { STATE_COLORS, COLOR_UNKNOWN } from "../theme/tokens";
+import { STATE_COLORS, COLOR_UNKNOWN, BG_CARD } from "../theme/tokens";
 
 /** Thin colour strip at the bottom of a goroutine list row showing its full lifecycle. */
 export function LifetimeBar({ segments }: { segments: TimelineSegment[] | undefined }) {
@@ -23,14 +23,14 @@ export function LifetimeBar({ segments }: { segments: TimelineSegment[] | undefi
     const x1 = ((seg.start_ns - minStart) / span) * 100;
     const x2 = ((seg.end_ns - minStart) / span) * 100;
     if (x1 > cursor + 0.01) {
-      stops.push(`#1e293b ${cursor.toFixed(2)}%`, `#1e293b ${x1.toFixed(2)}%`);
+      stops.push(`${BG_CARD} ${cursor.toFixed(2)}%`, `${BG_CARD} ${x1.toFixed(2)}%`);
     }
     const color = STATE_COLORS[seg.state] ?? COLOR_UNKNOWN;
     stops.push(`${color} ${x1.toFixed(2)}%`, `${color} ${x2.toFixed(2)}%`);
     cursor = x2;
   }
   if (cursor < 99.99) {
-    stops.push(`#1e293b ${cursor.toFixed(2)}%`, `#1e293b 100%`);
+    stops.push(`${BG_CARD} ${cursor.toFixed(2)}%`, `${BG_CARD} 100%`);
   }
 
   return (
