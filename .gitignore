@@ -13,3 +13,5 @@ vscode/node_modules/
 *.vsix
 web/offline/engine.wasm
 web/offline/wasm_exec.js
+.claude/settings.local.json
+.claude/worktrees/
