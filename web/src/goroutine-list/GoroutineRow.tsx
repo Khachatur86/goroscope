@@ -18,10 +18,19 @@ export function GoroutineRow({ index, style, data }: ListChildComponentProps<Gor
   const note = data.pinned.get(g.goroutine_id) ?? "";
   return (
     <div style={style}>
-      <button
-        type="button"
+      {/* Outer row uses div+role="button" to avoid invalid nested <button> DOM.
+          pin-btn is a <button> so the outer must not be a <button> too. */}
+      <div
+        role="button"
+        tabIndex={0}
         className={`lane-item ${data.selectedId === g.goroutine_id ? "active" : ""}${isPinned ? " pinned" : ""}`}
         onClick={() => data.onSelect(g.goroutine_id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            data.onSelect(g.goroutine_id);
+          }
+        }}
       >
         <button
           type="button"
@@ -38,7 +47,7 @@ export function GoroutineRow({ index, style, data }: ListChildComponentProps<Gor
           {note || (g.labels?.function ?? g.reason ?? "—")}
         </span>
         <LifetimeBar segments={data.segmentsByGoroutine.get(g.goroutine_id)} />
-      </button>
+      </div>
     </div>
   );
 }
