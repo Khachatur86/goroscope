@@ -648,3 +648,120 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 **Задача:** Разбить `index.css` по feature-файлам: `topbar.css`, `timeline.css`, `inspector.css`, `analysis-panel.css`, `goroutine-list.css`, `palette.css`, `theme.css` и т.д. Импортировать через `main.tsx` или Vite.
 
 **Критерий готовности:** `index.css` ≤ 200 строк (только global reset + design tokens). Каждый feature-файл ≤ 400 строк. `vite build` проходит.
+
+---
+
+## Категория DS2 — Design System Iteration 2 (RFC-001 итерация 2/3)
+
+> Источник: RFC-001 «Design System Foundation» — итерация 2 из 3.
+> DS-1 установил токены и CSS-системы. DS-2 извлекает типизированные React-компоненты, добавляет accessibility и анимацию.
+
+### DS2-1. Animation token system (P2)
+
+**Задача:** Добавить CSS-токены анимации (`--duration-fast/base/slow/slower`, `--easing-standard/enter/exit`) в `:root`. Заменить 23 хардкоженных `transition:` значения на `var()`. Добавить `[data-prefers-reduced-motion]` блок.
+
+**Критерий готовности:** `grep -r "transition:.*0\." web/src/*.css` → 0 результатов. `vite build` проходит.
+
+---
+
+### DS2-2. Focus-visible + keyboard navigation (P2)
+
+**Задача:** Создать `a11y.css` с `:focus-visible` ring, `.sr-only`, `@media (prefers-reduced-motion)`. Создать `useFocusTrap` hook. Заменить `<span role="button">` на `<button>` в `Topbar.tsx`. Добавить focus trap в `CommandPalette` и `ThemeSwitcher`.
+
+**Критерий готовности:** Tab-навигация по всем топбар-кнопкам. Focus trap в модалах. `vite build` проходит.
+
+---
+
+### DS2-3. React component library: Button, Badge, Spinner (P2)
+
+**Зависимость:** DS2-1
+**Задача:** Создать `web/src/components/Button.tsx`, `Badge.tsx`, `Spinner.tsx`, `index.ts`. Полностью мигрировать `Topbar.tsx` на новые компоненты.
+
+**Критерий готовности:** `Topbar.tsx` не содержит raw `<button className="btn...">`. `tsc --noEmit` проходит.
+
+---
+
+### DS2-4. Tooltip component (P2)
+
+**Зависимость:** DS2-1
+**Задача:** Создать `Tooltip.tsx` с `role="tooltip"`, `aria-describedby`, `position: fixed` (escape overflow). Заменить 75 `title=` атрибутов (фаза 1 — Topbar). Canvas-тултипы не трогать.
+
+**Критерий готовности:** `Topbar.tsx` использует `<Tooltip>` вместо `title=`. `vite build` проходит.
+
+---
+
+### DS2-5. Card component (P2)
+
+**Задача:** Создать `Card.tsx` обёртку над `.panel` с `header?`, `padding?`, `as?` props. Мигрировать 3 основные панели в `app.tsx`.
+
+**Критерий готовности:** 3 main panels в `app.tsx` используют `<Card aria-label="...">`. `vite build` проходит.
+
+---
+
+### DS2-6. Typography system (P2)
+
+**Задача:** Создать `typography.css` с `.heading-lg/md/sm`, утилитами `.text-*`, `.font-*`. CSS-reset для `h1-h6`. Создать `<Heading level={2} size="md">` компонент. Мигрировать 6 raw `<h2>`/`<h3>` в `app.tsx` и `CompareView.tsx`.
+
+**Критерий готовности:** `grep -r "<h[1-6][^>]*>" web/src --include="*.tsx"` → 0 без className. `vite build` проходит.
+
+---
+
+### DS2-7. Color contrast audit (P2, WCAG AA)
+
+**Зависимость:** DS2-1..6
+**Задача:** Проверить все text/bg пары на WCAG AA (4.5:1). Исправить: `.palette-input::placeholder`, `.palette-group-header`, `.palette-empty`, `.badge--legend` на DONE-фоне, light theme badge text.
+
+**Критерий готовности:** `axe-core` или DevTools audit 0 contrast errors. `vite build` проходит.
+
+---
+
+## Категория P — Performance Sprint (RFC-002)
+
+> Источник: RFC-002 «Performance Sprint» — frontend + backend оптимизации.
+> Горутин-лист (react-window), canvas виртуализация, SSE delta — уже реализованы.
+
+### P-1. Web Worker для JSON парсинга (P2)
+
+**Задача:** Создать `web/src/workers/parse.worker.ts`. Перенести `JSON.parse` и `filterAndSortGoroutines` из main thread в Worker. Обновить `client.ts`.
+
+**Метрика:** Main-thread parse time для 50k-сегментного ответа: с 50-200ms до <5ms.
+
+---
+
+### P-2. Bundle optimization — code-split тяжёлых компонентов (P2)
+
+**Задача:** `React.lazy()` для `CompareView`, `DependencyGraph`, `AnalysisPanel`. Dynamic `import()` для `gif/encoder.ts` внутри `exportGif` callback. `manualChunks` для `d3` в `vite.config.ts`. Добавить `vite-bundle-visualizer` как devDependency.
+
+**Метрика:** Initial JS bundle уменьшается на ~250KB+ (d3 + gif encoder вынесены в lazy chunks).
+
+---
+
+### P-3. Service Worker — stale-while-revalidate кеширование (P3)
+
+**Задача:** `web/public/sw.js` с stale-while-revalidate для GET `/api/v1/goroutines`, `/api/v1/timeline`. cache-first для `/assets/*`. network-only для SSE и POST.
+
+**Метрика:** Cache hit latency <1ms. 30s max-age.
+
+---
+
+### P-4. Go backend — индексирование стеков по goroutineID (P2)
+
+**Задача:** Добавить `stackIndex map[int64][]int` в `Engine`. Обновить `GetStackAt`, `GetStacksFor` (O(n) → O(1)). Добавить `TimelineForGoroutines(ids)` метод. Обновить `handleTimeline`.
+
+**Метрика:** `BenchmarkGetStackAt` показывает >10x улучшение для 100k снапшотов.
+
+---
+
+### P-5. Canvas rendering — pre-group processorSegments, remove redundant sort (P2)
+
+**Задача:** `processorSegmentsByPid useMemo` в `TimelineCanvas.tsx` (заменить O(n×P) `.filter()` на Map lookup). Убрать `.slice().sort()` в `Timeline.tsx` `scrubSnapshot` (сегменты уже отсортированы бэкендом).
+
+**Метрика:** `renderAxis` с 8 процессорами: с ~3ms до <1ms.
+
+---
+
+### P-6. SSE батчинг с React.startTransition (P2)
+
+**Задача:** Обернуть SSE `onmessage` обновления в `React.startTransition()`. Использовать `useDeferredValue` для `displayGoroutines` в `FixedSizeList`.
+
+**Метрика:** INP < 200ms при live streaming с 10k+ goroutines.
