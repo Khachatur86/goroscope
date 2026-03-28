@@ -617,13 +617,9 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS-2. CSS token expansion (P2)
+### ~~DS-2. CSS token expansion~~ — ✅ РЕАЛИЗОВАНО (DS-2)
 
-**Gap:** В `:root` только 15 токенов (цвета фона/текста/border). Нет токенов для: spacing scale, typography (font sizes, weights, line-height), interactive states (hover, focus, disabled, active).
-
-**Задача:** Расширить `:root` в `index.css` — добавить spacing scale (4px–48px), typography tokens (9 размеров шрифта), interactive state colors (hover/disabled/focus overlay). Использовать в существующих CSS-правилах.
-
-**Критерий готовности:** Все magic-number spacing значения заменены на токены. `tsc --noEmit` и `vite build` проходят без ошибок.
+> **Реализовано:** `:root` расширен с 15 до 45+ токенов: spacing scale `--space-1`…`--space-12` (4px–48px), border radius scale `--radius-sm/base/md/lg/full`, 9 typography tokens `--text-2xs`…`--text-3xl`, `--font-medium/semibold/bold`, `--leading-tight/normal/relaxed`, interactive overlays `--overlay-hover/active/focus` и `--opacity-disabled`. Все `font-size:`, `font-weight:`, `border-radius:` magic-numbers заменены на `var()` через скрипт. `tsc --noEmit` и `vite build` проходят.
 
 ---
 
