@@ -28,7 +28,25 @@
       "Bash(sed -i '' 's/background: #0f172a/background: var\\(--bg-base\\)/g' index.css)",
       "Bash(sed -i '' 's/color: #e2e8f0/color: var\\(--text-primary\\)/g' index.css)",
       "Bash(sed -i '' 's/color: #94a3b8/color: var\\(--text-secondary\\)/g' index.css)",
-      "Bash(sed -i '' 's/color: #64748b/color: var\\(--text-muted\\)/g' index.css)"
+      "Bash(sed -i '' 's/color: #64748b/color: var\\(--text-muted\\)/g' index.css)",
+      "Bash(kill 26602)",
+      "Bash(make ui-react:*)",
+      "Bash(xargs kill:*)",
+      "Bash(./bin/goroscope ui:*)",
+      "Bash(make wasm:*)",
+      "Bash(echo:*)",
+      "Bash(sed -i '' 's/| I-3 | Shell autocomplete | P3 | Infrastructure | S | |/| I-3 | Shell autocomplete | P3 | Infrastructure | S | ✅ РЕАЛИЗОВАНО \\(I-3\\) |/' /Users/khachatur1/goprojects/goroscope/BACKLOG.md)",
+      "Bash(sed -i '' 's/| I-8 | `goroscope annotate` command | P3 | Infrastructure | S | |/| I-8 | `goroscope annotate` command | P3 | Infrastructure | S | ✅ РЕАЛИЗОВАНО \\(I-8\\) |/' /Users/khachatur1/goprojects/goroscope/BACKLOG.md)",
+      "Bash(sed -i '' 's/| I-10 | WASM offline mode | P3 | Infrastructure | L | |/| I-10 | WASM offline mode | P3 | Infrastructure | L | ✅ РЕАЛИЗОВАНО \\(I-10\\) |/' /Users/khachatur1/goprojects/goroscope/BACKLOG.md)",
+      "Bash(sed -i '' 's/| H-7 | Multi-process monitoring | P2 | Backend | L | |/| H-7 | Multi-process monitoring | P2 | Backend | L | ✅ РЕАЛИЗОВАНО \\(H-7\\) |/' /Users/khachatur1/goprojects/goroscope/BACKLOG.md)",
+      "Bash(sed -i '' 's/| I-1 | OpenAPI spec + generated TS client | P2 | Infrastructure | S | |/| I-1 | OpenAPI spec + generated TS client | P2 | Infrastructure | S | ✅ РЕАЛИЗОВАНО \\(I-1\\) |/' /Users/khachatur1/goprojects/goroscope/BACKLOG.md)",
+      "Bash(sed -i '' 's/| I-2 | Docker image + Compose пример | P2 | Infrastructure | S | |/| I-2 | Docker image + Compose пример | P2 | Infrastructure | S | ✅ РЕАЛИЗОВАНО \\(I-2\\) |/' /Users/khachatur1/goprojects/goroscope/BACKLOG.md)",
+      "Bash(sed -i '' 's/| I-9 | Stack pattern diff across captures | P2 | Infrastructure | M | |/| I-9 | Stack pattern diff across captures | P2 | Infrastructure | M | ✅ РЕАЛИЗОВАНО \\(I-9\\) |/' /Users/khachatur1/goprojects/goroscope/BACKLOG.md)",
+      "Bash(ls:*)",
+      "Bash(make run-react:*)",
+      "Bash(pkill -f \"bin/goroscope run\")",
+      "Bash(grep -E \"#[0-9a-fA-F]{3,6}\" /Users/khachatur1/goprojects/goroscope/web/src/index.css)",
+      "Bash(/tmp/design_system_files.md:*)"
     ]
   }
 }

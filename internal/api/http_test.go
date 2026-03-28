@@ -99,6 +99,21 @@ func newTestServerWithResources(t *testing.T, goroutines []model.Goroutine, edge
 	return NewServer("127.0.0.1:0", eng, mgr, "")
 }
 
+// newTestServerWithStacks is like newTestServer but also applies stack snapshots
+// for goroutines that have a non-nil LastStack field set.
+func newTestServerWithStacks(t *testing.T, goroutines []model.Goroutine) *Server {
+	t.Helper()
+	srv := newTestServer(t, goroutines)
+	for _, g := range goroutines {
+		if g.LastStack != nil {
+			snap := *g.LastStack
+			snap.GoroutineID = g.ID
+			srv.engine.ApplyStackSnapshot(snap)
+		}
+	}
+	return srv
+}
+
 // decodeJSON decodes the response body into dst and fails the test on error.
 func decodeJSON(t *testing.T, rec *httptest.ResponseRecorder, dst any) {
 	t.Helper()

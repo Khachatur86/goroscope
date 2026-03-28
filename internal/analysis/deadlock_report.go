@@ -148,6 +148,111 @@ func (r DeadlockReport) WriteJSON(w io.Writer) error {
 	return enc.Encode(r)
 }
 
+// WriteSARIF writes a SARIF 2.1.0 report to w so results can be uploaded to
+// the GitHub Security tab via the upload-sarif action or similar tooling.
+//
+// Each deadlock cycle becomes one SARIF "result" with level "error".
+// When a top frame is available, the result includes a physical location.
+func (r DeadlockReport) WriteSARIF(w io.Writer) error {
+	type location struct {
+		PhysicalLocation *struct {
+			ArtifactLocation struct {
+				URI string `json:"uri"`
+			} `json:"artifactLocation"`
+			Region struct {
+				StartLine int `json:"startLine"`
+			} `json:"region"`
+		} `json:"physicalLocation,omitempty"`
+		Message struct {
+			Text string `json:"text"`
+		} `json:"message"`
+	}
+	type result struct {
+		RuleID    string     `json:"ruleId"`
+		Level     string     `json:"level"`
+		Message   struct{ Text string `json:"text"` } `json:"message"`
+		Locations []location `json:"locations,omitempty"`
+	}
+	type rule struct {
+		ID               string `json:"id"`
+		ShortDescription struct{ Text string `json:"text"` } `json:"shortDescription"`
+		HelpURI          string `json:"helpUri,omitempty"`
+	}
+	type sarif struct {
+		Schema  string `json:"$schema"`
+		Version string `json:"version"`
+		Runs    []struct {
+			Tool struct {
+				Driver struct {
+					Name           string `json:"name"`
+					Version        string `json:"version,omitempty"`
+					InformationURI string `json:"informationUri,omitempty"`
+					Rules          []rule `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+			Results []result `json:"results"`
+		} `json:"runs"`
+	}
+
+	var results []result
+	for _, cycle := range r.Cycles {
+		res := result{
+			RuleID: "deadlock",
+			Level:  "error",
+		}
+		res.Message.Text = fmt.Sprintf("Deadlock cycle %d: %s", cycle.Index, cycle.BlameChain)
+
+		for _, g := range cycle.Goroutines {
+			if g.TopFrame != nil && g.TopFrame.File != "" {
+				loc := location{}
+				loc.PhysicalLocation = &struct {
+					ArtifactLocation struct {
+						URI string `json:"uri"`
+					} `json:"artifactLocation"`
+					Region struct {
+						StartLine int `json:"startLine"`
+					} `json:"region"`
+				}{}
+				loc.PhysicalLocation.ArtifactLocation.URI = g.TopFrame.File
+				loc.PhysicalLocation.Region.StartLine = g.TopFrame.Line
+				loc.Message.Text = fmt.Sprintf("goroutine %d blocked on %s", g.ID, g.BlockedOn)
+				res.Locations = append(res.Locations, loc)
+				break // one representative location per result
+			}
+		}
+		results = append(results, res)
+	}
+
+	var doc sarif
+	doc.Schema = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
+	doc.Version = "2.1.0"
+	doc.Runs = append(doc.Runs, struct {
+		Tool struct {
+			Driver struct {
+				Name           string `json:"name"`
+				Version        string `json:"version,omitempty"`
+				InformationURI string `json:"informationUri,omitempty"`
+				Rules          []rule `json:"rules"`
+			} `json:"driver"`
+		} `json:"tool"`
+		Results []result `json:"results"`
+	}{})
+	doc.Runs[0].Tool.Driver.Name = "goroscope"
+	doc.Runs[0].Tool.Driver.InformationURI = "https://github.com/Khachatur86/goroscope"
+	doc.Runs[0].Tool.Driver.Rules = []rule{{
+		ID: "deadlock",
+		ShortDescription: struct{ Text string `json:"text"` }{
+			Text: "Potential goroutine deadlock cycle detected",
+		},
+		HelpURI: "https://github.com/Khachatur86/goroscope#check",
+	}}
+	doc.Runs[0].Results = results
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(doc)
+}
+
 // WriteGitHubAnnotations writes GitHub Actions workflow command annotations so
 // that deadlock cycles appear as warning annotations in the PR diff view.
 // Format: ::warning file=<file>,line=<line>::<message>

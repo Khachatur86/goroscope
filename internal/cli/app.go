@@ -69,6 +69,10 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return historyCommand(args[1:], stdout, stderr)
 	case "watch":
 		return watchCommand(ctx, args[1:], stdout, stderr)
+	case "top":
+		return topCommand(ctx, args[1:], stdout, stderr)
+	case "doctor":
+		return doctorCommand(ctx, args[1:], stdout, stderr)
 	case "diff":
 		return diffCommand(ctx, args[1:], stdout, stderr)
 	case "completion":
@@ -99,6 +103,8 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  goroscope check <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope export [flags] <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope watch [flags] <target-url>")
+	_, _ = fmt.Fprintln(w, "  goroscope top [flags] <target-url>")
+	_, _ = fmt.Fprintln(w, "  goroscope doctor <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope diff [flags] <baseline.gtrace> <compare.gtrace>")
 	_, _ = fmt.Fprintln(w, "  goroscope version")
 	_, _ = fmt.Fprintln(w, "  goroscope help")
@@ -114,6 +120,8 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  export    Export timeline segments to CSV or JSON (for pandas, analysis)")
 	_, _ = fmt.Fprintln(w, "  history   List saved captures from ~/.goroscope/captures/")
 	_, _ = fmt.Fprintln(w, "  watch     Headless monitor: emit alerts when anomaly thresholds are crossed")
+	_, _ = fmt.Fprintln(w, "  top       Live goroutine table (like htop, polls pprof endpoint)")
+	_, _ = fmt.Fprintln(w, "  doctor    Generate self-contained HTML diagnostic report from a .gtrace file")
 	_, _ = fmt.Fprintln(w, "  diff        Compare two .gtrace captures: goroutine state + wait-time deltas")
 	_, _ = fmt.Fprintln(w, "  completion  Generate shell completion script (zsh, bash, fish)")
 	_, _ = fmt.Fprintln(w, "  annotate    Add, list, or delete named annotations in a .gtrace file")
@@ -574,7 +582,7 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		fs.PrintDefaults()
 	}
 
-	format := fs.String("format", "text", "Output format: text | json | github | dot")
+	format := fs.String("format", "text", "Output format: text | json | github | dot | sarif")
 	dotOut := fs.String("dot-out", "", "Write the wait-for graph as a DOT file (Graphviz); - for stdout")
 
 	if err := fs.Parse(args); err != nil {
@@ -649,6 +657,10 @@ func checkCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		}
 	case "github":
 		report.WriteGitHubAnnotations(stdout)
+	case "sarif":
+		if werr := report.WriteSARIF(stdout); werr != nil {
+			return fmt.Errorf("write sarif: %w", werr)
+		}
 	case "dot":
 		// Convenience: --format=dot prints DOT to stdout (same as --dot-out=-)
 		buildWFG().WriteDOT(stdout)
@@ -890,16 +902,21 @@ func runTestCapture(ctx context.Context, in testCaptureInput) error {
 func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("export", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	format := fs.String("format", "csv", "Output format: csv, json, or otlp")
+	format := fs.String("format", "csv", "Output format: csv, json, otlp, flamegraph, or folded")
 	endpoint := fs.String("endpoint", "", "OTLP/HTTP endpoint for --format=otlp (e.g. localhost:4318 or http://localhost:4318/v1/traces)")
+	stateFilter := fs.String("state", "", "Filter goroutines by state for flamegraph/folded formats")
+	maxDepth := fs.Int("max-depth", 0, "Max call-stack depth for flamegraph/folded (0=unlimited)")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage: goroscope export [flags] <capture-file>\n\n")
 		_, _ = fmt.Fprintf(stderr, "Export timeline segments. Formats:\n")
-		_, _ = fmt.Fprintf(stderr, "  csv   — timeline segments as CSV (stdout)\n")
-		_, _ = fmt.Fprintf(stderr, "  json  — timeline segments as JSON (stdout)\n")
-		_, _ = fmt.Fprintf(stderr, "  otlp  — goroutine spans via OTLP/HTTP+JSON (requires --endpoint)\n\n")
+		_, _ = fmt.Fprintf(stderr, "  csv        — timeline segments as CSV (stdout)\n")
+		_, _ = fmt.Fprintf(stderr, "  json       — timeline segments as JSON (stdout)\n")
+		_, _ = fmt.Fprintf(stderr, "  otlp       — goroutine spans via OTLP/HTTP+JSON (requires --endpoint)\n")
+		_, _ = fmt.Fprintf(stderr, "  flamegraph — d3-flamegraph compatible JSON call-tree\n")
+		_, _ = fmt.Fprintf(stderr, "  folded     — Brendan Gregg folded stacks (flamegraph.pl input)\n\n")
 		_, _ = fmt.Fprintf(stderr, "Example:\n")
-		_, _ = fmt.Fprintf(stderr, "  goroscope export --format=otlp --endpoint=localhost:4318 capture.gtrace\n\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope export --format=flamegraph capture.gtrace\n")
+		_, _ = fmt.Fprintf(stderr, "  goroscope export --format=folded --state=blocked capture.gtrace\n\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -938,8 +955,14 @@ func exportCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 			Stdout:     stdout,
 			Stderr:     stderr,
 		})
+	case "flamegraph":
+		result := engine.Flamegraph(*stateFilter, *maxDepth)
+		return json.NewEncoder(stdout).Encode(result)
+	case "folded":
+		_, err := fmt.Fprint(stdout, engine.FoldedStacks(*stateFilter, *maxDepth))
+		return err
 	default:
-		return fmt.Errorf("unsupported format %q; use csv, json, or otlp", *format)
+		return fmt.Errorf("unsupported format %q; use csv, json, otlp, flamegraph, or folded", *format)
 	}
 }
 

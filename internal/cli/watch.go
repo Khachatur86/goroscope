@@ -38,6 +38,7 @@ type watchInput struct {
 	AlertBlockMS    int64
 	AlertDeadlock   bool
 	Webhook         string
+	SlackURL        string // Incoming Webhook URL for Slack Block Kit messages
 	Once            bool
 	Format          string // "json" | "text"
 	Stdout          io.Writer
@@ -53,6 +54,7 @@ func watchCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	alertBlockMS := fs.Int64("alert-block-ms", 0, "alert when any goroutine is blocked > N ms (0 = disabled)")
 	alertDeadlock := fs.Bool("alert-deadlock", false, "alert on any deadlock hint")
 	webhook := fs.String("webhook", "", "POST alerts as JSON to this URL")
+	slackURL := fs.String("slack-url", "", "Slack Incoming Webhook URL to post Block Kit alert messages")
 	once := fs.Bool("once", false, "exit after the first alert")
 	format := fs.String("format", "json", "output format: json | text")
 
@@ -72,6 +74,7 @@ func watchCommand(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		AlertBlockMS:    *alertBlockMS,
 		AlertDeadlock:   *alertDeadlock,
 		Webhook:         *webhook,
+		SlackURL:        *slackURL,
 		Once:            *once,
 		Format:          *format,
 		Stdout:          stdout,
@@ -190,6 +193,11 @@ func emitAlert(in watchInput, a watchAlert) error {
 	if in.Webhook != "" {
 		if err := postWebhook(in.Webhook, data); err != nil {
 			_, _ = fmt.Fprintf(in.Stderr, "goroscope watch: webhook POST failed: %v\n", err)
+		}
+	}
+	if in.SlackURL != "" {
+		if err := postSlackAlert(in.SlackURL, a); err != nil {
+			_, _ = fmt.Fprintf(in.Stderr, "goroscope watch: slack POST failed: %v\n", err)
 		}
 	}
 	return nil
@@ -313,4 +321,62 @@ func hasDeadlockCycle(edges []model.ResourceEdge, goroutines []model.Goroutine) 
 		}
 	}
 	return false
+}
+
+// postSlackAlert sends a Slack Block Kit message for the given alert.
+// The message uses a header block with severity emoji and a section block
+// listing the top blocked goroutines.
+func postSlackAlert(webhookURL string, a watchAlert) error {
+	emoji := ":warning:"
+	if a.Type == "deadlock" {
+		emoji = ":rotating_light:"
+	}
+
+	// Build context lines for top blocked goroutines.
+	details := fmt.Sprintf("*Goroutines:* %d", a.GoroutineCount)
+	for i, b := range a.TopBlocked {
+		if i >= 3 {
+			details += fmt.Sprintf("\n… +%d more", len(a.TopBlocked)-3)
+			break
+		}
+		frame := b.Frame
+		if frame == "" {
+			frame = b.State
+		}
+		details += fmt.Sprintf("\n• G%d `%s`  %s", b.ID, b.Reason, frame)
+	}
+
+	msg := map[string]any{
+		"blocks": []map[string]any{
+			{
+				"type": "header",
+				"text": map[string]any{
+					"type":  "plain_text",
+					"text":  fmt.Sprintf("%s goroscope alert — %s", emoji, a.Type),
+					"emoji": true,
+				},
+			},
+			{
+				"type": "section",
+				"text": map[string]any{
+					"type": "mrkdwn",
+					"text": fmt.Sprintf("*%s*\n%s", a.Message, details),
+				},
+			},
+			{
+				"type": "context",
+				"elements": []map[string]any{{
+					"type": "mrkdwn",
+					"text": fmt.Sprintf("<!date^%d^{date_short_pretty} {time_secs}|%s>",
+						a.Timestamp.Unix(), a.Timestamp.Format(time.RFC3339)),
+				}},
+			},
+		},
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal slack payload: %w", err)
+	}
+	return postWebhook(webhookURL, data)
 }

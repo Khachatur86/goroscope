@@ -558,6 +558,20 @@ goroscope_session_duration_seconds 3600
 
 ---
 
+## RFC: Developer Productivity Pack — ✅ РЕАЛИЗОВАНО
+
+> Добавлено по инициативе «что бы не хватало разработчикам».
+
+| ID | Фича | Статус | Где реализовано |
+|----|------|--------|-----------------|
+| RFC-U1 | Flamegraph (`BuildFlamegraph`, `FoldedStacks`) | ✅ Done | `internal/analysis/flamegraph.go`, `GET /api/v1/flamegraph`, `GET /api/v1/flamegraph/folded`, `goroscope export --format=flamegraph\|folded` |
+| RFC-U2 | `goroscope doctor` — HTML диагностический отчёт | ✅ Done | `internal/cli/doctor.go` — insights, deadlocks, contention, inline flamegraph |
+| RFC-U3 | SARIF output для `goroscope check` | ✅ Done | `DeadlockReport.WriteSARIF()`, `goroscope check --format=sarif` |
+| RFC-U4 | Slack Incoming Webhook алерты | ✅ Done | `goroscope watch --slack-url=...` — Block Kit формат |
+| RFC-U5 | `goroscope top` — live TUI таблица goroutines | ✅ Done | `internal/cli/top.go` — ANSI, blocked-first, `--n`, `--once` |
+
+---
+
 ## Рекомендуемый порядок реализации
 
 **Sprint 1 (Quick wins — A-3, E-4, F-3 уже сделаны):**
@@ -586,3 +600,71 @@ G-1 → U-1 → U-3 → G-4 → U-2 → G-3 → G-2 → U-4 → G-5 → U-5
 
 **Sprint 9 (Infrastructure & general quality):**
 I-4 → I-5 → I-6 → I-1 → I-7 → I-9 → I-2 → I-3 → I-8 → I-10
+
+**Sprint 10 (UI Upgrade — Design System):**
+DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
+
+---
+
+## Категория DS — Design System (RFC-001)
+
+> Источник: RFC-001 «Design System Foundation» — итерация 1 из 3 плана UI Upgrade.
+> Порядок: строго последовательный (каждый юнит зависит от предыдущего).
+
+### DS-1. Centralized color tokens (P2)
+
+**Gap:** Цвета состояний goroutine (`RUNNING`, `BLOCKED` и т.д.) продублированы в 5 файлах (`DependencyGraph.tsx`, `RequestsView.tsx`, `LifetimeBar.tsx`, `TimelineCanvas.tsx`, `Timeline.tsx`). 225+ hardcoded hex-значений в CSS. Нет единого источника правды.
+
+**Задача:** Создать `web/src/theme/tokens.ts` — централизованный экспорт всех цветов: состояния goroutine, акцентные, семантические (error/warning/info/success). Типизированный, импортируемый во все компоненты.
+
+**Критерий готовности:** `tokens.ts` содержит все цвета. Все 5 файлов с `STATE_COLORS`/`LIFETIME_COLORS`/`COLORS` импортируют из `tokens.ts`. Тесты проходят.
+
+---
+
+### DS-2. CSS token expansion (P2)
+
+**Gap:** В `:root` только 15 токенов (цвета фона/текста/border). Нет токенов для: spacing scale, typography (font sizes, weights, line-height), interactive states (hover, focus, disabled, active).
+
+**Задача:** Расширить `:root` в `index.css` — добавить spacing scale (4px–48px), typography tokens (9 размеров шрифта), interactive state colors (hover/disabled/focus overlay). Использовать в существующих CSS-правилах.
+
+**Критерий готовности:** Все magic-number spacing значения заменены на токены. `tsc --noEmit` и `vite build` проходят без ошибок.
+
+---
+
+### DS-3. State colors deduplication (P2)
+
+**Gap:** Полная зависимость от DS-1. После создания `tokens.ts` нужно заменить все inline-style `STATE_COLORS[state]` и прямые hex-значения в компонентах на импорты из токенов.
+
+**Задача:** Убрать hardcoded цвета из inline styles в `MetricsChart.tsx`, `ThemeSwitcher.tsx`, `Timeline.tsx`. Заменить на CSS-переменные или импорт из `tokens.ts`.
+
+**Критерий готовности:** `grep -r "#[0-9a-fA-F]\{6\}" web/src --include="*.tsx"` возвращает 0 результатов (кроме `tokens.ts`).
+
+---
+
+### DS-4. Inline style cleanup (P2)
+
+**Gap:** 33 inline style-вхождения в компонентах. ~70% содержат hardcoded цвета вместо CSS-переменных.
+
+**Задача:** Заменить `style={{ color: "#f43f5e" }}` → CSS-классы или `var(--color-blocked)`. Justified inline styles (canvas sizing, dynamic widths, gradients) — оставить.
+
+**Критерий готовности:** Все цвета в inline styles идут через CSS-переменные или `tokens.ts`. Визуальная регрессия отсутствует.
+
+---
+
+### DS-5. Button/Badge API consolidation (P1)
+
+**Gap:** 11 вариантов кнопок и 8 вариантов бейджей, каждый стилизован ad-hoc. Нет единого паттерна — сложно добавлять новые варианты и поддерживать консистентность.
+
+**Задача:** Свести к базовым классам `.btn` (variants: primary, secondary, ghost, danger) и `.badge` (variants: state, severity, count). Обновить все вхождения в TSX. Удалить устаревшие CSS-правила.
+
+**Критерий готовности:** Все кнопки используют `.btn .btn--{variant}`. Все бейджи — `.badge .badge--{variant}`. Визуально идентично текущему.
+
+---
+
+### DS-6. CSS split — index.css → feature files (P2)
+
+**Gap:** `index.css` — 3354 строки, один монолит. Секция Analysis panel занимает 743 строки (22%). Невозможно найти стили конкретного компонента без поиска по всему файлу.
+
+**Задача:** Разбить `index.css` по feature-файлам: `topbar.css`, `timeline.css`, `inspector.css`, `analysis-panel.css`, `goroutine-list.css`, `palette.css`, `theme.css` и т.д. Импортировать через `main.tsx` или Vite.
+
+**Критерий готовности:** `index.css` ≤ 200 строк (только global reset + design tokens). Каждый feature-файл ≤ 400 строк. `vite build` проходит.

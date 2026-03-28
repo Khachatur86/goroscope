@@ -70,6 +70,8 @@ _goroscope() {
         'check[Analyze capture for deadlock hints]' \
         'export[Export timeline segments to CSV/JSON/OTLP]' \
         'watch[Live anomaly alerting]' \
+        'top[Live goroutine table (htop-style)]' \
+        'doctor[Generate HTML diagnostic report from .gtrace]' \
         'diff[Compare two .gtrace files]' \
         'completion[Generate shell completion script]' \
         'annotate[Add/list/delete annotations in a .gtrace file]' \
@@ -135,7 +137,7 @@ _goroscope() {
           ;;
         check)
           _arguments \
-            '--format=[Output format]:fmt:(text json github dot)' \
+            '--format=[Output format]:fmt:(text json github dot sarif)' \
             '*:file:_files -g "*.gtrace"'
           ;;
         export)
@@ -150,6 +152,17 @@ _goroscope() {
             '--interval=[Check interval]:duration:(5s 10s 30s)' \
             '--threshold=[Alert threshold]:n' \
             '*:url:_urls'
+          ;;
+        top)
+          _arguments \
+            '--interval=[Refresh interval]:duration:(1s 2s 5s)' \
+            '--n=[Rows to display]:n' \
+            '--once[Print one frame and exit]' \
+            '*:url:_urls'
+          ;;
+        doctor)
+          _arguments \
+            '*:file:_files -g "*.gtrace"'
           ;;
         diff)
           _arguments \
@@ -187,7 +200,7 @@ _goroscope_completions() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
   }
 
-  local commands="attach run test ui collect replay check export watch diff completion annotate history version help"
+  local commands="attach run test ui collect replay check export watch top doctor diff completion annotate history version help"
 
   if [[ $COMP_CWORD -eq 1 ]]; then
     COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -200,7 +213,7 @@ _goroscope_completions() {
   case "$prev" in
     --format)
       case "$cmd" in
-        check)  COMPREPLY=( $(compgen -W "text json github dot" -- "$cur") ); return ;;
+        check)  COMPREPLY=( $(compgen -W "text json github dot sarif" -- "$cur") ); return ;;
         export) COMPREPLY=( $(compgen -W "csv json otlp" -- "$cur") ); return ;;
         diff)   COMPREPLY=( $(compgen -W "text json" -- "$cur") ); return ;;
       esac
@@ -246,6 +259,13 @@ _goroscope_completions() {
     watch)
       flags="--addr --interval --threshold"
       ;;
+    top)
+      flags="--interval --n --once"
+      ;;
+    doctor)
+      COMPREPLY=( $(compgen -f -X '!*.gtrace' -- "$cur") )
+      return
+      ;;
     diff)
       flags="--format --threshold"
       COMPREPLY=( $(compgen -W "$flags" -- "$cur") $(compgen -f -X '!*.gtrace' -- "$cur") )
@@ -270,7 +290,7 @@ complete -F _goroscope_completions goroscope
 // ── Fish ──────────────────────────────────────────────────────────────────────
 
 const fishCompletion = `# fish completion for goroscope
-set -l commands attach run test ui collect replay check export watch diff completion annotate history version help
+set -l commands attach run test ui collect replay check export watch top doctor diff completion annotate history version help
 
 # Disable file completions for the top-level command
 complete -c goroscope -f
@@ -292,6 +312,10 @@ complete -c goroscope -n "not __fish_seen_subcommand_from $commands" \
   -a export    -d "Export timeline segments"
 complete -c goroscope -n "not __fish_seen_subcommand_from $commands" \
   -a watch     -d "Live anomaly alerting"
+complete -c goroscope -n "not __fish_seen_subcommand_from $commands" \
+  -a top       -d "Live goroutine table (htop-style)"
+complete -c goroscope -n "not __fish_seen_subcommand_from $commands" \
+  -a doctor    -d "Generate HTML diagnostic report from .gtrace"
 complete -c goroscope -n "not __fish_seen_subcommand_from $commands" \
   -a diff      -d "Compare two .gtrace files"
 complete -c goroscope -n "not __fish_seen_subcommand_from $commands" \
@@ -340,7 +364,7 @@ complete -c goroscope -n "__fish_seen_subcommand_from ui" \
 
 # check-specific
 complete -c goroscope -n "__fish_seen_subcommand_from check" \
-  -l format -d "Output format" -x -a "text json github dot"
+  -l format -d "Output format" -x -a "text json github dot sarif"
 
 # export-specific
 complete -c goroscope -n "__fish_seen_subcommand_from export" \

@@ -564,6 +564,40 @@ func (e *Engine) ContentionHeatmap(resolutionNS int64, limitResources int) Conte
 	})
 }
 
+// Flamegraph aggregates the last known call-stacks of all goroutines (optionally
+// filtered by state) into a call-tree suitable for d3-flamegraph or speedscope.
+func (e *Engine) Flamegraph(stateFilter string, maxDepth int) FlamegraphResult {
+	e.mu.RLock()
+	goroutines := make([]model.Goroutine, 0, len(e.goroutines))
+	for _, g := range e.goroutines {
+		goroutines = append(goroutines, g)
+	}
+	e.mu.RUnlock()
+
+	return BuildFlamegraph(FlamegraphInput{
+		Goroutines:  goroutines,
+		StateFilter: stateFilter,
+		MaxDepth:    maxDepth,
+	})
+}
+
+// FoldedStacks returns the flamegraph for all goroutines in the Brendan Gregg
+// folded-stacks format, one line per unique call path: "root;frame1;leaf N".
+func (e *Engine) FoldedStacks(stateFilter string, maxDepth int) string {
+	e.mu.RLock()
+	goroutines := make([]model.Goroutine, 0, len(e.goroutines))
+	for _, g := range e.goroutines {
+		goroutines = append(goroutines, g)
+	}
+	e.mu.RUnlock()
+
+	return FoldedStacks(FlamegraphInput{
+		Goroutines:  goroutines,
+		StateFilter: stateFilter,
+		MaxDepth:    maxDepth,
+	})
+}
+
 // ResourceGraph returns the current set of resource dependency edges.
 func (e *Engine) ResourceGraph() []model.ResourceEdge {
 	e.mu.RLock()

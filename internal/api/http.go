@@ -265,6 +265,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/processor-timeline", s.handleProcessorTimeline)
 	mux.HandleFunc("/api/v1/resources/graph", s.handleGraph)
 	mux.HandleFunc("/api/v1/contention/heatmap", s.handleContentionHeatmap)
+	mux.HandleFunc("/api/v1/flamegraph", s.handleFlamegraph)
+	mux.HandleFunc("/api/v1/flamegraph/folded", s.handleFlamegraphFolded)
 	mux.HandleFunc("/api/v1/deadlock-hints", s.handleDeadlockHints)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 	mux.HandleFunc("/api/v1/replay/load", s.handleReplayLoad)
@@ -955,6 +957,51 @@ func (s *Server) handleContentionHeatmap(w http.ResponseWriter, r *http.Request)
 
 	result := s.engineFor(r).ContentionHeatmap(resolutionMS*int64(time.Millisecond), limitResources)
 	writeJSON(w, http.StatusOK, result)
+}
+
+// handleFlamegraph serves GET /api/v1/flamegraph
+//
+// Query params:
+//
+//	state       string (optional) — filter goroutines by state
+//	max_depth   int    (default 0=unlimited) — max call-stack depth
+func (s *Server) handleFlamegraph(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	state := q.Get("state")
+	maxDepth := 0
+	if v := q.Get("max_depth"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxDepth = n
+		}
+	}
+	result := s.engineFor(r).Flamegraph(state, maxDepth)
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleFlamegraphFolded serves GET /api/v1/flamegraph/folded
+// and returns the Brendan Gregg folded-stacks text format.
+//
+// Query params: same as /api/v1/flamegraph (state, max_depth).
+func (s *Server) handleFlamegraphFolded(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	state := q.Get("state")
+	maxDepth := 0
+	if v := q.Get("max_depth"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxDepth = n
+		}
+	}
+	text := s.engineFor(r).FoldedStacks(state, maxDepth)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = io.WriteString(w, text)
 }
 
 func (s *Server) handleDeadlockHints(w http.ResponseWriter, r *http.Request) {

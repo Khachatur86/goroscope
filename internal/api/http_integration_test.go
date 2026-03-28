@@ -793,3 +793,103 @@ func TestHandleContentionHeatmap(t *testing.T) {
 		}
 	})
 }
+
+// ─── handleFlamegraph (U-1) ───────────────────────────────────────────────────
+
+func TestHandleFlamegraph(t *testing.T) {
+	t.Parallel()
+
+	goroutines := []model.Goroutine{
+		{ID: 1, State: model.StateRunning, LastStack: &model.StackSnapshot{
+			Frames: []model.StackFrame{{Func: "leaf"}, {Func: "root_fn"}},
+		}},
+		{ID: 2, State: model.StateBlocked, LastStack: &model.StackSnapshot{
+			Frames: []model.StackFrame{{Func: "leaf"}, {Func: "root_fn"}},
+		}},
+	}
+	srv := newTestServerWithStacks(t, goroutines)
+	handler := srv.routes()
+
+	t.Run("returns 200 with root node", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/flamegraph")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		var body struct {
+			Root struct {
+				Name     string `json:"name"`
+				Value    int    `json:"value"`
+				Children []any  `json:"children"`
+			} `json:"root"`
+			TotalGoroutines int `json:"total_goroutines"`
+		}
+		decodeJSON(t, rec, &body)
+		if body.Root.Name != "root" {
+			t.Errorf("root name = %q, want root", body.Root.Name)
+		}
+		if body.TotalGoroutines != 2 {
+			t.Errorf("total_goroutines = %d, want 2", body.TotalGoroutines)
+		}
+		if len(body.Root.Children) == 0 {
+			t.Error("expected children in root node")
+		}
+	})
+
+	t.Run("state filter", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/flamegraph?state=BLOCKED")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		var body struct {
+			TotalGoroutines int    `json:"total_goroutines"`
+			StateFilter     string `json:"state_filter"`
+		}
+		decodeJSON(t, rec, &body)
+		if body.TotalGoroutines != 1 {
+			t.Errorf("total_goroutines = %d, want 1 (only blocked)", body.TotalGoroutines)
+		}
+		if body.StateFilter != "BLOCKED" {
+			t.Errorf("state_filter = %q, want BLOCKED", body.StateFilter)
+		}
+	})
+
+	t.Run("rejects non-GET", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/flamegraph", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected 405, got %d", rec.Code)
+		}
+	})
+}
+
+func TestHandleFlamegraphFolded(t *testing.T) {
+	t.Parallel()
+
+	goroutines := []model.Goroutine{
+		{ID: 1, State: model.StateRunning, LastStack: &model.StackSnapshot{
+			Frames: []model.StackFrame{{Func: "leaf"}, {Func: "root_fn"}},
+		}},
+	}
+	srv := newTestServerWithStacks(t, goroutines)
+	handler := srv.routes()
+
+	t.Run("returns text/plain folded stacks", func(t *testing.T) {
+		t.Parallel()
+		rec := get(t, handler, "/api/v1/flamegraph/folded")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		ct := rec.Header().Get("Content-Type")
+		if !strings.HasPrefix(ct, "text/plain") {
+			t.Errorf("Content-Type = %q, want text/plain", ct)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "root;root_fn;leaf") {
+			t.Errorf("folded output missing expected path; got:\n%s", body)
+		}
+	})
+}
