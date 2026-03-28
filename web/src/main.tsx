@@ -6,6 +6,10 @@ import { applyInitialTheme } from "./theme/useTheme";
 
 applyInitialTheme();
 
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {/* non-critical */});
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
