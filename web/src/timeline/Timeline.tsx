@@ -83,6 +83,12 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   const [segmentMap, setSegmentMap] = useState<Map<number, TimelineSegment[]>>(new Map());
   // Track which goroutine IDs have already been fetched so we don't re-request them.
   const loadedGoroutineIds = useRef(new Set<number>());
+  // Track which goroutine IDs failed to load so we don't hammer the server with
+  // retries. Cleared on every goroutines-list refresh (new session / filter change).
+  const failedGoroutineIds = useRef(new Set<number>());
+  // Guard against concurrent processor-timeline fetches so a slow response from
+  // a previous goroutines epoch doesn't clobber a fresh result.
+  const processorFetchId = useRef(0);
   const [processorSegments, setProcessorSegments] = useState<ProcessorSegment[]>([]);
   const [canvasZoomLevel, setCanvasZoomLevel] = useState(1);
   const [canvasPanOffsetNS, setCanvasPanOffsetNS] = useState(0);
@@ -101,9 +107,11 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
 
   // Load segments for a batch of goroutine IDs that haven't been fetched yet.
   const loadSegmentsBatch = useCallback(async (ids: number[]) => {
-    const toLoad = ids.filter((id) => !loadedGoroutineIds.current.has(id));
+    const toLoad = ids.filter(
+      (id) => !loadedGoroutineIds.current.has(id) && !failedGoroutineIds.current.has(id),
+    );
     if (toLoad.length === 0) return;
-    // Mark as loaded optimistically to prevent duplicate in-flight requests.
+    // Mark as in-flight optimistically to prevent duplicate concurrent requests.
     toLoad.forEach((id) => loadedGoroutineIds.current.add(id));
     try {
       const data = await fetchTimeline({ goroutineIds: toLoad });
@@ -118,8 +126,13 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
         return next;
       });
     } catch {
-      // Roll back optimistic marks so the batch can be retried.
-      toLoad.forEach((id) => loadedGoroutineIds.current.delete(id));
+      // Move failed IDs from the "loading" set to the "failed" set.
+      // They will NOT be retried until the next goroutines-list refresh, which
+      // prevents a thundering-herd loop when the server is temporarily unavailable.
+      toLoad.forEach((id) => {
+        loadedGoroutineIds.current.delete(id);
+        failedGoroutineIds.current.add(id);
+      });
     }
   }, []);
 
@@ -128,6 +141,8 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
     if (useOverride) return;
     setSegmentMap(new Map());
     loadedGoroutineIds.current = new Set();
+    // Clear failure marks so that a fresh goroutine epoch retries all IDs.
+    failedGoroutineIds.current = new Set();
     // Eagerly load the first batch so the timeline isn't blank on initial render.
     const firstBatch = goroutines.slice(0, SEGMENT_BATCH_SIZE).map((g) => g.goroutine_id);
     if (firstBatch.length > 0) loadSegmentsBatch(firstBatch);
@@ -137,10 +152,13 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
   // Re-fetch processor segments whenever goroutines are refreshed so that the
   // GMP strip is populated during live streaming, not only after the traced
   // process exits and the batch EOF flush runs.
+  // processorFetchId guards against a slow previous fetch clobbering a newer result,
+  // and also prevents setState after the effect has been superseded.
   useEffect(() => {
+    const id = ++processorFetchId.current;
     fetchProcessorTimeline()
-      .then(setProcessorSegments)
-      .catch(() => setProcessorSegments([]));
+      .then((segs) => { if (processorFetchId.current === id) setProcessorSegments(segs); })
+      .catch(() => { if (processorFetchId.current === id) setProcessorSegments([]); });
   }, [goroutines]);
 
   // Handle visible range change from TimelineCanvas — load missing segments.
