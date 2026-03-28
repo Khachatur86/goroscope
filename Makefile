@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run run-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client wasm
+.PHONY: build run run-react run-react-complex dev-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client wasm
 
 build:
 	mkdir -p bin
@@ -15,6 +15,18 @@ run-react: build web
 
 run-react-complex: build web
 	./bin/goroscope run -ui=react -ui-path=web/dist -open-browser ./examples/complex_demo
+
+# dev-react: Go API server (real static analysis on :7070) + Vite dev server
+# (hot reload on :5173).  Vite proxies /api → :7070 automatically.
+#
+# Usage:
+#   make dev-react          # open http://localhost:5173, click "Code" tab → Analyze
+dev-react: build
+	@./bin/goroscope ui & \
+	BGPID=$$!; \
+	trap "kill $$BGPID 2>/dev/null; exit" INT TERM EXIT; \
+	cd web && npm install --silent && npm run dev; \
+	kill $$BGPID 2>/dev/null || true
 
 ui:
 	go run ./cmd/goroscope ui

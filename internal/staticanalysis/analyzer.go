@@ -27,7 +27,7 @@ func Analyze(input AnalyzeInput) (*Report, error) {
 	detectors := allDetectors(enabled)
 
 	fset := token.NewFileSet()
-	report := &Report{}
+	report := &Report{Findings: []Finding{}}
 
 	dirs, err := expandDirs(input.Dirs, input.Recursive)
 	if err != nil {

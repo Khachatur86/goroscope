@@ -60,9 +60,10 @@ export function CodeAnalysis() {
         throw new Error(`${res.status} ${text}`);
       }
       const data: AnalyzeReport = await res.json();
-      // Filter by min severity client-side
-      data.findings = data.findings.filter((f) => f.severity <= minSeverity);
-      setReport(data);
+      setReport({
+        ...data,
+        findings: (data.findings ?? []).filter((f) => f.severity <= minSeverity),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -77,11 +78,19 @@ export function CodeAnalysis() {
           Directories
           <input
             className="ca-input"
+            list="ca-dirs-list"
             value={dirs}
             onChange={(e) => setDirs(e.target.value)}
             placeholder="., ./cmd, ./internal/..."
             spellCheck={false}
           />
+          <datalist id="ca-dirs-list">
+            <option value="." />
+            <option value="./examples/badcode" />
+            <option value="./internal" />
+            <option value="./cmd" />
+            <option value="./examples" />
+          </datalist>
         </label>
 
         <label className="ca-label ca-check">
