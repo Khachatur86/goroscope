@@ -1,0 +1,187 @@
+/* ── Goroutine Groups panel ──────────────────────────────────────── */
+
+.groups-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.groups-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0 0.25rem;
+}
+
+.groups-control-label {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.groups-by-select {
+  background: var(--bg-base);
+  border: 1px solid #334155;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.groups-label-key-input {
+  background: var(--bg-base);
+  border: 1px solid #334155;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-md);
+  width: 160px;
+}
+
+.groups-label-key-input::placeholder {
+  color: var(--text-muted);
+}
+
+.groups-refresh-btn {
+  padding: 0.25rem 0.6rem;
+  font-size: var(--text-2xl);
+  line-height: 1;
+}
+
+.groups-status {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  padding: 0 0.25rem;
+  margin: 0;
+}
+
+.groups-error {
+  color: #f87171;
+}
+
+.groups-summary {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  padding: 0 0.25rem;
+  margin: 0;
+}
+
+.groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groups-row {
+  background: var(--bg-card);
+  border-radius: var(--radius-base);
+  overflow: hidden;
+}
+
+.groups-row-header {
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.groups-row-header:hover {
+  background: #273549;
+}
+
+.groups-expand-icon {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 12px;
+}
+
+.groups-key {
+  flex: 1;
+  font-size: var(--text-md);
+  font-family: ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groups-count {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  background: #334155;
+  color: var(--text-secondary);
+  border-radius: 10px;
+  padding: 0.1rem 0.45rem;
+  flex-shrink: 0;
+}
+
+.groups-state-pills {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.groups-metric {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.groups-row-body {
+  padding: 0.5rem 0.75rem 0.6rem;
+  border-top: 1px solid #1a2537;
+}
+
+.groups-metrics-table {
+  width: 100%;
+  font-size: var(--text-base);
+  border-collapse: collapse;
+  margin-bottom: 0.5rem;
+  color: #cbd5e1;
+}
+
+.groups-metrics-table td {
+  padding: 0.15rem 0.4rem;
+}
+
+.groups-metrics-table td:nth-child(odd) {
+  color: var(--text-muted);
+  width: 30%;
+}
+
+.groups-goroutine-ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.groups-goroutine-id-badge {
+  background: var(--bg-base);
+  border: 1px solid #334155;
+  color: #4da6ff;
+  border-radius: var(--radius-sm);
+  padding: 0.1rem 0.4rem;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+  transition: background 0.1s;
+}
+
+.groups-goroutine-id-badge:hover {
+  background: #1e3a5f;
+  border-color: #4da6ff;
+}
+

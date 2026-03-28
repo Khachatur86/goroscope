@@ -1,0 +1,309 @@
+/* ── Smart Insights banner ───────────────────────────────────────── */
+
+.smart-insights-banner {
+  margin: 0 1.5rem 0.75rem;
+  background: var(--bg-base);
+  border: 1px solid #334155;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.smart-insights-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #1e293b;
+  gap: 0.5rem;
+}
+
+.smart-insights-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.smart-insights-label {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+}
+
+.badge--insight,
+.smart-insights-badge {
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  border-radius: 10px;
+  padding: 0.1rem 0.45rem;
+}
+
+.badge--insight--critical,
+.badge-critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge--insight--warning,
+.badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.smart-insights-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.smart-insights-refresh,
+.smart-insights-dismiss {
+  padding: 0.15rem 0.5rem;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.smart-insights-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Individual insight card ─────────────────────────────────────── */
+
+.insight-card {
+  border-top: 1px solid transparent;
+}
+
+.insight-card + .insight-card {
+  border-top-color: #1e293b;
+}
+
+.insight-card--critical .insight-card-header {
+  border-left: 3px solid #ef4444;
+}
+
+.insight-card--warning .insight-card-header {
+  border-left: 3px solid #f59e0b;
+}
+
+.insight-card--info .insight-card-header {
+  border-left: 3px solid #3b82f6;
+}
+
+.insight-card-header {
+  width: 100%;
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  padding: 0.45rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.insight-card-header:hover {
+  background: #1a2537;
+}
+
+.insight-severity-icon {
+  font-size: var(--text-base);
+  flex-shrink: 0;
+}
+
+.insight-kind-tag {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+.insight-title {
+  flex: 1;
+  font-size: var(--text-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-expand-icon {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.insight-card-body {
+  padding: 0.5rem 0.75rem 0.6rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.insight-description {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.insight-recommendation {
+  font-size: var(--text-base);
+  color: #cbd5e1;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.insight-goroutines,
+.insight-resources {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.insight-goroutines-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+.insight-goroutine-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.insight-goroutines-overflow {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.insight-resource-tag {
+  font-size: var(--text-sm);
+  background: var(--bg-card);
+  border: 1px solid #334155;
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  color: var(--text-secondary);
+  font-family: ui-monospace, monospace;
+}
+
+/* ── Annotation popover ──────────────────────────────────────────────────── */
+
+.annotation-popover {
+  z-index: 900;
+  background: var(--bg-card);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  width: 240px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.annotation-popover-title {
+  font-size: var(--text-base);
+  font-family: "IBM Plex Mono", monospace;
+  color: #fbbf24;
+  font-weight: var(--font-semibold);
+}
+
+.annotation-popover-input {
+  width: 100%;
+  background: var(--bg-base);
+  border: 1px solid rgba(219, 228, 238, 0.15);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  padding: 0.4rem 0.5rem;
+  resize: vertical;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.annotation-popover-input:focus {
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+.annotation-popover-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.annotation-btn {
+  font-size: var(--text-sm);
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.annotation-btn-save {
+  background: #fbbf24;
+  color: #0f172a;
+  font-weight: var(--font-semibold);
+  border-color: #fbbf24;
+}
+
+.annotation-btn-save:hover {
+  background: #f59e0b;
+}
+
+.annotation-btn-delete {
+  background: transparent;
+  color: #f43f5e;
+  border-color: rgba(244, 63, 94, 0.4);
+}
+
+.annotation-btn-delete:hover {
+  background: rgba(244, 63, 94, 0.12);
+}
+
+.annotation-btn-cancel {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.annotation-btn-cancel:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.annotation-popover-hint {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: #475569;
+  font-family: "IBM Plex Mono", monospace;
+  white-space: nowrap;
+}
+
+/* Tooltip extensions for annotations */
+.timeline-tooltip-annotation {
+  color: #fbbf24;
+  display: block;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-tooltip-hint {
+  color: #475569;
+  font-size: 0.7em;
+}
+

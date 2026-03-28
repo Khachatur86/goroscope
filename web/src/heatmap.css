@@ -1,0 +1,119 @@
+/* ── Contention Heatmap ────────────────────────────────────────────────────── */
+
+.heatmap-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.heatmap-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.3rem 0.75rem;
+  background: var(--bg-panel);
+  border-bottom: 1px solid #1e293b;
+  gap: 1rem;
+}
+
+.heatmap-stat {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.heatmap-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.heatmap-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.heatmap-canvas {
+  display: block;
+  width: 100%;
+  cursor: crosshair;
+}
+
+.heatmap-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.5rem;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  padding: 2rem;
+  text-align: center;
+}
+
+.heatmap-empty-hint {
+  font-size: var(--text-sm);
+  color: #475569;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.heatmap-tooltip {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-card);
+  border: 1px solid #334155;
+  border-radius: var(--radius-base);
+  padding: 0.5rem 0.65rem;
+  min-width: 220px;
+  max-width: 320px;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.heatmap-tooltip-resource {
+  font-family: monospace;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  word-break: break-all;
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid #273549;
+}
+
+.heatmap-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-top: 0.2rem;
+}
+
+.heatmap-tooltip-row strong {
+  color: var(--text-primary);
+  font-family: monospace;
+}
+
+.heatmap-tooltip-hint {
+  font-size: var(--text-2xs);
+  color: #475569;
+  margin-top: 0.35rem;
+  border-top: 1px solid #1e293b;
+  padding-top: 0.25rem;
+}
+

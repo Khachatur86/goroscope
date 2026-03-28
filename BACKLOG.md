@@ -641,7 +641,7 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS-6. CSS split — index.css → feature files (P2)
+### ~~DS-6. CSS split — index.css → feature files (P2)~~ — ✅ РЕАЛИЗОВАНО
 
 **Gap:** `index.css` — 3354 строки, один монолит. Секция Analysis panel занимает 743 строки (22%). Невозможно найти стили конкретного компонента без поиска по всему файлу.
 

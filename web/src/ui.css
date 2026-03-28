@@ -1,0 +1,107 @@
+/* ── GIF export button ─────────────────────────────────────────────────────── */
+
+.gif-export-btn {
+  font-family: monospace;
+}
+
+.gif-export-btn--busy {
+  opacity: 0.6;
+  cursor: wait;
+  animation: gif-pulse 1s ease-in-out infinite;
+}
+
+@keyframes gif-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 0.9; }
+}
+
+/* ── Theme switcher (U-5) ─────────────────────────────────────────────────── */
+
+.theme-switcher {
+  position: relative;
+  display: inline-flex;
+}
+
+.theme-switcher-trigger {
+  font-size: var(--text-2xl);
+  padding: 0 8px;
+}
+
+.theme-switcher-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 299;
+}
+
+.theme-switcher-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 300;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+
+.theme-switcher-section-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.theme-switcher-modes {
+  display: flex;
+  gap: 4px;
+}
+
+.theme-mode-btn {
+  flex: 1;
+  padding: 5px 0;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.theme-mode-btn.active,
+.theme-mode-btn:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.theme-switcher-accents {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.theme-accent-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.1s;
+}
+
+.theme-accent-btn:hover {
+  transform: scale(1.15);
+}
+
+.theme-accent-btn.active {
+  border-color: var(--text-primary);
+  transform: scale(1.1);
+}
+

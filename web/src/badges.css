@@ -1,0 +1,262 @@
+/* ── Badge system (.badge + variants) ─────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radius-sm);
+}
+
+/* State badge */
+.badge--state,
+.state-pill {
+  font-size: var(--text-xs);
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.badge--state.RUNNING, .state-pill.RUNNING { background: var(--color-accent); color: var(--bg-base); }
+.badge--state.RUNNABLE, .state-pill.RUNNABLE { background: var(--color-runnable); color: var(--bg-base); }
+.badge--state.WAITING, .state-pill.WAITING { background: var(--color-waiting); color: var(--bg-base); }
+.badge--state.BLOCKED, .state-pill.BLOCKED { background: var(--color-blocked); color: white; }
+.badge--state.SYSCALL, .state-pill.SYSCALL { background: var(--color-syscall); color: var(--bg-base); }
+.badge--state.DONE, .state-pill.DONE { background: var(--color-done); color: white; }
+
+/* Legend badge (coloured chip in timeline legend and topbar) */
+.badge--legend,
+.legend-chip {
+  font-size: 0.6rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  color: var(--bg-base);
+  font-weight: var(--font-semibold);
+}
+
+/* Diff status badge */
+.badge--diff,
+.diff-badge {
+  font-size: var(--text-xs);
+  padding: 0.15rem 0.35rem;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-medium);
+}
+
+/* Insight severity badge */
+.badge--insight,
+.smart-insights-badge {
+  font-weight: var(--font-bold);
+  border-radius: var(--radius-full);
+  padding: 0.1rem 0.45rem;
+  font-size: var(--text-xs);
+}
+
+.lane-item-title {
+  font-weight: var(--font-semibold);
+  min-width: 3rem;
+}
+
+/* Thin colour strip at the bottom of a goroutine list row showing lifetime. */
+.lifetime-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  pointer-events: none;
+  opacity: 0.82;
+  transition: opacity 0.2s ease;
+}
+
+.lifetime-bar--empty {
+  background: transparent;
+}
+
+.lane-item:hover .lifetime-bar,
+.lane-item.active .lifetime-bar {
+  opacity: 1;
+  height: 4px;
+}
+
+.lane-item-meta {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Pin button (U-3) */
+.pin-btn {
+  background: none;
+  border: none;
+  padding: 0 4px 0 0;
+  font-size: var(--text-lg);
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pin-btn:hover {
+  color: #facc15;
+}
+
+.pin-btn[aria-pressed="true"] {
+  color: #facc15;
+}
+
+.lane-item.pinned {
+  border-color: rgba(250, 204, 21, 0.4);
+  background: rgba(250, 204, 21, 0.06);
+}
+
+/* Watchlist note in Inspector (U-3) */
+.inspector-note-section {
+  border-top: 1px solid rgba(250, 204, 21, 0.2);
+  padding-top: 0.5rem;
+}
+
+.inspector-note-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  padding: 0.3rem 0.5rem;
+  margin-top: 0.25rem;
+  outline: none;
+}
+
+.inspector-note-input:focus {
+  border-color: #facc15;
+}
+
+.lane-more {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  margin: 0.5rem 0 0 0;
+}
+
+.inspector.empty {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.inspector-segment-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+}
+
+.inspector-segment-hint--scrub {
+  color: #facc15;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.inspector-section {
+  margin-bottom: 1rem;
+}
+
+.inspector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.inspector-label {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+.inspector-label-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.inspector-value {
+  font-size: var(--text-xl);
+}
+
+.inspector-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.inspector-label-pair {
+  padding: 0.2rem 0.5rem;
+  background: rgba(51, 65, 85, 0.6);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-lg);
+  font-family: ui-monospace, monospace;
+}
+
+.inspector-goroutine-id {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inspector-copy-id {
+  padding: 0.2rem 0.4rem;
+  font-size: var(--text-base);
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.inspector-copy-id:hover {
+  background: #475569;
+  color: var(--text-primary);
+}
+
+.inspector-stack-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.inspector-copy-stack {
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-base);
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.inspector-copy-stack:hover {
+  background: #475569;
+  color: var(--text-primary);
+}
+
+.spawn-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.spawn-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.spawn-tree-role {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  min-width: 4rem;
+}
+

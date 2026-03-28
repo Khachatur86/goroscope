@@ -1,0 +1,345 @@
+/* ── Analysis panel (bottom, session-wide) ─────────────────────────────────── */
+
+.analysis-panel {
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-top: 1px solid #273549;
+  overflow: hidden;
+}
+
+.analysis-panel-header {
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+  border-bottom: 1px solid #273549;
+  background: #172032;
+  gap: 0;
+}
+
+.analysis-tabs {
+  display: flex;
+  flex: 1;
+  gap: 0;
+}
+
+.analysis-tab {
+  padding: 0.45rem 1rem;
+  font-size: var(--text-base);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.analysis-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.analysis-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: #60a5fa;
+}
+
+.analysis-collapse-btn {
+  background: none;
+  border: none;
+  color: #475569;
+  font-size: var(--text-lg);
+  cursor: pointer;
+  padding: 0.45rem 0.75rem;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.analysis-collapse-btn:hover {
+  color: var(--text-secondary);
+}
+
+.analysis-panel-body {
+  padding: 0.75rem 1rem;
+  overflow: auto;
+  height: 240px;
+}
+
+.hotspot-row {
+  cursor: pointer;
+}
+
+.hotspot-row:hover {
+  background: #334155;
+}
+
+.hotspot-callsite {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: var(--text-md);
+}
+
+.hotspot-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.hotspot-row.active {
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.inspector-hint {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  margin: 0 0 0.5rem 0;
+}
+
+.inspector-clear-hotspot {
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.4rem;
+  font-size: var(--text-base);
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.inspector-clear-hotspot:hover {
+  background: #475569;
+  color: var(--text-primary);
+}
+
+.deadlock-hints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.deadlock-hint-block {
+  padding: 0.5rem 0.75rem;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid #334155;
+  border-radius: var(--radius-base);
+  font-size: var(--text-lg);
+  line-height: 1.4;
+}
+
+.deadlock-hint-chain {
+  word-break: break-word;
+}
+
+.deadlock-blame-gid {
+  padding: 0.1rem 0.35rem;
+  margin: 0 0.1rem;
+  font-size: inherit;
+  font-weight: var(--font-semibold);
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid #3b82f6;
+  border-radius: var(--radius-sm);
+  color: #60a5fa;
+  cursor: pointer;
+}
+
+.deadlock-blame-gid:hover {
+  background: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.resource-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #334155;
+}
+
+.section-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--text-xl);
+  cursor: pointer;
+  padding: 0;
+}
+
+.section-toggle:hover {
+  color: var(--text-primary);
+}
+
+.section-count {
+  margin-left: 0.25rem;
+}
+
+.resource-graph-table {
+  margin-top: 0.5rem;
+}
+
+.resource-graph-table-inner {
+  width: 100%;
+  font-size: var(--text-lg);
+  border-collapse: collapse;
+}
+
+.resource-graph-table-inner th,
+.resource-graph-table-inner td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #334155;
+}
+
+.resource-graph-row:hover {
+  background: #334155;
+}
+
+.resource-graph-row-highlight {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.resource-graph-gid {
+  padding: 0.2rem 0.4rem;
+  font-size: var(--text-md);
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: var(--radius-sm);
+  color: #60a5fa;
+  cursor: pointer;
+}
+
+.resource-graph-gid:hover {
+  background: #475569;
+}
+
+.resource-graph-resource {
+  font-family: monospace;
+  font-size: var(--text-md);
+}
+
+.resource-graph-view-toggle {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.resource-graph-view-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-base);
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.resource-graph-view-btn:hover {
+  background: #475569;
+  color: var(--text-primary);
+}
+
+.resource-graph-view-btn.active {
+  background: rgba(96, 165, 250, 0.2);
+  border-color: #60a5fa;
+  color: var(--text-primary);
+}
+
+.resource-contention-list {
+  margin-top: 0.5rem;
+}
+
+.resource-contention-empty {
+  font-size: var(--text-lg);
+  color: var(--text-muted);
+  margin: 0.5rem 0;
+}
+
+.resource-contention-bar-wrap {
+  position: relative;
+  min-width: 60px;
+  height: 18px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.resource-contention-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #f59e0b, #f43f5e);
+  border-radius: var(--radius-sm);
+  min-width: 2px;
+}
+
+.resource-contention-bar-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  text-shadow: 0 0 2px #0f172a;
+  z-index: 1;
+}
+
+.resource-contention-avg {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+}
+
+.resource-contention-sort {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.resource-contention-sort:hover {
+  color: var(--text-primary);
+}
+
+.resource-contention-sort.active {
+  color: #60a5fa;
+  font-weight: var(--font-semibold);
+}
+
+.timeline-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.btn--ghost,
+.timeline-control-button {
+  padding: 0.35rem 0.6rem;
+  font-size: var(--text-md);
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: var(--radius-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.btn--ghost:hover,
+.timeline-control-button:hover {
+  background: #475569;
+  color: var(--text-primary);
+}
+
+.btn--ghost:disabled,
+.timeline-control-button:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.focus-related-button.active {
+  color: #fff;
+  background: linear-gradient(135deg, #1d4ed8, #0f766e);
+}
+

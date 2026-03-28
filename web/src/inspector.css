@@ -1,0 +1,215 @@
+/* ── SpawnTree v2 ──────────────────────────────────────────────────────────── */
+.spawn-tree-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.spawn-tree-empty {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+.spawn-tree-v2-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.spawn-tree-action-btn {
+  font-size: var(--text-base);
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid #475569;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.spawn-tree-action-btn:hover {
+  background: #334155;
+  color: var(--text-primary);
+}
+
+.spawn-tree-action-btn--active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.spawn-tree-action-btn--active:hover {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+.spawn-tree-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.spawn-tree-section-label {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.spawn-tree-ancestor-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.spawn-tree-ancestor-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.spawn-tree-ancestor-arrow {
+  font-size: var(--text-base);
+  color: #475569;
+  margin-left: 0.25rem;
+}
+
+.spawn-tree-ancestor-row--self .spawn-tree-chip {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+}
+
+.spawn-tree-self-badge {
+  font-size: var(--text-xs);
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 3px;
+  padding: 0.1rem 0.35rem;
+}
+
+.spawn-tree-descendants {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-left: 1px solid #1e293b;
+  padding-left: 0.25rem;
+}
+
+/* Recursive node */
+.spawn-node {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.spawn-node-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.spawn-node-expand {
+  width: 1rem;
+  height: 1rem;
+  font-size: var(--text-sm);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+
+.spawn-node-expand:hover {
+  color: var(--text-secondary);
+}
+
+.spawn-node-expand--leaf {
+  cursor: default;
+  color: #334155;
+}
+
+.spawn-node-count {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 0 0.35rem;
+  line-height: 1.4;
+}
+
+.spawn-node-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  border-left: 1px solid #1e293b;
+  margin-left: 0.75rem;
+}
+
+/* Chip variant for spawn tree */
+.spawn-tree-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 14rem;
+  overflow: hidden;
+}
+
+.spawn-tree-chip--dimmed {
+  opacity: 0.45;
+}
+
+.spawn-tree-chip-fn {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 8rem;
+}
+
+/* State dot for spawn tree chips */
+.state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.state-dot--running  { background: var(--color-accent); }
+.state-dot--runnable { background: #8394a8; }
+.state-dot--waiting  { background: #f59e0b; }
+.state-dot--blocked  { background: #f43f5e; }
+.state-dot--syscall  { background: #4da6ff; }
+.state-dot--done     { background: #4b5563; }
+
+.goroutine-chip {
+  padding: 0.2rem 0.5rem;
+  font-size: var(--text-md);
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: var(--radius-sm);
+  color: #60a5fa;
+  cursor: pointer;
+}
+
+.goroutine-chip:hover {
+  background: #475569;
+}
+
+.inspector-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  gap: 0.5rem;
+}
+

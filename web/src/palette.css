@@ -1,0 +1,212 @@
+/* ── Command Palette ───────────────────────────────────────────────────────── */
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(5, 10, 20, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.palette-modal {
+  width: min(640px, 92vw);
+  background: #111c2e;
+  border: 1px solid #273549;
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+
+.palette-search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+
+.palette-search-icon {
+  font-size: var(--text-xl);
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.palette-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0.85rem 0;
+  font-size: var(--text-xl);
+  color: var(--text-primary);
+  font-family: inherit;
+  caret-color: var(--color-accent);
+}
+
+.palette-input::placeholder {
+  color: #334155;
+}
+
+.palette-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #475569;
+  font-size: var(--text-md);
+  padding: 0.2rem 0.3rem;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.palette-clear:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.palette-group-header {
+  padding: 0.4rem 0.85rem 0.2rem;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #334155;
+  user-select: none;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+  border-radius: var(--radius-base);
+  margin: 0 0.3rem;
+  transition: background 0.08s;
+}
+
+.palette-item.active {
+  background: #172035;
+}
+
+.palette-item:hover {
+  background: #172035;
+}
+
+.palette-item-icon {
+  width: 1.4rem;
+  text-align: center;
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.palette-item-icon--goroutine {
+  background: #172035;
+  border: 1px solid #1e3a5f;
+  border-radius: var(--radius-sm);
+  color: #4da6ff;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-bold);
+  font-family: monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.4rem;
+}
+
+.palette-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.palette-item-label {
+  font-size: var(--text-md);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-item-desc {
+  font-size: var(--text-sm);
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.05rem;
+}
+
+.palette-item-kbd {
+  font-family: monospace;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  background: var(--bg-base);
+  border: 1px solid #1e293b;
+  border-radius: var(--radius-sm);
+  padding: 0.1rem 0.35rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.palette-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: var(--text-md);
+  color: #475569;
+}
+
+.palette-footer {
+  display: flex;
+  gap: 1rem;
+  padding: 0.45rem 0.85rem;
+  border-top: 1px solid #1e293b;
+  flex-shrink: 0;
+  font-size: var(--text-2xs);
+  color: #334155;
+}
+
+.palette-footer kbd {
+  font-family: monospace;
+  background: #172035;
+  border: 1px solid #1e293b;
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+  margin-right: 0.25rem;
+  color: var(--text-muted);
+}
+
+/* ⌘K topbar trigger button */
+.action-button.palette-trigger {
+  font-family: monospace;
+  font-size: var(--text-sm);
+  letter-spacing: 0.03em;
+  background: var(--bg-base);
+  border-color: #273549;
+  color: var(--text-muted);
+  min-width: 2.8rem;
+}
+
+.action-button.palette-trigger:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
