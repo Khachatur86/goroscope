@@ -73,10 +73,10 @@ function GoroutineRow({
       >
         {g ? (
           <>
-            <span className={`state-pill ${g.state}`}>{g.state}</span>
+            <span className={`badge badge--state ${g.state}`}>{g.state}</span>
             <span className="lane-item-title">G{g.goroutine_id}</span>
             {delta && (
-              <span className={`diff-badge diff-badge--${delta.status}`} title={`Wait Δ: ${(delta.wait_delta_ns / 1e6).toFixed(2)}ms`}>
+              <span className={`badge badge--diff badge--diff--{delta.status}`} title={`Wait Δ: ${(delta.wait_delta_ns / 1e6).toFixed(2)}ms`}>
                 {delta.status}
               </span>
             )}
@@ -84,7 +84,7 @@ function GoroutineRow({
           </>
         ) : (
           <>
-            <span className="state-pill diff-absent-pill">—</span>
+            <span className="badge badge--state diff-absent-pill">—</span>
             <span className="lane-item-title">G{row.id}</span>
             <span className="lane-item-meta">not in {data.isBaseline ? "baseline" : "compare"}</span>
           </>
@@ -346,12 +346,12 @@ export function CompareView({ onClose }: CompareViewProps) {
             </p>
           )}
           <div className="compare-modal-actions">
-            <button type="button" className="action-button secondary" onClick={onClose}>
+            <button type="button" className="btn btn--secondary" onClick={onClose}>
               Cancel
             </button>
             <button
               type="button"
-              className="action-button"
+              className="btn btn--primary"
               onClick={handleCompare}
               disabled={loading || !fileA || !fileB}
             >
@@ -413,14 +413,14 @@ export function CompareView({ onClose }: CompareViewProps) {
         </div>
         <div className="compare-view-actions">
           <span className="compare-legend">
-            <span className="diff-badge diff-badge--improved">improved</span>
-            <span className="diff-badge diff-badge--regressed">regressed</span>
-            <span className="diff-badge diff-badge--unchanged">unchanged</span>
+            <span className="badge badge--diff badge--diff--improved">improved</span>
+            <span className="badge badge--diff badge--diff--regressed">regressed</span>
+            <span className="badge badge--diff badge--diff--unchanged">unchanged</span>
           </span>
-          <button type="button" className="action-button secondary" onClick={handleReset}>
+          <button type="button" className="btn btn--secondary" onClick={handleReset}>
             New compare
           </button>
-          <button type="button" className="action-button secondary" onClick={onClose}>
+          <button type="button" className="btn btn--secondary" onClick={onClose}>
             Close
           </button>
         </div>

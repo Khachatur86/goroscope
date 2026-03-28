@@ -130,17 +130,17 @@ export function SmartInsights({ refreshKey, onSelectGoroutine }: Props) {
       <div className="smart-insights-header">
         <span className="smart-insights-title">
           {criticalCount > 0 && (
-            <span className="smart-insights-badge badge-critical">{criticalCount} critical</span>
+            <span className="badge badge--insight badge--insight--critical">{criticalCount} critical</span>
           )}
           {warningCount > 0 && (
-            <span className="smart-insights-badge badge-warning">{warningCount} warning</span>
+            <span className="badge badge--insight badge--insight--warning">{warningCount} warning</span>
           )}
           <span className="smart-insights-label">Smart Insights</span>
         </span>
         <div className="smart-insights-actions">
           <button
             type="button"
-            className="action-button secondary smart-insights-refresh"
+            className="btn btn--secondary smart-insights-refresh"
             onClick={load}
             title={loading ? "Refreshing insights" : "Refresh insights"}
             disabled={loading}
@@ -149,7 +149,7 @@ export function SmartInsights({ refreshKey, onSelectGoroutine }: Props) {
           </button>
           <button
             type="button"
-            className="action-button secondary smart-insights-dismiss"
+            className="btn btn--secondary smart-insights-dismiss"
             onClick={() => setDismissed(true)}
             title="Dismiss"
           >

@@ -228,25 +228,98 @@ body {
 .stream-status--live       { color: #34d399; border-color: #065f46; }
 .stream-status--disconnected { color: #f87171; border-color: #7f1d1d; }
 
-/* ── Action buttons ────────────────────────────────────────────────────────── */
+/* ── Button system (.btn + variants) ──────────────────────────────────────── */
+.btn,
 .action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   padding: 0.3rem 0.7rem;
-  background: #3b82f6;
-  color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-base);
   cursor: pointer;
   font-size: var(--text-base);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  text-decoration: none;
 }
 
-.action-button:hover { background: #2563eb; }
+/* Primary */
+.btn--primary,
+.action-button:not(.secondary) {
+  background: #3b82f6;
+  color: white;
+}
 
+.btn--primary:hover,
+.action-button:not(.secondary):hover { background: #2563eb; }
+
+/* Secondary */
+.btn--secondary,
 .action-button.secondary {
   background: #334155;
   color: var(--text-primary);
 }
 
+.btn--secondary:hover,
 .action-button.secondary:hover { background: #475569; }
+
+/* Ghost */
+.btn--ghost {
+  padding: 0.35rem 0.6rem;
+  background: #334155;
+  border: 1px solid #475569;
+  color: var(--text-secondary);
+}
+
+.btn--ghost:hover {
+  background: #475569;
+  color: var(--text-primary);
+}
+
+.btn--ghost:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+/* Danger */
+.btn--danger {
+  background: transparent;
+  border: 1px solid rgba(244, 63, 94, 0.4);
+  color: var(--color-blocked);
+}
+
+.btn--danger:hover {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: var(--color-blocked);
+}
+
+/* Icon (compact, square-ish) */
+.btn--icon {
+  padding: 0.2rem 0.4rem;
+  font-size: var(--text-sm);
+}
+
+/* Chip (filter/preset selection) */
+.btn--chip {
+  padding: 0.35rem 0.6rem;
+  font-size: var(--text-sm);
+  background: var(--bg-card);
+  border: 1px solid #334155;
+  color: var(--text-secondary);
+  border-radius: var(--radius-base);
+}
+
+.btn--chip:hover {
+  border-color: #475569;
+  color: var(--text-primary);
+}
+
+.btn--chip.active {
+  background: rgba(16, 207, 184, 0.1);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
 
 /* ── Legend chips (used in topbar and elsewhere) ───────────────────────────── */
 .legend-chip {
@@ -338,6 +411,7 @@ body {
   margin-bottom: 0.75rem;
 }
 
+.btn--chip,
 .preset-chip {
   padding: 0.35rem 0.6rem;
   font-size: var(--text-md);
@@ -346,16 +420,22 @@ body {
   border-radius: var(--radius-base);
   color: var(--text-secondary);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
+.btn--chip:hover,
 .preset-chip:hover {
   background: #475569;
   color: var(--text-primary);
 }
 
+.btn--chip.active,
 .preset-chip.active {
   background: rgba(244, 63, 94, 0.2);
-  border-color: #f43f5e;
+  border-color: var(--color-blocked);
   color: #f8fafc;
 }
 
@@ -459,21 +539,60 @@ body {
   background: #1e3a5f;
 }
 
+/* ── Badge system (.badge + variants) ─────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radius-sm);
+}
+
+/* State badge */
+.badge--state,
 .state-pill {
   font-size: var(--text-xs);
   padding: 0.2rem 0.4rem;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
-  /* Smooth colour transition when a goroutine changes state live */
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-.state-pill.RUNNING { background: var(--color-accent); color: #0f172a; }
-.state-pill.RUNNABLE { background: #8394a8; color: #0f172a; }
-.state-pill.WAITING { background: #f59e0b; color: #0f172a; }
-.state-pill.BLOCKED { background: #f43f5e; color: white; }
-.state-pill.SYSCALL { background: #4da6ff; color: #0f172a; }
-.state-pill.DONE { background: #4b5563; color: white; }
+.badge--state.RUNNING, .state-pill.RUNNING { background: var(--color-accent); color: var(--bg-base); }
+.badge--state.RUNNABLE, .state-pill.RUNNABLE { background: var(--color-runnable); color: var(--bg-base); }
+.badge--state.WAITING, .state-pill.WAITING { background: var(--color-waiting); color: var(--bg-base); }
+.badge--state.BLOCKED, .state-pill.BLOCKED { background: var(--color-blocked); color: white; }
+.badge--state.SYSCALL, .state-pill.SYSCALL { background: var(--color-syscall); color: var(--bg-base); }
+.badge--state.DONE, .state-pill.DONE { background: var(--color-done); color: white; }
+
+/* Legend badge (coloured chip in timeline legend and topbar) */
+.badge--legend,
+.legend-chip {
+  font-size: 0.6rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  color: var(--bg-base);
+  font-weight: var(--font-semibold);
+}
+
+/* Diff status badge */
+.badge--diff,
+.diff-badge {
+  font-size: var(--text-xs);
+  padding: 0.15rem 0.35rem;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-medium);
+}
+
+/* Insight severity badge */
+.badge--insight,
+.smart-insights-badge {
+  font-weight: var(--font-bold);
+  border-radius: var(--radius-full);
+  padding: 0.1rem 0.45rem;
+  font-size: var(--text-xs);
+}
 
 .lane-item-title {
   font-weight: var(--font-semibold);
@@ -1210,6 +1329,7 @@ body {
   margin-bottom: 0.75rem;
 }
 
+.btn--ghost,
 .timeline-control-button {
   padding: 0.35rem 0.6rem;
   font-size: var(--text-md);
@@ -1218,15 +1338,21 @@ body {
   border-radius: var(--radius-base);
   color: var(--text-secondary);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
+.btn--ghost:hover,
 .timeline-control-button:hover {
   background: #475569;
   color: var(--text-primary);
 }
 
+.btn--ghost:disabled,
 .timeline-control-button:disabled {
-  opacity: 0.5;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 
@@ -1794,16 +1920,19 @@ body {
   font-weight: var(--font-medium);
 }
 
+.badge--diff--improved,
 .diff-badge--improved {
   background: rgba(52, 211, 153, 0.25);
   color: #34d399;
 }
 
+.badge--diff--regressed,
 .diff-badge--regressed {
   background: rgba(248, 113, 113, 0.25);
   color: #f87171;
 }
 
+.badge--diff--unchanged,
 .diff-badge--unchanged {
   background: rgba(148, 163, 184, 0.2);
   color: var(--text-secondary);
@@ -2086,6 +2215,7 @@ body {
   letter-spacing: 0.03em;
 }
 
+.badge--insight,
 .smart-insights-badge {
   font-size: var(--text-sm);
   font-weight: var(--font-bold);
@@ -2093,12 +2223,14 @@ body {
   padding: 0.1rem 0.45rem;
 }
 
+.badge--insight--critical,
 .badge-critical {
   background: rgba(239, 68, 68, 0.15);
   color: #f87171;
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+.badge--insight--warning,
 .badge-warning {
   background: rgba(245, 158, 11, 0.15);
   color: #fbbf24;
@@ -2939,6 +3071,7 @@ body {
   gap: 0.5rem;
 }
 
+.badge--dep-diff,
 .dep-diff-badge {
   font-size: var(--text-sm);
   font-weight: var(--font-bold);
@@ -2947,12 +3080,14 @@ body {
   border-radius: var(--radius-sm);
 }
 
+.badge--dep-diff--appeared,
 .dep-diff-appeared {
   background: rgba(34, 197, 94, 0.15);
   color: #86efac;
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
+.badge--dep-diff--disappeared,
 .dep-diff-disappeared {
   background: rgba(244, 63, 94, 0.12);
   color: #fca5a5;

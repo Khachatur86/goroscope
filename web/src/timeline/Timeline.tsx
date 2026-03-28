@@ -324,14 +324,14 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
     <div className={`timeline-simple ${isHeatmap ? "timeline-heatmap" : ""}`}>
       <div className="timeline-legend">
         {Object.entries(COLORS).map(([state, color]) => (
-          <span key={state} className="legend-chip" style={{ background: color }}>
+          <span key={state} className="badge badge--legend" style={{ background: color }}>
             {state}
           </span>
         ))}
         <div className="timeline-brush-controls">
           <button
             type="button"
-            className={`timeline-control-button timeline-brush-toggle ${brushMode ? "active" : ""}`}
+            className={`btn btn--ghost timeline-brush-toggle ${brushMode ? "active" : ""}`}
             onClick={() => {
               const next = !brushMode;
               setBrushMode(next);
@@ -345,7 +345,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
           {brushRange && (
             <button
               type="button"
-              className="timeline-control-button timeline-brush-clear"
+              className="btn btn--ghost timeline-brush-clear"
               onClick={clearBrush}
               title="Clear time range selection"
             >
@@ -359,7 +359,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
           )}
           <button
             type="button"
-            className={`timeline-control-button lifecycle-markers-toggle${showLifecycleMarkers ? " active" : ""}`}
+            className={`btn btn--ghost lifecycle-markers-toggle${showLifecycleMarkers ? " active" : ""}`}
             onClick={() => setShowLifecycleMarkers((v) => !v)}
             title="Toggle goroutine birth ▲ / death ▼ markers"
             aria-pressed={showLifecycleMarkers}

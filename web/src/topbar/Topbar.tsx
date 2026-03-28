@@ -44,12 +44,12 @@ export function Topbar({
       <div className="topbar-brand">
         <span className="topbar-title">Goroscope</span>
         <span className="topbar-legend">
-          <span className="legend-chip running">RUN</span>
-          <span className="legend-chip runnable">RUNNABLE</span>
-          <span className="legend-chip waiting">WAIT</span>
-          <span className="legend-chip blocked">BLOCK</span>
-          <span className="legend-chip syscall">SYSCALL</span>
-          <span className="legend-chip done">DONE</span>
+          <span className="badge badge--legend running">RUN</span>
+          <span className="badge badge--legend runnable">RUNNABLE</span>
+          <span className="badge badge--legend waiting">WAIT</span>
+          <span className="badge badge--legend blocked">BLOCK</span>
+          <span className="badge badge--legend syscall">SYSCALL</span>
+          <span className="badge badge--legend done">DONE</span>
         </span>
       </div>
 
@@ -118,21 +118,21 @@ export function Topbar({
         </span>
         <button
           type="button"
-          className="action-button palette-trigger"
+          className="btn btn--primary palette-trigger"
           onClick={onOpenPalette}
           title="Command palette (⌘K)"
         >
           ⌘K
         </button>
-        <button id="copy-link-btn" type="button" className="action-button secondary" onClick={onCopyLink}>
+        <button id="copy-link-btn" type="button" className="btn btn--secondary" onClick={onCopyLink}>
           Link
         </button>
-        <button type="button" className="action-button" onClick={onRefresh}>
+        <button type="button" className="btn btn--primary" onClick={onRefresh}>
           Refresh
         </button>
         <button
           type="button"
-          className="action-button secondary"
+          className="btn btn--secondary"
           onClick={onOpenCapture}
           disabled={replayUploading}
           title="Open .gtrace capture file (or drag-and-drop)"
@@ -141,7 +141,7 @@ export function Topbar({
         </button>
         <button
           type="button"
-          className="action-button secondary"
+          className="btn btn--secondary"
           onClick={onCompare}
           title="Compare two .gtrace captures"
         >
@@ -150,7 +150,7 @@ export function Topbar({
         <a
           href="/api/v1/replay/export"
           download
-          className="action-button secondary"
+          className="btn btn--secondary"
           title="Download current session as .gtrace file"
         >
           Export

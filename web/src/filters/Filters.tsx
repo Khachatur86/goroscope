@@ -67,21 +67,21 @@ export function Filters({ filters, onFiltersChange, onJumpTo, jumpToInputRef, di
   return (
     <>
       <div className="filter-presets">
-        <button type="button" className="preset-chip" onClick={() => applyPreset("all")}>
+        <button type="button" className="btn btn--chip" onClick={() => applyPreset("all")}>
           All
         </button>
-        <button type="button" className="preset-chip" onClick={() => applyPreset("blocked")}>
+        <button type="button" className="btn btn--chip" onClick={() => applyPreset("blocked")}>
           Blocked
         </button>
-        <button type="button" className="preset-chip" onClick={() => applyPreset("channels")}>
+        <button type="button" className="btn btn--chip" onClick={() => applyPreset("channels")}>
           Channels
         </button>
-        <button type="button" className="preset-chip" onClick={() => applyPreset("mutex")}>
+        <button type="button" className="btn btn--chip" onClick={() => applyPreset("mutex")}>
           Mutex
         </button>
         <button
           type="button"
-          className={`preset-chip ${filters.showLeakOnly ? "active" : ""}`}
+          className={`btn btn--chip ${filters.showLeakOnly ? "active" : ""}`}
           onClick={() => applyPreset("leaking")}
           title="Goroutines in WAITING/BLOCKED ≥30s (potential leaks)"
         >

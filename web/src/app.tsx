@@ -769,7 +769,7 @@ export function App() {
             <h2>Timeline</h2>
             <button
               type="button"
-              className={`timeline-control-button focus-related-button ${relatedFocus ? "active" : ""}`}
+              className={`btn btn--ghost focus-related-button ${relatedFocus ? "active" : ""}`}
               onClick={() => setRelatedFocus((v) => !v)}
               disabled={selectedId === null}
               title="Focus on selected goroutine and related (parent, children, resource edges)"
@@ -779,7 +779,7 @@ export function App() {
             </button>
             <button
               type="button"
-              className="timeline-control-button"
+              className="btn btn--ghost"
               onClick={() => setZoomToSelected(true)}
               disabled={selectedId === null}
               title="Zoom timeline to selected goroutine (Z)"
@@ -789,34 +789,34 @@ export function App() {
             {zoomToSelected && (
               <button
                 type="button"
-                className="timeline-control-button reset-zoom-button"
+                className="btn btn--ghost reset-zoom-button"
                 onClick={() => setZoomToSelected(false)}
                 title="Reset zoom"
               >
                 Reset zoom
               </button>
             )}
-            <button type="button" className="timeline-control-button" onClick={handleSavePng} title="Save timeline as PNG (P)">
+            <button type="button" className="btn btn--ghost" onClick={handleSavePng} title="Save timeline as PNG (P)">
               Save PNG
             </button>
             <button
               type="button"
-              className={`timeline-control-button gif-export-btn ${gifExporting ? "gif-export-btn--busy" : ""}`}
+              className={`btn btn--ghost gif-export-btn ${gifExporting ? "gif-export-btn--busy" : ""}`}
               onClick={handleSaveGif}
               disabled={gifExporting}
               title="Export timeline as animated GIF"
             >
               {gifExporting ? "GIF…" : "Save GIF"}
             </button>
-            <button type="button" className="timeline-control-button" onClick={handleExportJson} title="Export timeline as JSON">
+            <button type="button" className="btn btn--ghost" onClick={handleExportJson} title="Export timeline as JSON">
               Export JSON
             </button>
-            <button type="button" className="timeline-control-button" onClick={handleExportChromeTrace} title="Export for chrome://tracing">
+            <button type="button" className="btn btn--ghost" onClick={handleExportChromeTrace} title="Export for chrome://tracing">
               Export Trace
             </button>
             <button
               type="button"
-              className="timeline-control-button"
+              className="btn btn--ghost"
               onClick={handleFullscreen}
               title="Fullscreen timeline"
               aria-pressed={isFullscreen}
@@ -825,7 +825,7 @@ export function App() {
             </button>
             <button
               type="button"
-              className={`timeline-control-button view-toggle-button ${viewMode === "heatmap" ? "active" : ""}`}
+              className={`btn btn--ghost view-toggle-button ${viewMode === "heatmap" ? "active" : ""}`}
               onClick={() => setViewMode((v) => (v === "lanes" ? "heatmap" : "lanes"))}
               title="Toggle lanes / heatmap view"
               aria-pressed={viewMode === "heatmap"}
@@ -838,7 +838,7 @@ export function App() {
               <span className="playback-controls">
                 <button
                   type="button"
-                  className="timeline-control-button playback-btn"
+                  className="btn btn--ghost playback-btn"
                   title="Reset playback to start"
                   onClick={() => { setIsPlaying(false); setScrubTimeNS(traceMinNS); }}
                 >
@@ -846,7 +846,7 @@ export function App() {
                 </button>
                 <button
                   type="button"
-                  className={`timeline-control-button playback-btn${isPlaying ? " active" : ""}`}
+                  className={`btn btn--ghost playback-btn${isPlaying ? " active" : ""}`}
                   title={isPlaying ? "Pause" : "Play"}
                   onClick={() => setIsPlaying((v) => !v)}
                 >
@@ -856,7 +856,7 @@ export function App() {
                   <button
                     key={s}
                     type="button"
-                    className={`timeline-control-button playback-speed-btn${playSpeed === s ? " active" : ""}`}
+                    className={`btn btn--ghost playback-speed-btn${playSpeed === s ? " active" : ""}`}
                     onClick={() => setPlaySpeed(s)}
                     title={`${s}× speed`}
                   >

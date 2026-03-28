@@ -32,7 +32,7 @@ export function GoroutineRow({ index, style, data }: ListChildComponentProps<Gor
         >
           {isPinned ? "★" : "☆"}
         </button>
-        <span className={`state-pill ${g.state}`}>{g.state}</span>
+        <span className={`badge badge--state ${g.state}`}>{g.state}</span>
         <span className="lane-item-title">G{g.goroutine_id}</span>
         <span className="lane-item-meta">
           {note || (g.labels?.function ?? g.reason ?? "—")}

@@ -219,7 +219,7 @@ export function Inspector({ goroutine, goroutines, segmentOverride, onSelectGoro
   return (
     <div className="inspector">
       <div className="inspector-section">
-        <div className={`state-pill ${state}`}>{state}</div>
+        <div className={`badge badge--state ${state}`}>{state}</div>
         {segmentOverride && (
           <span
             className={`inspector-segment-hint${isScrubActive ? " inspector-segment-hint--scrub" : ""}`}

@@ -29,7 +29,7 @@ function StatePills({ states }: { states: Record<string, number> }) {
   return (
     <span className="groups-state-pills">
       {STATE_ORDER.filter((s) => (states[s] ?? 0) > 0).map((s) => (
-        <span key={s} className={`state-pill ${s}`} title={`${s}: ${states[s]}`}>
+        <span key={s} className={`badge badge--state ${s}`} title={`${s}: ${states[s]}`}>
           {states[s]}
         </span>
       ))}
@@ -164,7 +164,7 @@ export function GoroutineGroups({ onSelectGoroutine }: Props) {
             aria-label="Label key to group by"
           />
         )}
-        <button type="button" className="action-button secondary groups-refresh-btn" onClick={load}>
+        <button type="button" className="btn btn--secondary groups-refresh-btn" onClick={load}>
           ↻
         </button>
       </div>

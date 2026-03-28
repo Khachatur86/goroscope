@@ -410,7 +410,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
         {!diffActive ? (
           <button
             type="button"
-            className="timeline-control-button diff-snapshot-btn"
+            className="btn btn--ghost diff-snapshot-btn"
             onClick={handleSnapshot}
             title="Snapshot current goroutines as baseline for diff"
           >
@@ -418,15 +418,15 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
           </button>
         ) : (
           <div className="dep-diff-status">
-            <span className="dep-diff-badge dep-diff-appeared">
+            <span className="badge badge--dep-diff badge--dep-diff--appeared">
               +{appeared} appeared
             </span>
-            <span className="dep-diff-badge dep-diff-disappeared">
+            <span className="badge badge--dep-diff badge--dep-diff--disappeared">
               −{disappeared} gone
             </span>
             <button
               type="button"
-              className="timeline-control-button"
+              className="btn btn--ghost"
               onClick={handleClearDiff}
               title="Clear diff baseline"
             >
@@ -437,7 +437,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
 
         <button
           type="button"
-          className="timeline-control-button"
+          className="btn btn--ghost"
           onClick={fitToView}
           title="Fit all nodes into view"
         >
@@ -447,7 +447,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
         {!_modal && (
           <button
             type="button"
-            className="timeline-control-button"
+            className="btn btn--ghost"
             onClick={() => setExpanded(true)}
             title="Open graph in full-screen window"
           >
@@ -487,7 +487,7 @@ export function DependencyGraph({ goroutines, selectedId, onSelectGoroutine, _mo
             <span className="dep-graph-modal-title">Goroutine Spawn Tree</span>
             <button
               type="button"
-              className="timeline-control-button dep-graph-modal-close"
+              className="btn btn--ghost dep-graph-modal-close"
               onClick={() => setExpanded(false)}
               title="Close"
             >

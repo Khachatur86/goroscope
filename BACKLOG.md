@@ -635,13 +635,9 @@ DS-1 → DS-2 → DS-3 → DS-4 → DS-5 → DS-6
 
 ---
 
-### DS-5. Button/Badge API consolidation (P1)
+### ~~DS-5. Button/Badge API consolidation~~ — ✅ РЕАЛИЗОВАНО (DS-5)
 
-**Gap:** 11 вариантов кнопок и 8 вариантов бейджей, каждый стилизован ad-hoc. Нет единого паттерна — сложно добавлять новые варианты и поддерживать консистентность.
-
-**Задача:** Свести к базовым классам `.btn` (variants: primary, secondary, ghost, danger) и `.badge` (variants: state, severity, count). Обновить все вхождения в TSX. Удалить устаревшие CSS-правила.
-
-**Критерий готовности:** Все кнопки используют `.btn .btn--{variant}`. Все бейджи — `.badge .badge--{variant}`. Визуально идентично текущему.
+> **Реализовано:** Добавлена система `.btn` (variants: primary, secondary, ghost, chip, icon, danger) и `.badge` (variants: state, legend, diff, insight, dep-diff) с backward-compat selector groups. 10 TSX-файлов обновлены: `action-button` → `btn btn--primary/secondary`, `timeline-control-button` → `btn btn--ghost`, `preset-chip` → `btn btn--chip`, `state-pill` → `badge badge--state`, `legend-chip` → `badge badge--legend`, `diff-badge` → `badge badge--diff`, `smart-insights-badge` → `badge badge--insight`, `dep-diff-badge` → `badge badge--dep-diff`. `vite build` проходит, визуально идентично.
 
 ---
 
