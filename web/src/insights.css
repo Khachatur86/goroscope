@@ -229,7 +229,7 @@
   padding: 0.4rem 0.5rem;
   resize: vertical;
   font-family: inherit;
-  outline: none;
+  outline: none; /* overridden by :focus-visible in a11y.css */
   box-sizing: border-box;
 }
 

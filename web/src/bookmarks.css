@@ -35,7 +35,7 @@
   padding: 6px 8px;
   font-size: var(--text-md);
   color: var(--text-primary);
-  outline: none;
+  outline: none; /* overridden by :focus-visible in a11y.css */
   width: 100%;
 }
 

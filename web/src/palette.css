@@ -43,7 +43,7 @@
   flex: 1;
   background: transparent;
   border: none;
-  outline: none;
+  outline: none; /* overridden by :focus-visible in a11y.css */
   padding: 0.85rem 0;
   font-size: var(--text-xl);
   color: var(--text-primary);

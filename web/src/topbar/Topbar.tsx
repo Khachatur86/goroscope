@@ -68,43 +68,37 @@ export function Topbar({
           </strong>
         </span>
         <span className="topbar-stat-sep" />
-        <span
+        <button
+          type="button"
           className={`topbar-stat topbar-stat-btn ${filters.minWaitNs ? "active" : ""}`}
-          role="button"
-          tabIndex={0}
           title="Filter to long-blocked goroutines (≥1s)"
           onClick={onLongBlockedClick}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onLongBlockedClick()}
         >
           <span className="topbar-stat-label">Long blocked</span>
           <strong>{insights.long_blocked_count}</strong>
-        </span>
+        </button>
         <span className="topbar-stat-sep" />
-        <span
+        <button
+          type="button"
           className={`topbar-stat topbar-stat-btn ${filters.showLeakOnly ? "active" : ""}`}
-          role="button"
-          tabIndex={0}
           title="Filter to leak candidates (≥30s)"
           onClick={onLeakClick}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onLeakClick()}
         >
           <span className="topbar-stat-label">Leaks</span>
           <strong>{insights.leak_candidates_count ?? 0}</strong>
-        </span>
+        </button>
         {deadlockHints.length > 0 && (
           <>
             <span className="topbar-stat-sep" />
-            <span
+            <button
+              type="button"
               className="topbar-stat topbar-stat-btn topbar-stat-warn"
-              role="button"
-              tabIndex={0}
               title="View deadlock hints"
               onClick={onDeadlockClick}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onDeadlockClick()}
             >
               <span className="topbar-stat-label">Deadlock</span>
               <strong>{deadlockHints.length}</strong>
-            </span>
+            </button>
           </>
         )}
       </div>

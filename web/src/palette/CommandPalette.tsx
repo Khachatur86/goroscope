@@ -6,6 +6,7 @@ import {
   useMemo,
 } from "react";
 import type { Goroutine } from "../api/client";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,8 @@ export function CommandPalette({ open, onClose, commands, goroutines, onSelectGo
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, open);
 
   // Reset state every time the palette opens.
   useEffect(() => {
@@ -161,7 +164,7 @@ export function CommandPalette({ open, onClose, commands, goroutines, onSelectGo
 
   return (
     <div className="palette-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="palette-modal" role="dialog" aria-label="Command palette">
+      <div ref={modalRef} className="palette-modal" role="dialog" aria-label="Command palette" aria-modal="true">
         <div className="palette-search-row">
           <span className="palette-search-icon">⌘</span>
           <input

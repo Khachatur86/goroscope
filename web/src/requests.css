@@ -25,7 +25,7 @@
   padding: 4px 8px;
   font-size: var(--text-base);
   color: var(--text-primary);
-  outline: none;
+  outline: none; /* overridden by :focus-visible in a11y.css */
 }
 
 .req-search:focus {

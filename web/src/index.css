@@ -1,4 +1,5 @@
 /* ── Feature modules ─────────────────────────────────────────────────────── */
+@import "./a11y.css";
 @import "./topbar.css";
 @import "./layout.css";
 @import "./badges.css";
