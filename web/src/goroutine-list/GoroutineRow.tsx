@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ListChildComponentProps } from "react-window";
 import type { Goroutine, TimelineSegment } from "../api/client";
 import type { PinnedMap } from "./pinned";
@@ -12,7 +13,10 @@ export type GoroutineRowData = {
   onTogglePin: (id: number) => void;
 };
 
-export function GoroutineRow({ index, style, data }: ListChildComponentProps<GoroutineRowData>) {
+// memo prevents re-renders when itemData reference is stable and this row's
+// slice of the data hasn't changed (react-window still passes new props when
+// the parent re-renders, so memo is required to short-circuit that).
+export const GoroutineRow = memo(function GoroutineRow({ index, style, data }: ListChildComponentProps<GoroutineRowData>) {
   const g = data.goroutines[index];
   const isPinned = data.pinned.has(g.goroutine_id);
   const note = data.pinned.get(g.goroutine_id) ?? "";
@@ -50,4 +54,4 @@ export function GoroutineRow({ index, style, data }: ListChildComponentProps<Gor
       </div>
     </div>
   );
-}
+});

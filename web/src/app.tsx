@@ -255,6 +255,26 @@ export function App() {
     [hasGoroutineInURL, filters.state, filters.reason, filters.search, stackFrameNeedle, filters.minWaitNs, filters.labelFilter]
   );
 
+  // Only replace the goroutines array when content has actually changed.
+  // Polling returns identical data most of the time; keeping the same reference
+  // prevents useMemo / useEffect hooks that depend on `goroutines` from firing
+  // and stops the Timeline canvas + goroutine list from flickering every 5 s.
+  const stableSetGoroutines = useCallback((next: Goroutine[]) => {
+    setGoroutines((prev) => {
+      if (prev.length !== next.length) return next;
+      for (let i = 0; i < prev.length; i++) {
+        const a = prev[i], b = next[i];
+        if (
+          a.goroutine_id !== b.goroutine_id ||
+          a.state !== b.state ||
+          a.reason !== b.reason ||
+          a.wait_ns !== b.wait_ns
+        ) return next;
+      }
+      return prev; // same content — keep stable reference
+    });
+  }, []);
+
   const loadData = useCallback(async () => {
     const [sess, gs, res, contentionData, ins, deadlock] = await Promise.all([
       fetchCurrentSession(),
@@ -264,20 +284,22 @@ export function App() {
       fetchInsights(filters.minWaitNs || undefined, "30000000000"),
       fetchDeadlockHints(),
     ]);
-    setSession(sess ?? null);
-    const gsSafe = gs?.goroutines ?? [];
-    setGoroutines(gsSafe);
-    setSampleInfo(gs?.sampleInfo ?? null);
-    const urlId = parseGoroutineFromURL();
-    if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
-      setSelectedId(urlId);
-    }
-    setResources(Array.isArray(res) ? res : []);
-    setContention(Array.isArray(contentionData) ? contentionData : []);
-    setInsights(ins ?? { long_blocked_count: 0, leak_candidates_count: 0 });
-    setDeadlockHints(deadlock?.hints ?? []);
-    setDataRevision((v) => v + 1);
-  }, [goroutineParams, filters.minWaitNs]);
+    startTransition(() => {
+      setSession(sess ?? null);
+      const gsSafe = gs?.goroutines ?? [];
+      stableSetGoroutines(gsSafe);
+      setSampleInfo(gs?.sampleInfo ?? null);
+      const urlId = parseGoroutineFromURL();
+      if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
+        setSelectedId(urlId);
+      }
+      setResources(Array.isArray(res) ? res : []);
+      setContention(Array.isArray(contentionData) ? contentionData : []);
+      setInsights(ins ?? { long_blocked_count: 0, leak_candidates_count: 0 });
+      setDeadlockHints(deadlock?.hints ?? []);
+      setDataRevision((v) => v + 1);
+    });
+  }, [goroutineParams, filters.minWaitNs, stableSetGoroutines]);
 
   const refreshLive = useCallback(async () => {
     const gs = await fetchGoroutines(goroutineParams).catch(() => null);
@@ -285,7 +307,7 @@ export function App() {
     const gsSafe = gs.goroutines;
     // Mark SSE-triggered updates as non-urgent so React can yield to user interactions.
     startTransition(() => {
-      setGoroutines(gsSafe);
+      stableSetGoroutines(gsSafe);
       setSampleInfo(gs.sampleInfo);
       const urlId = parseGoroutineFromURL();
       if (urlId && gsSafe.some((g) => g.goroutine_id === urlId)) {
@@ -293,7 +315,7 @@ export function App() {
       }
       setDataRevision((v) => v + 1);
     });
-  }, [goroutineParams]);
+  }, [goroutineParams, stableSetGoroutines]);
 
   useEffect(() => {
     loadData();
@@ -463,6 +485,16 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [gifExporting, setGifExporting] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState<Set<number> | null>(null);
+
+  // Stable itemData reference for FixedSizeList: only changes when the underlying
+  // data changes. Without this, an inline object literal creates a new reference
+  // every render and forces all visible GoroutineRow components to re-render even
+  // when nothing about them changed, causing visible flicker in the left panel.
+  const goroutineListItemData = useMemo(
+    () => ({ goroutines: listGoroutines, selectedId, onSelect: handleSelect, segmentsByGoroutine, pinned, onTogglePin: handleTogglePin }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listGoroutines, selectedId, segmentsByGoroutine, pinned, handleTogglePin]
+  );
 
   const handleSavePng = useCallback(() => {
     timelineRef.current?.exportPng();
@@ -759,7 +791,7 @@ export function App() {
                 itemCount={listGoroutines.length}
                 itemSize={GOROUTINE_ITEM_HEIGHT}
                 width="100%"
-                itemData={{ goroutines: listGoroutines, selectedId, onSelect: handleSelect, segmentsByGoroutine, pinned, onTogglePin: handleTogglePin }}
+                itemData={goroutineListItemData}
               >
                 {GoroutineRow}
               </FixedSizeList>
