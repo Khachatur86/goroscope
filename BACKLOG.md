@@ -39,8 +39,8 @@
 | Structured logging — нет fmt.Printf/log.Print в production коде (F-3) | ✅ Done | Аудит: `grep` по `internal/`, `cmd/`, `agent/` возвращает 0 hits |
 | Goroutine groups view (C-1) | ✅ Done | `internal/analysis/group.go`, `GET /api/v1/goroutines/groups`, `web/src/groups/` |
 | Smart Insights engine (C-3) | ✅ Done | `internal/analysis/insights.go`, `GET /api/v1/smart-insights`, `web/src/insights/` |
-| Spawn-tree в Inspector (частичная реализация C-2) | ⚠️ Partial | `web/src/inspector/Inspector.tsx` — показывает parent + children в инспекторе, но нет полноценного tree-view и подсветки в timeline |
-| Zoom/pan timeline (частичная реализация C-4) | ⚠️ Partial | `web/src/timeline/TimelineCanvas.tsx` — zoom/pan по скроллу + кнопка «Reset zoom», но нет brush-selection с фильтрацией всех панелей |
+| Spawn-tree (C-2) | ✅ Done | `web/src/inspector/SpawnTree.tsx` — рекурсивное collapsible дерево, ancestor chain, «Highlight branch» → dims timeline |
+| Time range brush selection (C-4) | ✅ Done | `web/src/timeline/Timeline.tsx` — «⌖ Select range» brush mode, `brushFilterIds` → `displayGoroutines`, MetricsChart `highlightRange` |
 
 ---
 
