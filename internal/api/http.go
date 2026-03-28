@@ -278,6 +278,7 @@ func (s *Server) routes(ctx context.Context) http.Handler {
 	mux.HandleFunc("/api/v1/pprof/stacks", s.handlePprofStacks)
 	mux.HandleFunc("/api/v1/requests", s.handleRequests)
 	mux.HandleFunc("/api/v1/requests/{id}/goroutines", s.handleRequestGoroutines)
+	mux.HandleFunc("/api/v1/analyze", s.handleAnalyze)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	// H-7: multi-target monitoring endpoints.
 	mux.HandleFunc("/api/v1/targets", func(w http.ResponseWriter, r *http.Request) {

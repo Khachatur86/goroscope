@@ -78,6 +78,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return completionSubcommand(args[1:], stdout, stderr)
 	case "annotate":
 		return annotateCommand(ctx, args[1:], stdout, stderr)
+	case "analyze":
+		return analyzeCommand(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return nil
@@ -105,6 +107,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  goroscope top [flags] <target-url>")
 	_, _ = fmt.Fprintln(w, "  goroscope doctor <capture-file>")
 	_, _ = fmt.Fprintln(w, "  goroscope diff [flags] <baseline.gtrace> <compare.gtrace>")
+	_, _ = fmt.Fprintln(w, "  goroscope analyze [flags] [dirs...]")
 	_, _ = fmt.Fprintln(w, "  goroscope version")
 	_, _ = fmt.Fprintln(w, "  goroscope help")
 	_, _ = fmt.Fprintln(w, "")
@@ -124,6 +127,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  diff        Compare two .gtrace captures: goroutine state + wait-time deltas")
 	_, _ = fmt.Fprintln(w, "  completion  Generate shell completion script (zsh, bash, fish)")
 	_, _ = fmt.Fprintln(w, "  annotate    Add, list, or delete named annotations in a .gtrace file")
+	_, _ = fmt.Fprintln(w, "  analyze     Static concurrency analysis of Go source (race conditions, deadlocks, leaks)")
 	_, _ = fmt.Fprintln(w, "  version     Print version")
 	_, _ = fmt.Fprintln(w, "  help      Show this help")
 	_, _ = fmt.Fprintln(w, "")
@@ -213,6 +217,7 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS; required for non-loopback --addr)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests (empty = no auth)")
+	corsOrigins := fs.String("cors-origins", "", "Comma-separated list of allowed CORS origins (e.g. https://team.example.com). Use * to allow all (insecure).")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -240,7 +245,7 @@ func attachCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	)
 	sessions := session.NewManager()
 
-	cfg := api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token}
+	cfg := api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token, CORSOrigins: splitCSV(*corsOrigins)}
 	server := api.NewServer(*addr, engine, sessions, uiPathResolved, cfg)
 	scheme := "http"
 	if *tlsCert != "" {
@@ -363,6 +368,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests (empty = no auth)")
+	corsOrigins := fs.String("cors-origins", "", "Comma-separated list of allowed CORS origins. Use * to allow all (insecure).")
 	maxGoroutines := fs.Int("max-goroutines", 15_000, "Maximum goroutines to display in the UI (0 = unlimited); excess goroutines are sampled by anomaly score")
 
 	if err := fs.Parse(args); err != nil {
@@ -390,7 +396,7 @@ func runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		PollInterval:  *pollInterval,
 		SavePath:      *savePath,
 		UIPath:        uiPathResolved,
-		ServerConfig:  api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
+		ServerConfig:  api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token, CORSOrigins: splitCSV(*corsOrigins)},
 		MaxGoroutines: *maxGoroutines,
 		Stdout:        stdout,
 		Stderr:        stderr,
@@ -413,6 +419,7 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests")
+	corsOrigins := fs.String("cors-origins", "", "Comma-separated list of allowed CORS origins.")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -433,7 +440,7 @@ func collectCommand(ctx context.Context, args []string, stdout, stderr io.Writer
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "collector", Target: "collector",
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
-		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
+		ServerConfig: api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token, CORSOrigins: splitCSV(*corsOrigins)},
 		Stdout:       stdout, Stderr: stderr,
 	})
 }
@@ -458,6 +465,7 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests")
+	corsOrigins := fs.String("cors-origins", "", "Comma-separated list of allowed CORS origins.")
 	maxGoroutinesUI := fs.Int("max-goroutines", 15_000, "Maximum goroutines to display in the UI (0 = unlimited); excess goroutines are sampled by anomaly score")
 	var targets multiFlag
 	fs.Var(&targets, "target", "Monitor a live Go process (repeatable). Format: http://host:port or label=http://host:port")
@@ -474,7 +482,7 @@ func uiCommand(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return fmt.Errorf("react UI not found at %q: run 'make web' first", *uiPath)
 	}
 
-	cfg := api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token}
+	cfg := api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token, CORSOrigins: splitCSV(*corsOrigins)}
 
 	// Multi-target mode: skip demo data, use live pprof pollers.
 	if len(targets) > 0 {
@@ -520,6 +528,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	tlsCert := fs.String("tls-cert", "", "Path to TLS certificate PEM file (enables HTTPS)")
 	tlsKey := fs.String("tls-key", "", "Path to TLS private key PEM file (required with --tls-cert)")
 	token := fs.String("token", "", "Bearer token required for all API requests")
+	corsOriginsReplay := fs.String("cors-origins", "", "Comma-separated list of allowed CORS origins.")
 	maxGoroutinesReplay := fs.Int("max-goroutines", 15_000, "Maximum goroutines to display in the UI (0 = unlimited); excess goroutines are sampled by anomaly score")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -546,7 +555,7 @@ func replayCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return serveCaptureSession(ctx, serveCaptureInput{
 		Addr: *addr, SessionName: "replay", Target: target,
 		Capture: capture, OpenBrowser: *openBrowser, UIPath: uiPathResolved,
-		ServerConfig:    api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token},
+		ServerConfig:    api.Config{TLSCertFile: *tlsCert, TLSKeyFile: *tlsKey, Token: *token, CORSOrigins: splitCSV(*corsOriginsReplay)},
 		MaxGoroutines:   *maxGoroutinesReplay,
 		BrowserURLSuffix: annotationsToBookmarkParam(capture.Annotations),
 		Stdout:          stdout, Stderr: stderr,
@@ -1050,6 +1059,22 @@ func extractRunFilter(args []string) string {
 		}
 	}
 	return ""
+}
+
+// splitCSV splits a comma-separated string into a trimmed slice.
+// Returns nil when s is empty so callers can safely use len(result) == 0.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func resolveUIPath(ui, uiPath string) string {

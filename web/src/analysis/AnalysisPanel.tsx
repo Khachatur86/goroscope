@@ -8,6 +8,7 @@ import { DeadlockHints } from "../inspector/DeadlockHints";
 import { GoroutineGroups } from "../groups/GoroutineGroups";
 import { ContentionHeatmap } from "./ContentionHeatmap";
 import { RequestsView } from "../requests/RequestsView";
+import { CodeAnalysis } from "./CodeAnalysis";
 import type { DeadlockHint } from "../api/client";
 
 const DependencyGraph = lazy(() =>
@@ -22,7 +23,8 @@ export type AnalysisTabId =
   | "groups"
   | "graph"
   | "heatmap"
-  | "requests";
+  | "requests"
+  | "code";
 
 const TABS: { id: AnalysisTabId; label: string }[] = [
   { id: "insights",  label: "Insights"  },
@@ -33,6 +35,7 @@ const TABS: { id: AnalysisTabId; label: string }[] = [
   { id: "graph",     label: "Graph"     },
   { id: "heatmap",   label: "Heatmap"   },
   { id: "requests",  label: "Requests"  },
+  { id: "code",      label: "Code"      },
 ];
 
 interface AnalysisPanelProps {
@@ -158,6 +161,9 @@ export function AnalysisPanel({
           )}
           {tab === "requests" && (
             <RequestsView onSelectRequest={onHighlightRequest} />
+          )}
+          {tab === "code" && (
+            <CodeAnalysis />
           )}
         </div>
       )}
