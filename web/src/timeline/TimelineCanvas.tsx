@@ -753,12 +753,22 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
         ctx.fillText("OT", badgeX + 3, badgeY + 9);
       }
 
-      (segmentsByGoroutine.get(g.goroutine_id) ?? []).forEach((seg) => {
+      {
+        // Draw segments in two passes: non-RUNNING first, RUNNING last.
+        // RUNNING segments are often only microseconds long and receive a
+        // 2 px minimum width boost. Without the second pass they would be
+        // immediately painted over by the adjacent WAITING/BLOCKED segment
+        // that starts at virtually the same pixel.
+        const allSegs = segmentsByGoroutine.get(g.goroutine_id) ?? [];
+        const drawSeg = (seg: (typeof allSegs)[number]) => {
           const rawX = plotLeft + ((seg.start_ns - visibleStart) / visibleSpan) * innerWidth;
           const rawX2 = plotLeft + ((seg.end_ns - visibleStart) / visibleSpan) * innerWidth;
           const cx = Math.max(plotLeft, Math.min(rawX, plotLeft + innerWidth));
           const cx2 = Math.max(plotLeft, Math.min(rawX2, plotLeft + innerWidth));
-          const cw = Math.max(cx2 - cx, rawX2 > rawX ? 2 : 0);
+          // RUNNING gets a wider minimum so brief transitions stay visible
+          // even at high zoom-out levels; other states keep the 2 px floor.
+          const minWidth = seg.state === "RUNNING" ? 4 : 2;
+          const cw = Math.max(cx2 - cx, rawX2 > rawX ? minWidth : 0);
           if (cw === 0) return;
 
           const barHeight = 20;
@@ -779,7 +789,10 @@ export const TimelineCanvas = forwardRef<TimelineCanvasHandle, Props>(function T
             ctx.strokeStyle = isHovered ? "rgba(255, 255, 255, 0.95)" : "rgba(186, 230, 253, 0.72)";
             ctx.strokeRect(cx, barY, cw, barHeight);
           }
-        });
+        };
+        allSegs.forEach((seg) => { if (seg.state !== "RUNNING") drawSeg(seg); });
+        allSegs.forEach((seg) => { if (seg.state === "RUNNING") drawSeg(seg); });
+      }
       ctx.globalAlpha = 1;
     }
 

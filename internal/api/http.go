@@ -1356,6 +1356,10 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	ch := eng.Subscribe()
 	defer eng.Unsubscribe(ch)
 
+	// Acknowledge the SSE connection so the client can transition to "live".
+	_, _ = fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
+	flusher.Flush()
+
 	// Send the initial delta immediately (full snapshot when clientRevision==0).
 	s.sendSSEDelta(w, flusher, eng, clientRevision)
 	clientRevision = eng.DataVersion()

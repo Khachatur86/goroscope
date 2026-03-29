@@ -118,10 +118,17 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
       if (data.length === 0) return;
       setSegmentMap((prev) => {
         const next = new Map(prev);
+        // Group fetched segments by goroutine ID and replace (not append) the
+        // existing list so that re-fetches for live sessions always reflect the
+        // latest data without accumulating duplicates.
+        const byId = new Map<number, (typeof data)[number][]>();
         for (const seg of data) {
-          const list = next.get(seg.goroutine_id);
-          if (list) list.push(seg);
-          else next.set(seg.goroutine_id, [seg]);
+          const list = byId.get(seg.goroutine_id) ?? [];
+          list.push(seg);
+          byId.set(seg.goroutine_id, list);
+        }
+        for (const [id, segs] of byId) {
+          next.set(id, segs);
         }
         return next;
       });
@@ -161,6 +168,17 @@ export const Timeline = forwardRef<TimelineHandle, Props>(function Timeline({
 
     // Eagerly load the first batch so the timeline isn't blank on initial render.
     const firstBatch = goroutines.slice(0, SEGMENT_BATCH_SIZE).map((g) => g.goroutine_id);
+
+    if (!hasNewIds) {
+      // No new goroutine IDs — this is either a client-side filter change OR a
+      // live-session poll where the server has accumulated new segments (e.g.
+      // brief RUNNING transitions) for the same goroutine IDs. Remove the first
+      // batch from the "already loaded" set so loadSegmentsBatch will re-fetch
+      // them. The setSegmentMap in loadSegmentsBatch now replaces rather than
+      // appends, so duplicates are not introduced.
+      firstBatch.forEach((id) => loadedGoroutineIds.current.delete(id));
+    }
+
     if (firstBatch.length > 0) loadSegmentsBatch(firstBatch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goroutines, useOverride]);

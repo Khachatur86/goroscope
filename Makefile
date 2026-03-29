@@ -1,7 +1,7 @@
 BINARY := bin/goroscope
 VERSION ?= dev
 
-.PHONY: build run run-react run-react-complex dev-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client wasm e2e
+.PHONY: build run run-react run-react-complex run-react-rich dev-react ui fmt test test-race vet lint lint-fix bench web vscode pre-commit embed-web build-dist docker docker-push docker-compose-up docker-compose-down gen-client wasm e2e
 
 build:
 	mkdir -p bin
@@ -15,6 +15,9 @@ run-react: build web
 
 run-react-complex: build web
 	./bin/goroscope run -ui=react -ui-path=web/dist -open-browser ./examples/complex_demo
+
+run-react-rich: build web
+	./bin/goroscope run -ui=react -ui-path=web/dist -open-browser ./examples/rich_demo
 
 # dev-react: Go API server (real static analysis on :7070) + Vite dev server
 # (hot reload on :5173).  Vite proxies /api → :7070 automatically.
