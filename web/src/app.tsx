@@ -382,7 +382,7 @@ export function App() {
 
   useEffect(() => {
     if (!selectedId) return;
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams();
     params.set("goroutine", String(selectedId));
     if (filters.state !== "ALL") params.set("state", filters.state);
     if (filters.reason) params.set("reason", filters.reason);
@@ -708,7 +708,7 @@ export function App() {
       <Topbar
         session={session}
         goroutineCount={goroutines.length}
-        filteredCount={filteredGoroutines.length}
+        filteredCount={displayGoroutines.length}
         insights={insights}
         deadlockHints={deadlockHints}
         streamStatus={streamStatus}
@@ -756,9 +756,9 @@ export function App() {
             <h2>Goroutines</h2>
             <p className="goroutine-count-label">
               {goroutines.length > 0
-                ? filteredGoroutines.length === goroutines.length
+                ? displayGoroutines.length === goroutines.length
                   ? `${goroutines.length} goroutines`
-                  : `${filteredGoroutines.length} of ${goroutines.length} goroutines`
+                  : `${displayGoroutines.length} of ${goroutines.length} goroutines`
                 : ""}
               {brushFilterIds !== null && (
                 <span className="brush-filter-badge" title="Filtered by time range selection">
